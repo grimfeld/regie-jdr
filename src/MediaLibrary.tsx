@@ -5,6 +5,7 @@ import type { ControlBridge, MediaDeletion, MediaImportKind } from '../shared/co
 import { imageLibrary, type LibraryFilter } from '../core/librarySearch';
 import { thumbnailAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
+import { startMediaDrag } from './mediaDrag';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
 import { gridColumns, gridWindow } from './virtualGrid';
@@ -197,7 +198,12 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted, onMediaRenam
         images={images}
         renderImage={(image) => (
           <>
-            <span className="asset-thumb">
+            <span
+              className="asset-thumb"
+              draggable
+              title="Glissez l’image sur la scène ouverte pour la placer"
+              onDragStart={(event) => startMediaDrag(event, image)}
+            >
               <MediaImage address={thumbnailAddress(image)} alt={image.name} window="control" />
             </span>
             <MediaName item={image} onRename={(name) => void rename(image, name)} />

@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { Clapperboard, History, Pencil, Plus, Radio, Trash2 } from 'lucide-react';
-import type { CampaignId, ImageMedia, Scene, SceneId } from '../shared/domain';
+import type { CampaignId, ImageMedia, NormalizedPoint, Scene, SceneId } from '../shared/domain';
 import type { ControlBridge, SceneEdit } from '../shared/contract';
+import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
+import { placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
+import { droppedMediaId } from './mediaDrag';
+import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
@@ -49,7 +53,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
     };
   }, [control, campaignId, mediaRevision]);
 
-  // The library's images, to draw and to place as Backgrounds. Read again whenever a Scene is
+  // The library's images, to draw and to place. Read again whenever a Scene is
   // opened and when the picker gets focus, so images imported meanwhile are offered.
   const refreshImages = useCallback(() => {
     if (!control) return;
@@ -120,6 +124,9 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
         backgrounds: scene.backgrounds.map((item) =>
           item.id === placementId ? { ...item, visible } : item,
         ),
+        overlays: scene.overlays.map((item) =>
+          item.id === placementId ? { ...item, visible } : item,
+        ),
       };
       setScenes((current) => current.map((item) => (item.id === scene.id ? preview : item)));
     }
@@ -135,6 +142,42 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
 
   function editShowingFailure(scene: Scene, command: SceneEdit) {
     edit(scene, command).catch((error: unknown) => showNotice(errorMessage(error)));
+  }
+
+  /**
+   * Places `image` on `scene` as dropped on `target` (see `placementEdit`): the one placement
+   * path for every drop, whether the image comes from the library or was just imported.
+   */
+  async function place(
+    scene: Scene,
+    image: ImageMedia,
+    target: PlacementTarget,
+    dropPoint?: NormalizedPoint,
+  ) {
+    if (!images.some((known) => known.id === image.id)) setImages((known) => [...known, image]);
+    await edit(scene, placementEdit(image, target, dropPoint));
+  }
+
+  /** A library image dropped on the editor: placed with its current Image category. */
+  async function placeDropped(
+    scene: Scene,
+    event: DragEvent,
+    target: PlacementTarget,
+    dropPoint?: NormalizedPoint,
+  ) {
+    const mediaId = droppedMediaId(event);
+    if (!control || mediaId === undefined) return;
+    try {
+      const library = (await control.listMedia(campaignId)).filter(
+        (m): m is ImageMedia => m.kind === 'image',
+      );
+      setImages(library);
+      const image = library.find((m) => m.id === mediaId);
+      if (!image) throw new Error('Cette image n’est plus dans la bibliothèque.');
+      await place(scene, image, target, dropPoint);
+    } catch (error) {
+      showNotice(errorMessage(error));
+    }
   }
 
   async function activate(scene: Scene) {
@@ -224,6 +267,9 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
           onRefreshImages={refreshImages}
           onEdit={(command) => edit(selected, command)}
           onEditShowingFailure={(command) => editShowingFailure(selected, command)}
+          onDrop={(event, target, dropPoint) =>
+            void placeDropped(selected, event, target, dropPoint)
+          }
           onActivate={() => void activate(selected)}
           onDelete={() => void remove(selected)}
         />
@@ -252,6 +298,11 @@ interface EditorProps {
   onEdit: (command: SceneEdit) => Promise<void>;
   /** Sends an edit; a failure is shown as a notice. */
   onEditShowingFailure: (command: SceneEdit) => void;
+  /**
+   * Something was dropped on the canvas (with the drop point, as canvas fractions) or on a
+   * placement list. Read the event's data before awaiting anything.
+   */
+  onDrop: (event: DragEvent, target: PlacementTarget, dropPoint?: NormalizedPoint) => void;
   onActivate: () => void;
   /** Deletes the Scene, once the Game Master has confirmed. */
   onDelete: () => void;
@@ -260,10 +311,12 @@ interface EditorProps {
 /**
  * The editor of the Selected Scene: its name (rename), "EN DIRECT" when it is the Active
  * Scene, Activate and delete (after confirmation), its full composition drawn by the shared
- * renderer with Hidden placements in the GM-only style, and its Backgrounds.
+ * renderer with Hidden placements in the GM-only style, and its Background and Overlay lists.
+ * Library images dropped on the canvas or on a list are placed there.
  */
 function SceneEditor(props: EditorProps) {
-  const { scene, images, active, onRefreshImages, onEdit, onEditShowingFailure } = props;
+  const { scene, images, active, onRefreshImages, onEdit, onEditShowingFailure, onDrop } = props;
+  const canvasDrop = useDropTarget((event) => onDrop(event, 'canvas', canvasPoint(event)));
   const [renameTo, setRenameTo] = useState<string | null>(null);
   const [renameError, setRenameError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -358,50 +411,57 @@ function SceneEditor(props: EditorProps) {
         </div>
       )}
 
-      <div className="editor-canvas">
+      <div className={`editor-canvas${canvasDrop.over ? ' drop-ready' : ''}`} {...canvasDrop.props}>
         <SceneCanvas picture={editorPictureOf(scene, images)} window="control" />
       </div>
 
-      <BackgroundPicker
+      <PlacementPicker
         images={images}
         onFocus={onRefreshImages}
-        onAdd={(image) => onEditShowingFailure({ kind: 'place-background', mediaId: image.id })}
+        onAdd={(image, type) =>
+          onEditShowingFailure({
+            kind: type === 'background' ? 'place-background' : 'place-overlay',
+            mediaId: image.id,
+          })
+        }
       />
 
-      <ul className="background-list" aria-label="Arrière-plans">
-        {scene.backgrounds.map((background) => {
-          const name =
-            images.find((image) => image.id === background.mediaId)?.name ?? 'Média inconnu';
-          return (
-            <li key={background.id}>
-              <label>
-                <input
-                  type="checkbox"
-                  aria-label={`Afficher ${name}`}
-                  checked={background.visible}
-                  onChange={(e) =>
-                    onEditShowingFailure({
-                      kind: 'set-visible',
-                      placementId: background.id,
-                      visible: e.target.checked,
-                    })
-                  }
-                />
-                {name}
-                {!background.visible && <small> · Masqué</small>}
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="placement-lists">
+        <BackgroundList
+          scene={scene}
+          images={images}
+          onEdit={onEditShowingFailure}
+          onDrop={(event) => onDrop(event, 'backgrounds')}
+        />
+        <OverlayList
+          scene={scene}
+          images={images}
+          onEdit={onEditShowingFailure}
+          onDrop={(event) => onDrop(event, 'overlays')}
+        />
+      </div>
     </section>
   );
 }
 
-function BackgroundPicker(props: {
+/**
+ * Where a drop on the editor canvas lands, as canvas fractions: the canvas is letterboxed inside
+ * the drawn area (the first child of the drop target), as the renderer lays it out.
+ */
+function canvasPoint(event: DragEvent<HTMLElement>): NormalizedPoint {
+  const drawn = event.currentTarget.firstElementChild ?? event.currentTarget;
+  const box = drawn.getBoundingClientRect();
+  return layOutCanvas(
+    { width: box.width, height: box.height },
+    { backgrounds: [], overlays: [] },
+  ).toCanvas({ x: event.clientX - box.left, y: event.clientY - box.top });
+}
+
+/** Placing an image without dragging: choose it, then add it as a Background or an Overlay. */
+function PlacementPicker(props: {
   images: ImageMedia[];
   onFocus: () => void;
-  onAdd: (image: ImageMedia) => void;
+  onAdd: (image: ImageMedia, type: 'background' | 'overlay') => void;
 }) {
   const { images, onFocus, onAdd } = props;
   const [chosenId, setChosenId] = useState('');
@@ -427,9 +487,16 @@ function BackgroundPicker(props: {
       <button
         className="secondary-button"
         disabled={!chosen}
-        onClick={() => chosen && onAdd(chosen)}
+        onClick={() => chosen && onAdd(chosen, 'background')}
       >
         Ajouter en arrière-plan
+      </button>
+      <button
+        className="secondary-button"
+        disabled={!chosen}
+        onClick={() => chosen && onAdd(chosen, 'overlay')}
+      >
+        Ajouter en superposition
       </button>
     </div>
   );

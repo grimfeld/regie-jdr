@@ -784,7 +784,7 @@ button {
   margin-bottom: 18px;
 }
 .scene-list,
-.background-list {
+.placement-list ul {
   list-style: none;
   margin: 0 0 12px;
   padding: 0;
@@ -907,8 +907,61 @@ button {
   border: 1px solid var(--line);
   border-radius: 4px;
 }
-.background-list label {
+/* Background and Overlay lists of the Selected Scene; each is also a drop target. */
+.placement-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.placement-list {
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+}
+.placement-list h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.placement-list li {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.placement-list li.is-hidden .placement-name {
+  opacity: 0.6;
+}
+.placement-visible {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.placement-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placement-remove {
+  padding: 4px 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.placement-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.placement-list.drop-ready,
+.editor-canvas.drop-ready {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.image-library .asset-thumb[draggable='true'] {
+  cursor: grab;
 }
