@@ -15,6 +15,7 @@ import type {
   OnAirState,
   Scene,
   SceneId,
+  Settings,
   ThemeId,
 } from './domain.js';
 
@@ -84,6 +85,13 @@ export interface InvokeChannels {
    * from its backup), in French. Returns them once.
    */
   'notices:take': { payload: void; result: string[] };
+  /**
+   * The global Settings: home page theme, window bounds, and each Campaign's last Active Scene
+   * (for highlighting only: nothing goes on air after a restart).
+   */
+  'settings:get': { payload: void; result: Settings };
+  /** Change the theme of the Campaign list home page. */
+  'settings:set-theme': { payload: { theme: ThemeId }; result: Settings };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -147,4 +155,6 @@ export interface ControlBridge extends BroadcastBridge {
   createCampaign(name: string): Promise<Campaign>;
   updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;
   takeNotices(): Promise<string[]>;
+  getSettings(): Promise<Settings>;
+  setHomeTheme(theme: ThemeId): Promise<Settings>;
 }

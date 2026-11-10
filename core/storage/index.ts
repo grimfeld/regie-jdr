@@ -8,7 +8,7 @@
  *   <root>/campaigns/<campaignId>/media.json      Media index (core/media.ts)
  *   <root>/campaigns/<campaignId>/media/          Media files, named <sha256><extension>
  *   <root>/campaigns/<campaignId>/...             Scenes... (later tickets)
- *   <root>/settings.json                          global Settings (later ticket)
+ *   <root>/settings.json                          global Settings (core/settings.ts)
  * Every document has a `<file>.bak` (previous good version) next to it once rewritten.
  */
 import path from 'node:path';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Clapperboard, Plus, Radio } from 'lucide-react';
+import { Clapperboard, History, Plus, Radio } from 'lucide-react';
 import type { CampaignId, ImageMedia, OnAirState, Scene, SceneId } from '../shared/domain';
 import type { ControlBridge } from '../shared/contract';
 import { latestOnAir } from '../core/onAir';
@@ -60,9 +60,30 @@ export function ScenesPanel({ campaignId, control }: Props) {
   }, [control, campaignId]);
   useEffect(refreshImages, [refreshImages, selectedId]);
 
+  // The Scene that was last Active in this Campaign (Settings), highlighted so the Game Master
+  // can resume with one click. Only while no Scene of the Campaign is on air.
+  const [lastActiveId, setLastActiveId] = useState<SceneId | null>(null);
+  useEffect(() => {
+    if (!control) return;
+    let cancelled = false;
+    control
+      .getSettings()
+      .then((settings) => {
+        if (!cancelled) setLastActiveId(settings.lastActiveSceneByCampaign[campaignId] ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) showNotice(errorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [control, campaignId]);
+
   const selected = scenes.find((scene) => scene.id === selectedId);
   const isActive = (scene: Scene) =>
     onAir?.campaignId === campaignId && onAir.activeSceneId === scene.id;
+  const hasActive = onAir?.campaignId === campaignId && onAir.activeSceneId !== null;
+  const isLastActive = (scene: Scene) => !hasActive && scene.id === lastActiveId;
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -125,7 +146,14 @@ export function ScenesPanel({ campaignId, control }: Props) {
 
       <ul className="scene-list" aria-label="Scènes de la campagne">
         {scenes.map((scene) => (
-          <li key={scene.id} className={scene.id === selectedId ? 'selected' : undefined}>
+          <li
+            key={scene.id}
+            className={
+              [scene.id === selectedId && 'selected', isLastActive(scene) && 'last-active']
+                .filter(Boolean)
+                .join(' ') || undefined
+            }
+          >
             <button
               className="scene-open"
               aria-pressed={scene.id === selectedId}
@@ -136,6 +164,11 @@ export function ScenesPanel({ campaignId, control }: Props) {
             {isActive(scene) && (
               <span className="scene-active-badge">
                 <Radio size={12} /> Active
+              </span>
+            )}
+            {isLastActive(scene) && (
+              <span className="scene-last-badge">
+                <History size={12} /> Dernière active
               </span>
             )}
           </li>
