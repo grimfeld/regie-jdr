@@ -49,3 +49,11 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - `SceneEdit`s `set-title`, `set-label-text`, `set-label-visible`. New Label starts Hidden; clearing its text removes it; a Label needs text to be shown. Limits: Label 60 chars, Scene title 100, trimmed.
 - UI in `src/PlayerTextFields.tsx`; `LabelControls` is a child of each Overlay row.
 - Convention set here: text fields commit on Enter or blur (Escape restores), so one change = one `SceneEdit` = one undo step. The editor's instant preview calls the core's `applySceneEdit` instead of copying logic.
+
+## Background stack and fit (#28, 2026-11-11, `984374f`)
+
+- `SceneEdit`s `move-background`, `set-background-fit`, `frame-background`. Zoom limits 1 to 4 (`MIN_ZOOM`/`MAX_ZOOM`/`clampZoom` in `core/canvas.ts`). Controls in `src/BackgroundControls.tsx`.
+- Contain ignores zoom and focal point (whole image always shows); Cover framing is kept for a switch back.
+- Convention set here: an edit that adjusts several fields changes only the fields it is given. Whole-object edits made two quick edits undo each other (caught by a whole-app test).
+- Sliders send one edit on release (one undo step). Gap: the editor redraws only on release, not during the drag.
+- 2026-11-11 decision: placement lists show the top of the stack first. #29 asked to switch the Overlay list to match.
