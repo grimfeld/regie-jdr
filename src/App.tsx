@@ -4,6 +4,7 @@ import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
+import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
@@ -285,6 +286,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
 
         <aside className="control-column">
           <OnAirMonitor control={control} />
+          <FadeSetting control={control} />
           <div className="panel">
             <div className="panel-heading">
               <div>
