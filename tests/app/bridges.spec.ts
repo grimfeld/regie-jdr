@@ -2,6 +2,7 @@ import { expect, fixture, openBroadcastWindow, test } from './harness';
 
 type Rogue = { rogue: { invoke(channel: string, ...args: unknown[]): Promise<unknown> } };
 type Recorder = { calls: unknown[][]; unsubscribe(): void };
+type Bridge = { regie: Record<string, (...args: unknown[]) => unknown> };
 
 test('the Control window gets the full bridge, the Broadcast window only reads and subscribes', async ({
   regie,
@@ -11,13 +12,15 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
 
   const keysOf = () => Object.keys((window as unknown as { regie: object }).regie).sort();
   expect(await controlWindow.evaluate(keysOf)).toEqual([
-    'getDisplay',
+    'activateScene',
+    'closeCampaign',
+    'getOnAir',
     'importImages',
-    'onDisplayChanged',
+    'onOnAirChanged',
     'openBroadcast',
-    'setDisplay',
+    'openCampaign',
   ]);
-  expect(await broadcastWindow.evaluate(keysOf)).toEqual(['getDisplay', 'onDisplayChanged']);
+  expect(await broadcastWindow.evaluate(keysOf)).toEqual(['getOnAir', 'onOnAirChanged']);
 });
 
 test('a mutating message sent from the Broadcast window is rejected and logged', async ({
@@ -32,9 +35,8 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
 
   const outcome = await broadcastWindow.evaluate(async () => {
     const { rogue } = window as unknown as Rogue;
-    const display = { title: 'Piraté', background: '', description: '' };
     try {
-      await rogue.invoke('display:set', display);
+      await rogue.invoke('onAir:open-campaign', { campaignId: 'piraté' });
       return 'accepted';
     } catch (error) {
       return String(error);
@@ -42,9 +44,9 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
   });
 
   expect(outcome).toContain('rejected');
-  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText(
-    'Le sanctuaire oublié',
-  );
+  expect(
+    await controlWindow.evaluate(() => (window as unknown as Bridge).regie.getOnAir()),
+  ).toEqual({ campaignId: null, activeSceneId: null, version: 0 });
   await expect
     .poll(() =>
       mainLog.filter(
@@ -64,7 +66,7 @@ test('a malformed message from the Control window is rejected and logged', async
 
   const outcome = await controlWindow.evaluate(async () => {
     const { rogue } = window as unknown as Rogue;
-    return rogue.invoke('display:set', { title: 42 }).then(
+    return rogue.invoke('onAir:open-campaign', { campaignId: 42 }).then(
       () => 'accepted',
       (error) => String(error),
     );
@@ -76,7 +78,7 @@ test('a malformed message from the Control window is rejected and logged', async
       mainLog.filter(
         (line) =>
           line.startsWith('warning: IPC message rejected: malformed') &&
-          line.includes('display:set'),
+          line.includes('onAir:open-campaign'),
       ),
     )
     .toHaveLength(1);
@@ -87,46 +89,30 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await broadcastWindow.evaluate(() => {
     const calls: unknown[][] = [];
-    const bridge = (window as unknown as { regie: { onDisplayChanged(l: unknown): () => void } })
+    const bridge = (window as unknown as { regie: { onOnAirChanged(l: unknown): () => void } })
       .regie;
-    const unsubscribe = bridge.onDisplayChanged((...args: unknown[]) => calls.push(args));
+    const unsubscribe = bridge.onOnAirChanged((...args: unknown[]) => calls.push(args));
     (window as unknown as { recorder: Recorder }).recorder = { calls, unsubscribe };
   });
   const calls = () =>
     broadcastWindow.evaluate(() => (window as unknown as { recorder: Recorder }).recorder.calls);
+  const gm = (method: string, ...args: unknown[]) =>
+    controlWindow.evaluate(
+      ([name, params]) => (window as unknown as Bridge).regie[name](...params),
+      [method, args] as const,
+    );
 
-  const title = controlWindow.getByLabel('TITRE DE LA SCÈNE');
-  await title.fill('La taverne');
-  await expect.poll(calls).toEqual([
-    [
-      {
-        title: 'La taverne',
-        background: '',
-        description: 'Choisissez un décor pour commencer la scène.',
-      },
-    ],
-  ]);
+  await gm('openCampaign', 'star-wars');
+  await expect
+    .poll(calls)
+    .toEqual([[{ campaignId: 'star-wars', activeSceneId: null, version: 1 }]]);
 
   await broadcastWindow.evaluate(() =>
     (window as unknown as { recorder: Recorder }).recorder.unsubscribe(),
   );
-  await title.fill('La forêt');
-  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText('La forêt');
+  await gm('activateScene', 'cantina');
+  await expect(broadcastWindow.locator('main.stage-screen')).toHaveAttribute('data-version', '2');
   expect(await calls()).toHaveLength(1);
-});
-
-test('the Broadcast window shows the current display when it opens and after a reload', async ({
-  regie,
-}) => {
-  const { app, controlWindow } = regie;
-  await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('La taverne');
-
-  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  const heading = broadcastWindow.getByRole('heading', { level: 1 });
-  await expect(heading).toHaveText('La taverne');
-
-  await broadcastWindow.reload();
-  await expect(heading).toHaveText('La taverne');
 });
 
 test('the Broadcast window fullscreen button toggles fullscreen without its bridge', async ({
