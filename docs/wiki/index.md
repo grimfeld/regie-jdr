@@ -10,6 +10,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 
 - [Stacked milestone PRs](decision-stacked-milestone-prs.md): one integration branch and one PR per milestone, each based on the one before.
 - [Guardrails before feature work](decision-guardrails-first.md): ESLint and CODING_STANDARDS.md land first in the M1 PR.
+- [Guardrail backlog](guardrail-backlog.md): proposed guardrails not yet built.
 
 ## Process
 

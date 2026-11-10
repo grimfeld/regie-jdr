@@ -14,4 +14,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 
 ## Outcomes
 
-(none yet)
+- 2026-11-10: guardrails merged at `310598d` ([decision](decision-guardrails-first.md)).
