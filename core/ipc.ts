@@ -161,6 +161,14 @@ function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string
   return { ...campaign, name: value.name };
 }
 
+function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: SceneId }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { sceneId } = value;
+  if (typeof sceneId !== 'string' || sceneId === '') return INVALID;
+  return { ...campaign, sceneId };
+}
+
 function sceneEdit(
   value: unknown,
 ): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit }> {
@@ -183,6 +191,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
   'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },
+  'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },

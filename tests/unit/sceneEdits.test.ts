@@ -67,6 +67,21 @@ describe('Scene edit commands', () => {
     expect(before).toEqual(copy);
   });
 
+  it('rename the Scene, trimming the name and leaving its composition', () => {
+    const placed = applyAll(empty, { kind: 'place-background', mediaId: 'm1' });
+    const renamed = applyAll(placed, { kind: 'rename', name: '  Le hangar ' });
+    expect(renamed).toEqual({ ...placed, name: 'Le hangar' });
+  });
+
+  it('refuse an empty or too long Scene name, in French', () => {
+    expect(() => applyAll(empty, { kind: 'rename', name: '   ' })).toThrow(
+      'Donnez un nom à la scène.',
+    );
+    expect(() => applyAll(empty, { kind: 'rename', name: 'x'.repeat(101) })).toThrow(
+      'Le nom de la scène est trop long (100 caractères au plus).',
+    );
+  });
+
   it('refuse to show a placement that is not on the Scene, in French', () => {
     expect(() =>
       applyAll(empty, { kind: 'set-visible', placementId: 'absent', visible: true }),
@@ -92,6 +107,10 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'set-visible', placementId: 'p1', visible: false },
       { kind: 'set-visible', placementId: 'p1', visible: false },
     ],
+    [
+      { kind: 'rename', name: 'Le hangar', id: 's2' },
+      { kind: 'rename', name: 'Le hangar' },
+    ],
   ])('accept %o, keeping only its fields', (value, expected) => {
     expect(parseSceneEdit(value)).toEqual(expected);
   });
@@ -104,6 +123,8 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'place-overlay', mediaId: 'm1', position: { x: 2, y: 0 } },
     ],
     ['a visibility that is not a boolean', { kind: 'set-visible', placementId: 'p1', visible: 1 }],
+    ['a name that is not a string', { kind: 'rename', name: 42 }],
+    ['a name far too long for a message', { kind: 'rename', name: 'x'.repeat(1001) }],
     ['not an object', 'place-background'],
   ])('reject %s', (_case, value) => {
     expect(parseSceneEdit(value)).toBeUndefined();

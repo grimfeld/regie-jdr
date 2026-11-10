@@ -236,6 +236,7 @@ describe('Scene channels', () => {
       ['scenes:list', [{ campaignId }]],
       ['scenes:create', [{ campaignId, name: 'X' }]],
       ['scenes:edit', [edit]],
+      ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
@@ -254,8 +255,18 @@ describe('Scene channels', () => {
     });
   });
 
+  it('accept a Scene to delete, keeping only contract fields', () => {
+    const target = { campaignId, sceneId: 'cantina' };
+    expect(checkInvoke('scenes:delete', 'control', [{ ...target, confirmed: true }])).toEqual({
+      ok: true,
+      payload: target,
+    });
+  });
+
   it.each([
     ['a Campaign id that is a path', 'scenes:list', [{ campaignId: '../..' }]],
+    ['a delete with no Scene', 'scenes:delete', [{ campaignId }]],
+    ['a delete with no Campaign', 'scenes:delete', [{ sceneId: 'cantina' }]],
     ['no name', 'scenes:create', [{ campaignId }]],
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],

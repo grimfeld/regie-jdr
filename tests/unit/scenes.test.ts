@@ -131,6 +131,25 @@ describe('scene library', () => {
     await expect(scenes.list('inconnue')).rejects.toBeInstanceOf(CampaignError);
   });
 
+  it('deletes a Scene, keeping the others, after the storage is reopened (restart)', async () => {
+    const { campaign, scenes } = await setup();
+    const cantina = await scenes.create(campaign.id, 'La cantina');
+    const hangar = await scenes.create(campaign.id, 'Le hangar');
+
+    await scenes.delete(campaign.id, cantina.id);
+
+    expect(await scenes.list(campaign.id)).toEqual([hangar]);
+    const reopened = createSceneLibrary(openStorage(root()));
+    expect(await reopened.list(campaign.id)).toEqual([hangar]);
+  });
+
+  it('refuses to delete a Scene that does not exist, in French', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'La cantina');
+    await expect(scenes.delete(campaign.id, 'autre')).rejects.toThrow('Cette scène n’existe plus.');
+    expect(await scenes.list(campaign.id)).toEqual([scene]);
+  });
+
   it('refuses to save a Scene that does not exist', async () => {
     const { campaign, scenes } = await setup();
     const scene = await scenes.create(campaign.id, 'La cantina');

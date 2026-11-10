@@ -10,6 +10,8 @@
 import type {
   CampaignId,
   Media,
+  OnAirBackground,
+  OnAirOverlay,
   OnAirScene,
   OnAirState,
   Scene,
@@ -31,6 +33,12 @@ export interface OnAir {
    * nothing, when `sceneId` is not the Active Scene.
    */
   showActiveScene(sceneId: SceneId, scene: OnAirScene): OnAirState | undefined;
+  /**
+   * Takes a deleted Scene off air: when `sceneId` is the Active Scene, nothing is on air any
+   * more (the Campaign stays open, Blackout as it is). Returns undefined, changing nothing,
+   * when it is not the Active Scene.
+   */
+  clearActiveScene(sceneId: SceneId): OnAirState | undefined;
   /**
    * Starts or ends Blackout: the broadcast fades to black, the Active Scene stays as it is.
    * Activating a Scene leaves it as it is; opening, switching or closing a Campaign clears it.
@@ -76,6 +84,10 @@ export function createOnAir(): OnAir {
       if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
       return change({ ...state, scene });
     },
+    clearActiveScene: (sceneId) => {
+      if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
+      return change({ ...state, activeSceneId: null, scene: null });
+    },
     setBlackout: (on) => change({ ...state, blackout: on }),
     subscribe: (listener) => {
       const own = (snapshot: OnAirState) => listener(snapshot);
@@ -114,6 +126,46 @@ export function onAirSceneOf(scene: Scene, library: readonly Media[]): OnAirScen
       position: { ...position },
       height,
       ...(shownLabel !== undefined && { label: shownLabel }),
+    });
+  }
+  const title = scene.title.trim();
+  return { backgrounds, overlays, ...(title && { title }) };
+}
+
+/**
+ * What the editor draws of the Selected Scene: every placement whose Media is an image in
+ * `library`, Hidden ones included and marked `hidden`, so the Game Master sees them in the
+ * GM-only style; Labels with text, marked `labelHidden` when Hidden; the Scene title when set.
+ * Only for the Control window: the Broadcast window gets `onAirSceneOf`.
+ */
+export interface EditorPicture {
+  backgrounds: (OnAirBackground & { hidden: boolean })[];
+  overlays: (OnAirOverlay & { hidden: boolean; labelHidden?: boolean })[];
+  title?: string;
+}
+
+export function editorPictureOf(scene: Scene, library: readonly Media[]): EditorPicture {
+  const addressOf = (mediaId: string) => {
+    const media = library.find((item) => item.id === mediaId && item.kind === 'image');
+    return media && mediaAddress(media);
+  };
+  const backgrounds: EditorPicture['backgrounds'] = [];
+  for (const { id, mediaId, fit, zoom, focus, visible } of scene.backgrounds) {
+    const src = addressOf(mediaId);
+    if (src) backgrounds.push({ id, src, fit, zoom, focus: { ...focus }, hidden: !visible });
+  }
+  const overlays: EditorPicture['overlays'] = [];
+  for (const { id, mediaId, position, height, visible, label } of scene.overlays) {
+    const src = addressOf(mediaId);
+    if (!src) continue;
+    const labelled = label?.text.trim() ? label : undefined;
+    overlays.push({
+      id,
+      src,
+      position: { ...position },
+      height,
+      hidden: !visible,
+      ...(labelled && { label: labelled.text, labelHidden: !labelled.visible }),
     });
   }
   const title = scene.title.trim();

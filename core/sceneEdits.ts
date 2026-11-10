@@ -16,6 +16,23 @@ export class SceneError extends Error {}
 
 export type { SceneEdit };
 
+export const MAX_SCENE_NAME_LENGTH = 100;
+
+/** Names longer than this are malformed messages; MAX_SCENE_NAME_LENGTH is the real limit. */
+const MAX_NAME_PAYLOAD = 1000;
+
+/** A Scene name as saved: trimmed. Throws a SceneError (French) when empty or too long. */
+export function cleanSceneName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new SceneError('Donnez un nom à la scène.');
+  if (trimmed.length > MAX_SCENE_NAME_LENGTH) {
+    throw new SceneError(
+      `Le nom de la scène est trop long (${MAX_SCENE_NAME_LENGTH} caractères au plus).`,
+    );
+  }
+  return trimmed;
+}
+
 /** Height of a new Overlay, as a fraction of the canvas height. */
 export const NEW_OVERLAY_HEIGHT = 0.5;
 
@@ -73,6 +90,8 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         ),
       };
     }
+    case 'rename':
+      return { ...scene, name: cleanSceneName(edit.name) };
   }
 }
 
@@ -104,6 +123,9 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
     case 'set-visible':
       if (!isId(value.placementId) || typeof value.visible !== 'boolean') return undefined;
       return { kind: 'set-visible', placementId: value.placementId, visible: value.visible };
+    case 'rename':
+      if (typeof value.name !== 'string' || value.name.length > MAX_NAME_PAYLOAD) return undefined;
+      return { kind: 'rename', name: value.name };
     default:
       return undefined;
   }

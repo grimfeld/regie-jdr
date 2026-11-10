@@ -44,6 +44,11 @@ export interface OnAirCommands {
    */
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   /**
+   * Deletes a Scene of a Campaign. When it is the Active Scene, the Active Scene is cleared and
+   * the Broadcast window shows nothing on air.
+   */
+  deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
+  /**
    * Deletes a Media. Unused Media goes at once. Media that Scenes use is only listed with
    * those Scenes unless `confirmed`; then the Media, its file and its placements in those
    * Scenes are removed, and the broadcast drops it if the Active Scene showed it.
@@ -118,6 +123,12 @@ export function createOnAirCommands(deps: {
           onAir.showActiveScene(saved.id, await picture(saved));
         }
         return saved;
+      }),
+
+    deleteScene: (campaignId, sceneId) =>
+      serialized(async () => {
+        await scenes.delete(campaignId, sceneId);
+        if (onAir.current().campaignId === campaignId) onAir.clearActiveScene(sceneId);
       }),
 
     deleteMedia: (campaignId, mediaId, confirmed) =>

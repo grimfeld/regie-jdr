@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createOnAir, latestOnAir, onAirSceneOf } from '../../core/onAir';
+import { createOnAir, editorPictureOf, latestOnAir, onAirSceneOf } from '../../core/onAir';
 import type { Media, OnAirScene, Scene } from '../../shared/domain';
 
 const cantina: OnAirScene = {
@@ -46,6 +46,28 @@ describe('on-air state', () => {
       blackout: false,
       version: 2,
     });
+  });
+
+  it('clears the Active Scene, keeping the Campaign open and Blackout as it is', () => {
+    const onAir = createOnAir();
+    onAir.openCampaign('star-wars');
+    onAir.activateScene('cantina', cantina);
+    onAir.setBlackout(true);
+    expect(onAir.clearActiveScene('cantina')).toEqual({
+      campaignId: 'star-wars',
+      activeSceneId: null,
+      scene: null,
+      blackout: true,
+      version: 4,
+    });
+  });
+
+  it('leaves the state alone when clearing a Scene that is not the Active Scene', () => {
+    const onAir = createOnAir();
+    onAir.openCampaign('star-wars');
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.clearActiveScene('hangar')).toBeUndefined();
+    expect(onAir.current()).toMatchObject({ activeSceneId: 'cantina', version: 2 });
   });
 
   it('shows the edited Active Scene as a new version', () => {
@@ -286,6 +308,98 @@ describe('what of a Scene goes on air', () => {
       overlays: [{ ...scene.overlays[0], label: { text: '', visible: true } }],
     };
     expect(onAirSceneOf(blankLabel, library).overlays[0]).not.toHaveProperty('label');
+  });
+});
+
+describe('what of a Scene the editor draws', () => {
+  const image = (id: string, contentHash: string): Media => ({
+    id,
+    campaignId: 'c1',
+    kind: 'image',
+    category: 'scenery',
+    contentHash,
+    originalName: id,
+    name: id,
+    extension: '.png',
+  });
+  const hash = 'a'.repeat(64);
+  const src = `regie-media://media/c1/${hash}.png`;
+  const centre = { x: 0.5, y: 0.5 };
+  const scene: Scene = {
+    id: 's1',
+    campaignId: 'c1',
+    name: 'Embuscade des cultistes',
+    title: 'Le vieux moulin',
+    backgrounds: [
+      { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1, focus: centre, visible: true },
+      { id: 'b2', mediaId: 'm1', fit: 'contain', zoom: 2, focus: centre, visible: false },
+      { id: 'b3', mediaId: 'gone', fit: 'cover', zoom: 1, focus: centre, visible: true },
+    ],
+    overlays: [
+      {
+        id: 'o1',
+        mediaId: 'm1',
+        position: centre,
+        height: 0.5,
+        visible: false,
+        label: { text: 'Garde', visible: false },
+      },
+      {
+        id: 'o2',
+        mediaId: 'm1',
+        position: centre,
+        height: 0.3,
+        visible: true,
+        label: { text: 'Traître', visible: true },
+      },
+      {
+        id: 'o3',
+        mediaId: 'm1',
+        position: centre,
+        height: 0.3,
+        visible: true,
+        label: { text: ' ', visible: true },
+      },
+    ],
+    music: [],
+    ambiences: [],
+    volumes: { music: 1, ambience: 1 },
+    notes: 'Notes privées',
+  };
+
+  it('draws every placement of a known image, marking Hidden ones and Hidden Labels', () => {
+    expect(editorPictureOf(scene, [image('m1', hash)])).toEqual({
+      backgrounds: [
+        { id: 'b1', src, fit: 'cover', zoom: 1, focus: centre, hidden: false },
+        { id: 'b2', src, fit: 'contain', zoom: 2, focus: centre, hidden: true },
+      ],
+      overlays: [
+        {
+          id: 'o1',
+          src,
+          position: centre,
+          height: 0.5,
+          hidden: true,
+          label: 'Garde',
+          labelHidden: true,
+        },
+        {
+          id: 'o2',
+          src,
+          position: centre,
+          height: 0.3,
+          hidden: false,
+          label: 'Traître',
+          labelHidden: false,
+        },
+        { id: 'o3', src, position: centre, height: 0.3, hidden: false },
+      ],
+      title: 'Le vieux moulin',
+    });
+  });
+
+  it('draws no Scene title when it is empty', () => {
+    expect(editorPictureOf({ ...scene, title: '' }, [])).not.toHaveProperty('title');
   });
 });
 

@@ -33,7 +33,9 @@ export type SceneEdit =
    */
   | { kind: 'place-overlay'; mediaId: MediaId; position?: NormalizedPoint }
   /** Shows or hides a Background or Overlay. */
-  | { kind: 'set-visible'; placementId: string; visible: boolean };
+  | { kind: 'set-visible'; placementId: string; visible: boolean }
+  /** Renames the Scene (its private name; never shown to players). */
+  | { kind: 'rename'; name: string };
 
 /** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
 export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
@@ -91,6 +93,11 @@ export interface InvokeChannels {
     payload: { campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit };
     result: Scene;
   };
+  /**
+   * Delete a Scene. When it is the Active Scene, the Active Scene is cleared: nothing of it
+   * stays on air. The window asks the Game Master to confirm first.
+   */
+  'scenes:delete': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: void };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
   /**
@@ -199,6 +206,7 @@ export interface ControlBridge extends BroadcastBridge {
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
+  deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;

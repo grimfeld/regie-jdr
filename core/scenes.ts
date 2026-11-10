@@ -23,7 +23,7 @@ import { CampaignError } from './campaigns.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
-import { SceneError } from './sceneEdits.js';
+import { cleanSceneName, SceneError } from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
 export { SceneError };
@@ -40,11 +40,12 @@ export interface SceneLibrary {
   removeMediaPlacements(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
   /** A new, empty Scene. */
   create(campaignId: CampaignId, name: string): Promise<Scene>;
+  /** Deletes a Scene; throws a SceneError when it does not exist. */
+  delete(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /** Replaces a stored Scene (found by Campaign and id) and returns what was saved. */
   save(scene: Scene): Promise<Scene>;
 }
 
-export const MAX_SCENE_NAME_LENGTH = 100;
 const SCENES_FILE = 'scenes.json';
 const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain'];
 
@@ -218,17 +219,6 @@ const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
   },
 };
 
-function cleanName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) throw new SceneError('Donnez un nom à la scène.');
-  if (trimmed.length > MAX_SCENE_NAME_LENGTH) {
-    throw new SceneError(
-      `Le nom de la scène est trop long (${MAX_SCENE_NAME_LENGTH} caractères au plus).`,
-    );
-  }
-  return trimmed;
-}
-
 export function createSceneLibrary(storage: Storage): SceneLibrary {
   /** Serializes the read-modify-write of each Campaign's Scenes document. */
   const serialized = createKeyedSerialQueue<CampaignId>();
@@ -265,7 +255,7 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
         const scene: Scene = {
           id: randomUUID(),
           campaignId,
-          name: cleanName(name),
+          name: cleanSceneName(name),
           title: '',
           backgrounds: [],
           overlays: [],
@@ -295,13 +285,23 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
       });
     },
 
+    delete(campaignId, sceneId) {
+      return serialized(campaignId, async () => {
+        const file = await fileOf(campaignId);
+        const scenes = await read(file, campaignId);
+        const kept = scenes.filter((scene) => scene.id !== sceneId);
+        if (kept.length === scenes.length) throw new SceneError('Cette scène n’existe plus.');
+        await write(file, kept);
+      });
+    },
+
     save(scene) {
       return serialized(scene.campaignId, async () => {
         const file = await fileOf(scene.campaignId);
         const scenes = await read(file, scene.campaignId);
         const index = scenes.findIndex((existing) => existing.id === scene.id);
         if (index < 0) throw new SceneError('Cette scène n’existe plus.');
-        const saved: Scene = { ...scene, name: cleanName(scene.name) };
+        const saved: Scene = { ...scene, name: cleanSceneName(scene.name) };
         scenes[index] = saved;
         await write(file, scenes);
         return saved;

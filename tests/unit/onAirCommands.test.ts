@@ -225,6 +225,63 @@ describe('on-air commands', () => {
     expect(ctx.broadcast.map((s) => s.version)).toEqual([1]);
   });
 
+  it('renames a Scene; on the Active Scene the broadcast carries no Scene name', async () => {
+    const ctx = await setup();
+    const scene = await sceneShowing(ctx, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+
+    const renamed = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+      kind: 'rename',
+      name: 'Embuscade',
+    });
+
+    expect(renamed).toEqual({ ...scene, name: 'Embuscade' });
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(renamed);
+    expect(JSON.stringify(ctx.broadcast)).not.toContain('Embuscade');
+  });
+
+  describe('deleting a Scene', () => {
+    it('deletes a Scene that is not active, leaving the broadcast alone', async () => {
+      const ctx = await setup();
+      const active = await sceneShowing(ctx, 'Cantina');
+      const other = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(active.id);
+      const sent = ctx.broadcast.length;
+
+      await ctx.commands.deleteScene(ctx.campaign.id, other.id);
+
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([active]);
+      expect(ctx.broadcast.length).toBe(sent);
+    });
+
+    it('deleting the Active Scene clears the Active Scene and the broadcast', async () => {
+      const ctx = await setup();
+      const active = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(active.id);
+
+      await ctx.commands.deleteScene(ctx.campaign.id, active.id);
+
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([]);
+      expect(ctx.broadcast.at(-1)).toEqual({
+        campaignId: ctx.campaign.id,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        version: 3,
+      });
+    });
+
+    it('refuses a Scene that no longer exists', async () => {
+      const ctx = await setup();
+      await expect(ctx.commands.deleteScene(ctx.campaign.id, 'inconnue')).rejects.toThrow(
+        'Cette scène n’existe plus.',
+      );
+    });
+  });
+
   describe('deleting Media', () => {
     const mediaFiles = (ctx: Awaited<ReturnType<typeof setup>>) =>
       fs.readdir(path.join(ctx.storage.campaignFolder(ctx.campaign.id), 'media'));
