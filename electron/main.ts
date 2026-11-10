@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { isAppPage } from './navigation.js';
 
 type ImportedAsset = { name: string; url: string };
 let controlWindow: BrowserWindow | null = null;
@@ -18,6 +19,27 @@ const ASSET_SCHEME = 'regie-asset';
 protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
+
+// The page every window loads: the dev server, or the built index.html on disk.
+const appEntry = process.env.VITE_DEV_SERVER_URL ?? pathToFileURL(path.join(__dirname, '../dist/index.html')).href;
+
+function secureWebPreferences(): Electron.WebPreferences {
+  return {
+    preload: path.join(__dirname, 'preload.js'),
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
+    webviewTag: false
+  };
+}
+
+// Every window: no pop-ups, no webviews, no navigation away from the app's own pages.
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-frame-navigate', (event) => { if (!isAppPage(event.url, appEntry)) event.preventDefault(); });
+  contents.on('will-redirect', (event) => { if (!isAppPage(event.url, appEntry)) event.preventDefault(); });
+  contents.on('will-attach-webview', (event) => event.preventDefault());
+});
 
 function getAssetDirectory() {
   return path.join(app.getPath('userData'), 'assets');
@@ -39,7 +61,7 @@ function createControlWindow() {
   controlWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1080, minHeight: 700,
     title: 'Régie JDR — Poste du MJ', backgroundColor: '#101217',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
+    webPreferences: secureWebPreferences()
   });
   if (process.env.VITE_DEV_SERVER_URL) {
     controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -54,7 +76,7 @@ function createStageWindow() {
   stageWindow = new BrowserWindow({
     width: 1280, height: 720, title: 'Régie JDR — Diffusion',
     backgroundColor: '#08090c', autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
+    webPreferences: secureWebPreferences()
   });
   stageWindow.setMenuBarVisibility(false);
   stageWindow.webContents.on('did-finish-load', () => sendToStage('scene:updated', currentScene));
