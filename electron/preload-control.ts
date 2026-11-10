@@ -45,9 +45,13 @@ function subscribe<E extends EventChannel>(
 const bridge: ControlBridge = {
   getOnAir: () => invoke('onAir:get'),
   onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
+  onStopAudio: (listener) => subscribe('audio:stop-all', () => listener()),
   openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
   closeCampaign: () => invoke('onAir:close-campaign'),
   activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
+  listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
+  createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
+  updateScene: (scene) => invoke('scenes:update', scene),
   openBroadcast: () => invoke('broadcast:open'),
   listMedia: (campaignId) => invoke('media:list', { campaignId }),
   importMedia: (campaignId, kind) => invoke('media:import', { campaignId, ...kind }),

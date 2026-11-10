@@ -1,11 +1,21 @@
 /**
  * The on-air state: what the Broadcast window shows. Owned by the main process, kept in memory
- * only (after a restart nothing is on air). No Electron dependency.
+ * only (after a restart nothing is on air). No Node or Electron dependency: the interface
+ * imports `latestOnAir` from here.
  *
  * Every change increases `version`, so a window can tell a stale snapshot from a newer one
- * (see `latestOnAir`).
+ * (see `latestOnAir`). The commands that check Campaigns and Scenes exist, and save edits,
+ * are in core/onAirCommands.ts.
  */
-import type { CampaignId, OnAirState, SceneId } from '../shared/domain.js';
+import type {
+  CampaignId,
+  Media,
+  OnAirScene,
+  OnAirState,
+  Scene,
+  SceneId,
+} from '../shared/domain.js';
+import { mediaAddress } from './mediaAddress.js';
 
 export interface OnAir {
   /** The current snapshot. */
@@ -15,29 +25,43 @@ export interface OnAir {
   /** Closes the open Campaign: nothing is on air. */
   closeCampaign(): OnAirState;
   /** Puts a Scene of the open Campaign on air. Throws when no Campaign is open. */
-  activateScene(sceneId: SceneId): OnAirState;
+  activateScene(sceneId: SceneId, scene: OnAirScene): OnAirState;
+  /**
+   * Shows the new picture of the Active Scene after an edit. Returns undefined, changing
+   * nothing, when `sceneId` is not the Active Scene.
+   */
+  showActiveScene(sceneId: SceneId, scene: OnAirScene): OnAirState | undefined;
   /** Calls `listener` with each new snapshot. Returns the unsubscribe function. */
   subscribe(listener: (snapshot: OnAirState) => void): () => void;
 }
 
+/** A deep copy: snapshots handed out cannot be used to change the state. */
+function copy(state: OnAirState): OnAirState {
+  return structuredClone(state);
+}
+
 export function createOnAir(): OnAir {
-  let state: OnAirState = { campaignId: null, activeSceneId: null, version: 0 };
+  let state: OnAirState = { campaignId: null, activeSceneId: null, scene: null, version: 0 };
   const listeners = new Set<(snapshot: OnAirState) => void>();
 
   function change(next: Omit<OnAirState, 'version'>): OnAirState {
-    state = { ...next, version: state.version + 1 };
-    for (const listener of listeners) listener({ ...state });
-    return { ...state };
+    state = copy({ ...next, version: state.version + 1 });
+    for (const listener of listeners) listener(copy(state));
+    return copy(state);
   }
 
   return {
-    current: () => ({ ...state }),
-    openCampaign: (campaignId) => change({ campaignId, activeSceneId: null }),
-    closeCampaign: () => change({ campaignId: null, activeSceneId: null }),
-    activateScene: (sceneId) => {
+    current: () => copy(state),
+    openCampaign: (campaignId) => change({ campaignId, activeSceneId: null, scene: null }),
+    closeCampaign: () => change({ campaignId: null, activeSceneId: null, scene: null }),
+    activateScene: (sceneId, scene) => {
       const { campaignId } = state;
       if (campaignId === null) throw new Error('Cannot Activate a Scene: no Campaign is open');
-      return change({ campaignId, activeSceneId: sceneId });
+      return change({ campaignId, activeSceneId: sceneId, scene });
+    },
+    showActiveScene: (sceneId, scene) => {
+      if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
+      return change({ campaignId: state.campaignId, activeSceneId: sceneId, scene });
     },
     subscribe: (listener) => {
       const own = (snapshot: OnAirState) => listener(snapshot);
@@ -47,6 +71,28 @@ export function createOnAir(): OnAir {
       };
     },
   };
+}
+
+/**
+ * What players see of a Scene: its visible Backgrounds and Overlays whose Media is in
+ * `library`, in order, with their Media addresses. Nothing private (name, notes, Labels).
+ */
+export function onAirSceneOf(scene: Scene, library: readonly Media[]): OnAirScene {
+  const addressOf = (mediaId: string) => {
+    const media = library.find((item) => item.id === mediaId && item.kind === 'image');
+    return media && mediaAddress(media);
+  };
+  const backgrounds: OnAirScene['backgrounds'] = [];
+  for (const { id, mediaId, fit, position, visible } of scene.backgrounds) {
+    const src = visible ? addressOf(mediaId) : undefined;
+    if (src) backgrounds.push({ id, src, fit, position: { ...position } });
+  }
+  const overlays: OnAirScene['overlays'] = [];
+  for (const { id, mediaId, position, scale, zIndex, visible } of scene.overlays) {
+    const src = visible ? addressOf(mediaId) : undefined;
+    if (src) overlays.push({ id, src, position: { ...position }, scale, zIndex });
+  }
+  return { backgrounds, overlays };
 }
 
 /**

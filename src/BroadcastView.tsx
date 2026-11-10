@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { BroadcastBridge } from '../shared/contract';
-import type { OnAirState } from '../shared/domain';
+import type { NormalizedPoint, OnAirScene, OnAirState } from '../shared/domain';
 import { latestOnAir } from '../core/onAir';
+import { MediaImage } from './MediaImage';
 
 /** The Broadcast window's fullscreen button: the page's own fullscreen, no IPC needed. */
 function toggleFullscreen() {
@@ -9,9 +10,47 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen();
 }
 
+/** A normalized point as CSS custom properties, read by the stage styles. */
+function at({ x, y }: NormalizedPoint, extra: Record<string, string> = {}): CSSProperties {
+  return { '--x': `${x * 100}%`, '--y': `${y * 100}%`, ...extra } as CSSProperties;
+}
+
 /**
- * The Broadcast window: shows exactly what is on air. Until Scenes are rendered (Milestone 1)
- * it shows an empty stage and exposes which Scene is on air as data attributes.
+ * The Active Scene's picture, filling the window: Backgrounds stacked bottom to top, then the
+ * Overlays by stacking order. Only visible placements are ever sent here. Images go through
+ * MediaImage, which shows nothing for a missing Media. (The fixed 16:9 canvas is Milestone 1.)
+ */
+function StagePicture({ scene }: { scene: OnAirScene }) {
+  const overlays = [...scene.overlays].sort((a, b) => a.zIndex - b.zIndex);
+  return (
+    <>
+      {scene.backgrounds.map((background) => (
+        <div
+          key={background.id}
+          className={`stage-layer fit-${background.fit}`}
+          data-background-id={background.id}
+          style={at(background.position)}
+        >
+          <MediaImage address={background.src} alt="" window="broadcast" />
+        </div>
+      ))}
+      {overlays.map((overlay) => (
+        <div
+          key={overlay.id}
+          className="stage-overlay"
+          data-overlay-id={overlay.id}
+          style={at(overlay.position, { '--height': `${overlay.scale * 100}%` })}
+        >
+          <MediaImage address={overlay.src} alt="" window="broadcast" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The Broadcast window: shows exactly what is on air, the Active Scene's picture. Which Scene
+ * is on air is also exposed as data attributes.
  */
 export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | undefined }) {
   const [onAir, setOnAir] = useState<OnAirState | null>(null);
@@ -34,6 +73,7 @@ export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | un
       data-active-scene-id={onAir ? (onAir.activeSceneId ?? '') : undefined}
       data-version={onAir?.version}
     >
+      {onAir?.scene && <StagePicture scene={onAir.scene} />}
       <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">
         ⛶
       </button>

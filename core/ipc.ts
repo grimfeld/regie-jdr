@@ -18,8 +18,9 @@ import type {
   MediaImportKind,
   Payload,
 } from '../shared/contract.js';
-import type { CampaignId, ImageCategory, MediaId } from '../shared/domain.js';
+import type { CampaignId, ImageCategory, MediaId, Scene } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
+import { parseScene } from './scenes.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 
@@ -124,6 +125,17 @@ function categoryChange(
   return { ...campaign, mediaId, category };
 }
 
+function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value) || !isName(value.name)) return INVALID;
+  return { ...campaign, name: value.name };
+}
+
+function sceneOf(value: unknown): Parsed<Scene> {
+  if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
+  return parseScene(value, value.campaignId) ?? INVALID;
+}
+
 // Rules --------------------------------------------------------------------
 
 const rules: { [C in InvokeChannel]: Rule<C> } = {
@@ -131,6 +143,9 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
   'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
+  'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
+  'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
+  'scenes:update': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },

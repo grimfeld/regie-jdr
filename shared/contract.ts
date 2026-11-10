@@ -13,6 +13,7 @@ import type {
   Media,
   MediaId,
   OnAirState,
+  Scene,
   SceneId,
   ThemeId,
 } from './domain.js';
@@ -46,6 +47,15 @@ export interface InvokeChannels {
   'onAir:close-campaign': { payload: void; result: OnAirState };
   /** Activate a Scene of the open Campaign: it goes on air. Fails if no Campaign is open. */
   'onAir:activate-scene': { payload: { sceneId: SceneId }; result: OnAirState };
+  /** The Scenes of a Campaign, in creation order. */
+  'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
+  /** Create an empty Scene; fails with a French message for an empty name. */
+  'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
+  /**
+   * Save a whole Scene (the "update the Active Scene" command). The Active Scene goes on air
+   * at once; any other Scene stays private.
+   */
+  'scenes:update': { payload: Scene; result: Scene };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
   /** The Media library of a Campaign, in import order. */
@@ -80,6 +90,8 @@ export interface InvokeChannels {
 export interface EventChannels {
   /** Every new on-air snapshot; a window ignores one older than what it shows. */
   'onAir:changed': OnAirState;
+  /** Stop every sound now (Campaign opened, switched or closed). For the audio engine. */
+  'audio:stop-all': null;
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -112,6 +124,7 @@ export type Unsubscribe = () => void;
 export interface BroadcastBridge {
   getOnAir(): Promise<OnAirState>;
   onOnAirChanged(listener: (snapshot: OnAirState) => void): Unsubscribe;
+  onStopAudio(listener: () => void): Unsubscribe;
 }
 
 /** Full bridge of the Control window. */
@@ -119,6 +132,9 @@ export interface ControlBridge extends BroadcastBridge {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   closeCampaign(): Promise<OnAirState>;
   activateScene(sceneId: SceneId): Promise<OnAirState>;
+  listScenes(campaignId: CampaignId): Promise<Scene[]>;
+  createScene(campaignId: CampaignId, name: string): Promise<Scene>;
+  updateScene(scene: Scene): Promise<Scene>;
   openBroadcast(): Promise<void>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;
   importMedia(campaignId: CampaignId, kind: MediaImportKind): Promise<MediaImportResult>;
