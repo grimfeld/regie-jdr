@@ -7,8 +7,8 @@ import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import { createCampaign, updateCampaign } from '../core/campaigns.js';
-import { createMediaLibrary, type MediaLibrary } from '../core/media.js';
-import { extensionsOf, MEDIA_SCHEME } from '../core/mediaAddress.js';
+import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
+import { MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
 import { createSceneLibrary } from '../core/scenes.js';
@@ -163,15 +163,11 @@ async function createBroadcastWindow() {
 
 /** Files the Game Master picks for an import, from the native file picker; [] if cancelled. */
 async function pickMediaFiles(kind: MediaImportKind): Promise<string[]> {
-  const options: Electron.OpenDialogOptions = kind.accept === 'image'
-    ? {
-        title: 'Importer des images', properties: ['openFile', 'multiSelections'],
-        filters: [{ name: 'Images', extensions: extensionsOf('image') }]
-      }
-    : {
-        title: 'Importer des sons', properties: ['openFile', 'multiSelections'],
-        filters: [{ name: 'Sons', extensions: extensionsOf('audio') }]
-      };
+  const { picker, extensions } = MEDIA_KINDS[kind.accept];
+  const options: Electron.OpenDialogOptions = {
+    title: picker.title, properties: ['openFile', 'multiSelections'],
+    filters: [{ name: picker.filterName, extensions }]
+  };
   const result = controlWindow
     ? await dialog.showOpenDialog(controlWindow, options)
     : await dialog.showOpenDialog(options);

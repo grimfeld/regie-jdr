@@ -14,10 +14,19 @@ import { createReadStream } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { MediaImportKind, MediaImportResult } from '../shared/contract.js';
-import type { AudioRole, CampaignId, ImageCategory, Media, MediaId } from '../shared/domain.js';
+import type {
+  AudioMedia,
+  AudioRole,
+  CampaignId,
+  ImageCategory,
+  ImageMedia,
+  Media,
+  MediaId,
+} from '../shared/domain.js';
 import { CampaignError } from './campaigns.js';
 import { isRecord } from './guards.js';
 import {
+  extensionsOf,
   isMediaExtension,
   MEDIA_FILE_TYPES,
   mediaFileName,
@@ -73,6 +82,40 @@ export function isAudioRole(value: unknown): value is AudioRole {
 
 /** Category of a newly imported image, until the Game Master changes it. */
 export const DEFAULT_IMAGE_CATEGORY: ImageCategory = 'scenery';
+
+/** What differs between importing images and importing audio. */
+export interface MediaKindRules {
+  /** Accepted file extensions, lower-case, without the dot (file picker filters). */
+  extensions: string[];
+  /** Why a file of the other kind was refused, for the Game Master. */
+  refusal(fileName: string): string;
+  /** The native file picker for this kind. */
+  picker: { title: string; filterName: string };
+  /** The kind-specific fields of a newly imported Media. */
+  defaults(
+    kind: MediaImportKind,
+  ): Pick<ImageMedia, 'kind' | 'category'> | Pick<AudioMedia, 'kind' | 'role'>;
+}
+
+/** One entry per Media kind; looked up by the import's `accept`. */
+export const MEDIA_KINDS: Record<Media['kind'], MediaKindRules> = {
+  image: {
+    extensions: extensionsOf('image'),
+    refusal: (fileName) => `« ${fileName} » n’a pas été importé : ce n’est pas une image.`,
+    picker: { title: 'Importer des images', filterName: 'Images' },
+    defaults: () => ({ kind: 'image', category: DEFAULT_IMAGE_CATEGORY }),
+  },
+  audio: {
+    extensions: extensionsOf('audio'),
+    refusal: (fileName) => `« ${fileName} » n’a pas été importé : ce n’est pas un son.`,
+    picker: { title: 'Importer des sons', filterName: 'Sons' },
+    // Looked up by `accept`, so this is always an audio import.
+    defaults: (kind) => ({
+      kind: 'audio',
+      role: (kind as Extract<MediaImportKind, { accept: 'audio' }>).role,
+    }),
+  },
+};
 
 const MEDIA_FOLDER = 'media';
 const INDEX_FILE = 'media.json';
@@ -167,6 +210,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
         const library = await readIndex(folder, campaignId);
         const mediaFolder = path.join(folder, MEDIA_FOLDER);
         const result: MediaImportResult = { imported: [], refused: [] };
+        const rules = MEDIA_KINDS[kind.accept];
         let changed = false;
         for (const source of files) {
           const extension = path.extname(source).toLowerCase();
@@ -179,11 +223,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
             continue;
           }
           if (type.kind !== kind.accept) {
-            result.refused.push(
-              kind.accept === 'image'
-                ? `« ${fileName} » n’a pas été importé : ce n’est pas une image.`
-                : `« ${fileName} » n’a pas été importé : ce n’est pas un son.`,
-            );
+            result.refused.push(rules.refusal(fileName));
             continue;
           }
           const contentHash = await sha256Of(source);
@@ -203,10 +243,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
             name: originalName,
             extension,
           };
-          const media: Media =
-            kind.accept === 'image'
-              ? { ...base, kind: 'image', category: DEFAULT_IMAGE_CATEGORY }
-              : { ...base, kind: 'audio', role: kind.role };
+          const media = { ...base, ...rules.defaults(kind) } as Media;
           await storeFile(source, mediaFolder, media);
           library.push(media);
           result.imported.push(media);
