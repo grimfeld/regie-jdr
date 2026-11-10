@@ -1,3 +1,4 @@
+import type { ElectronApplication } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -23,25 +24,44 @@ function launchAgain(dataDir: string): Promise<number | null> {
   });
 }
 
-test('launching the app again brings the existing Control window forward instead of starting a second app', async ({
+/** The app's only window, the Control window: whether it is visible, minimized, and how many. */
+function controlWindowState(app: ElectronApplication) {
+  return app.evaluate(({ BrowserWindow }) => {
+    const windows = BrowserWindow.getAllWindows();
+    return {
+      count: windows.length,
+      visible: windows[0].isVisible(),
+      minimized: windows[0].isMinimized(),
+    };
+  });
+}
+
+test('launching the app again shows the existing Control window instead of starting a second app', async ({
   regie,
 }) => {
   const { app, dataDir } = regie;
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
+  await expect.poll(async () => (await controlWindowState(app)).visible).toBe(false);
+
+  const exitCode = await launchAgain(dataDir);
+
+  expect(exitCode).toBe(0);
+  await expect.poll(() => controlWindowState(app)).toMatchObject({ count: 1, visible: true });
+});
+
+test('launching the app again restores a minimized Control window', async ({ regie }) => {
+  // Under xvfb (Linux CI) there is no window manager: minimize() does nothing there.
+  test.skip(process.platform === 'linux', 'minimizing needs a window manager');
+  const { app, dataDir } = regie;
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].minimize());
-  await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized()))
-    .toBe(true);
+  await expect.poll(async () => (await controlWindowState(app)).minimized).toBe(true);
 
   const exitCode = await launchAgain(dataDir);
 
   expect(exitCode).toBe(0);
   await expect
-    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized()))
-    .toBe(false);
-  const windowCount = await app.evaluate(
-    ({ BrowserWindow }) => BrowserWindow.getAllWindows().length,
-  );
-  expect(windowCount).toBe(1);
+    .poll(() => controlWindowState(app))
+    .toMatchObject({ count: 1, visible: true, minimized: false });
 });
 
 test('apps running on different data folders do not block each other', async ({ regie }) => {
