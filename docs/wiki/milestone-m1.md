@@ -26,6 +26,8 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - Deleting a Scene leaves its id in Settings `lastActiveSceneByCampaign` (UI ignores it). Source: #24 report, 2026-11-11.
 - Manual check: ~500 images scroll smoothly in the library. Source: #25 report.
 - `GLOSSARY.md` lacks "broadcast projection". Source: #22 report.
+- Flaky test: `tests/app/placing.spec.ts:202` failed once in a full run (likely race between placing twice and show/hide preview). Fix the race; no retries. Source: #27 report.
+- Manual check: real drag from Windows Explorer. Source: #27 report.
 - Background slider shows framing only on release, not during drag. Source: #28 report.
 - Test PNG generator duplicated (`tests/app/background-fit.spec.ts`, `library.spec.ts` `picturePng`); move to `tests/app/harness.ts`. Source: #28 report.
 - 2026-11-11: #26 placing Media merged at `b8a3580` (325 unit, 77 app tests). Kept the image picker for keyboard users.
@@ -33,3 +35,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
   - 2026-11-11: user decided "Superposition" is the French UI term for Overlay. Closeout adds it to `GLOSSARY.md`.
 - 2026-11-11: #30 Labels and Scene title merged at `d9156b8` (343 unit, 80 app tests). No deviations.
 - 2026-11-11: #28 Background stack and fit merged at `984374f` (366 unit, 83 app tests). No deviations. List order now top-first.
+- 2026-11-11: #27 Explorer drag-import merged at `a65b466` (379 unit, 87 app tests). See [library page](subsystem-media-library.md).
