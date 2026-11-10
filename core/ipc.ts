@@ -16,13 +16,14 @@ import type {
   InvokeChannel,
   InvokeChannels,
   MediaImportKind,
+  OverlayTransform,
   Payload,
   SceneEdit,
 } from '../shared/contract.js';
 import path from 'node:path';
 import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
-import { parseSceneEdit } from './sceneEdits.js';
+import { parseOverlayTransform, parseSceneEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 import { isRecord } from './guards.js';
@@ -209,6 +210,15 @@ function sceneEdit(
   return { ...campaign, sceneId, edit };
 }
 
+function transientEdit(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: OverlayTransform }> {
+  const scene = sceneOf(value);
+  if (scene === INVALID || !isRecord(value)) return INVALID;
+  const edit = parseOverlayTransform(value.edit);
+  return edit ? { ...scene, edit } : INVALID;
+}
+
 // Rules --------------------------------------------------------------------
 
 const rules: { [C in InvokeChannel]: Rule<C> } = {
@@ -220,6 +230,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
   'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },
+  'scenes:show-transient': { from: controlOnly, parse: onePayload(transientEdit) },
   'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },

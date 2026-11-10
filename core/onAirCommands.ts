@@ -7,7 +7,7 @@
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
-import type { MediaDeletion } from '../shared/contract.js';
+import type { MediaDeletion, OverlayTransform } from '../shared/contract.js';
 import { randomUUID } from 'node:crypto';
 import type { CampaignId, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
 import { CampaignError } from './campaigns.js';
@@ -43,6 +43,17 @@ export interface OnAirCommands {
    * where the Scene before and after each edit is known, for an undo history.
    */
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
+  /**
+   * Shows a transient update of a live drag (a move or resize of an Overlay): on the Active
+   * Scene, the broadcast shows the saved Scene with `edit` applied; nothing is saved and no
+   * undo step is recorded. On any other Scene it does nothing. The drag ends with the same
+   * edit through `editScene`, which saves it as one step.
+   */
+  showTransientEdit(
+    campaignId: CampaignId,
+    sceneId: SceneId,
+    edit: OverlayTransform,
+  ): Promise<void>;
   /**
    * Deletes a Scene of a Campaign. When it is the Active Scene, the Active Scene is cleared and
    * the Broadcast window shows nothing on air.
@@ -123,6 +134,15 @@ export function createOnAirCommands(deps: {
           onAir.showActiveScene(saved.id, await picture(saved));
         }
         return saved;
+      }),
+
+    showTransientEdit: (campaignId, sceneId, edit) =>
+      serialized(async () => {
+        const current = onAir.current();
+        if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
+        const scene = await scenes.get(campaignId, sceneId);
+        if (!scene) throw new SceneError('Cette scène n’existe plus.');
+        onAir.showActiveScene(sceneId, await picture(applySceneEdit(scene, edit, newId)));
       }),
 
     deleteScene: (campaignId, sceneId) =>

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_ZOOM, MIN_ZOOM } from '../../core/canvas';
-import { applySceneEdit, parseSceneEdit, placementEdit } from '../../core/sceneEdits';
+import {
+  applySceneEdit,
+  MAX_OVERLAY_HEIGHT,
+  MIN_OVERLAY_HEIGHT,
+  nudgedPosition,
+  parseOverlayTransform,
+  parseSceneEdit,
+  placementEdit,
+  resizedOverlay,
+} from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { ImageCategory, ImageMedia, Scene } from '../../shared/domain';
 
@@ -191,6 +200,140 @@ describe('Scene edit commands', () => {
   });
 });
 
+describe('Overlay transform commands', () => {
+  const placed = applyAll(
+    empty,
+    { kind: 'place-background', mediaId: 'm1' },
+    { kind: 'place-overlay', mediaId: 'm2' },
+    { kind: 'place-overlay', mediaId: 'm3' },
+    { kind: 'place-overlay', mediaId: 'm4' },
+  );
+  const order = (scene: Scene) => scene.overlays.map((item) => item.id);
+  const moveTo = (placementId: string, toIndex: number) =>
+    order(applyAll(placed, { kind: 'move-overlay', placementId, toIndex }));
+
+  it('move an Overlay’s centre, leaving its size and the other placements', () => {
+    const moved = applyAll(placed, {
+      kind: 'transform-overlay',
+      placementId: 'p3',
+      position: { x: 0.1, y: 0.8 },
+    });
+    expect(moved.overlays[1]).toEqual({ ...placed.overlays[1], position: { x: 0.1, y: 0.8 } });
+    expect(moved.overlays.filter((item) => item.id !== 'p3')).toEqual(
+      placed.overlays.filter((item) => item.id !== 'p3'),
+    );
+    expect(moved.backgrounds).toEqual(placed.backgrounds);
+  });
+
+  it('change only the fields given, so one change never overwrites another', () => {
+    const resized = applyAll(placed, { kind: 'transform-overlay', placementId: 'p2', height: 0.3 });
+    const moved = applyAll(resized, {
+      kind: 'transform-overlay',
+      placementId: 'p2',
+      position: { y: 0.2 },
+    });
+    expect(moved.overlays[0]).toEqual({
+      ...placed.overlays[0],
+      position: { x: 0.5, y: 0.2 },
+      height: 0.3,
+    });
+  });
+
+  it('keep a moved Overlay’s centre on the canvas', () => {
+    const moved = applyAll(placed, {
+      kind: 'transform-overlay',
+      placementId: 'p2',
+      position: { x: -0.3, y: 1.4 },
+    });
+    expect(moved.overlays[0].position).toEqual({ x: 0, y: 1 });
+  });
+
+  it('resize an Overlay: new height and centre', () => {
+    const resized = applyAll(placed, {
+      kind: 'transform-overlay',
+      placementId: 'p2',
+      position: { x: 0.6, y: 0.4 },
+      height: 0.3,
+    });
+    expect(resized.overlays[0]).toEqual({
+      ...placed.overlays[0],
+      position: { x: 0.6, y: 0.4 },
+      height: 0.3,
+    });
+  });
+
+  it('keep a resized Overlay between the smallest and the largest height', () => {
+    const resize = (height: number) =>
+      applyAll(placed, { kind: 'transform-overlay', placementId: 'p2', height }).overlays[0].height;
+    expect(resize(0.001)).toBe(MIN_OVERLAY_HEIGHT);
+    expect(resize(50)).toBe(MAX_OVERLAY_HEIGHT);
+  });
+
+  it('bring an Overlay forward or send it back among the Overlays', () => {
+    expect(moveTo('p2', 1)).toEqual(['p3', 'p2', 'p4']);
+    expect(moveTo('p4', 1)).toEqual(['p2', 'p4', 'p3']);
+    expect(moveTo('p4', 0)).toEqual(['p4', 'p2', 'p3']);
+  });
+
+  it('keep an Overlay moved past the front in front', () => {
+    expect(moveTo('p2', 9)).toEqual(['p3', 'p4', 'p2']);
+  });
+
+  it('keep Overlays in their own stack: reordering never touches the Backgrounds', () => {
+    const back = applyAll(placed, { kind: 'move-overlay', placementId: 'p3', toIndex: 0 });
+    expect(back.backgrounds).toEqual(placed.backgrounds);
+  });
+
+  it.each([
+    { kind: 'transform-overlay', placementId: 'p1', position: { x: 0.5 } },
+    { kind: 'transform-overlay', placementId: 'absent', height: 0.4 },
+    { kind: 'move-overlay', placementId: 'p1', toIndex: 0 },
+  ] as const)('refuse %o when it names no Overlay of the Scene, in French', (edit) => {
+    expect(() => applyAll(placed, edit)).toThrow('Cet élément n’est plus sur la scène.');
+  });
+});
+
+describe('Nudging an Overlay with the arrow keys', () => {
+  it('moves it 10 canvas units, or 50 with Shift, in the key’s direction', () => {
+    const centre = { x: 0.5, y: 0.5 };
+    expect(nudgedPosition(centre, 'ArrowRight', false).x).toBeCloseTo(0.5 + 10 / 1920);
+    expect(nudgedPosition(centre, 'ArrowLeft', false).x).toBeCloseTo(0.5 - 10 / 1920);
+    expect(nudgedPosition(centre, 'ArrowDown', false).y).toBeCloseTo(0.5 + 10 / 1080);
+    expect(nudgedPosition(centre, 'ArrowUp', true).y).toBeCloseTo(0.5 - 50 / 1080);
+    expect(nudgedPosition(centre, 'ArrowUp', true).x).toBe(0.5);
+  });
+
+  it('stops at the canvas edge', () => {
+    expect(nudgedPosition({ x: 0.001, y: 0.999 }, 'ArrowLeft', true)).toEqual({ x: 0, y: 0.999 });
+    expect(nudgedPosition({ x: 0.5, y: 0.999 }, 'ArrowDown', true)).toEqual({ x: 0.5, y: 1 });
+  });
+});
+
+describe('Resizing an Overlay by its corner', () => {
+  // A square image, a quarter of the canvas high, centred: 270 x 270 canvas units at (825, 405).
+  const square = { position: { x: 0.5, y: 0.5 }, height: 0.25 };
+
+  it('keeps its proportions and its top-left corner where they were', () => {
+    // Corner dragged to (1365, 945): 540 wide, 540 high.
+    const resized = resizedOverlay(square, 1, { x: 1365 / 1920, y: 945 / 1080 });
+    expect(resized.height).toBeCloseTo(0.5);
+    expect(resized.position.x).toBeCloseTo((825 + 270) / 1920);
+    expect(resized.position.y).toBeCloseTo((405 + 270) / 1080);
+  });
+
+  it('follows whichever of the pointer’s two directions goes further', () => {
+    // Wide image (2:1): dragging right 540 units gives 1080 wide, so 540 high.
+    const wide = { position: { x: 0.5, y: 0.5 }, height: 0.25 };
+    const resized = resizedOverlay(wide, 2, { x: (690 + 1080) / 1920, y: 0.5 });
+    expect(resized.height).toBeCloseTo(0.5);
+  });
+
+  it('never goes below the smallest height, nor above the largest', () => {
+    expect(resizedOverlay(square, 1, { x: 0, y: 0 }).height).toBe(MIN_OVERLAY_HEIGHT);
+    expect(resizedOverlay(square, 1, { x: 40, y: 40 }).height).toBe(MAX_OVERLAY_HEIGHT);
+  });
+});
+
 function image(category: ImageCategory): ImageMedia {
   return {
     id: `m-${category}`,
@@ -295,6 +438,27 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'set-title', title: 'Le vieux moulin', name: 'x' },
       { kind: 'set-title', title: 'Le vieux moulin' },
     ],
+    [
+      {
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.2, y: 1, z: 0 },
+        toIndex: 1,
+      },
+      { kind: 'transform-overlay', placementId: 'p1', position: { x: 0.2, y: 1 } },
+    ],
+    [
+      { kind: 'transform-overlay', placementId: 'p1', position: { y: 0.5 }, height: 0.3 },
+      { kind: 'transform-overlay', placementId: 'p1', position: { y: 0.5 }, height: 0.3 },
+    ],
+    [
+      { kind: 'transform-overlay', placementId: 'p1', height: 0.3 },
+      { kind: 'transform-overlay', placementId: 'p1', height: 0.3 },
+    ],
+    [
+      { kind: 'move-overlay', placementId: 'p1', toIndex: 2, direction: 'back' },
+      { kind: 'move-overlay', placementId: 'p1', toIndex: 2 },
+    ],
   ])('accept %o, keeping only its fields', (value, expected) => {
     expect(parseSceneEdit(value)).toEqual(expected);
   });
@@ -323,8 +487,37 @@ describe('Scene edit commands from a window message', () => {
     ['a title that is not a string', { kind: 'set-title', title: null }],
     ['a title far too long for a message', { kind: 'set-title', title: 'x'.repeat(1001) }],
     ['not an object', 'place-background'],
+    [
+      'a move off the canvas',
+      { kind: 'transform-overlay', placementId: 'p1', position: { y: -1 } },
+    ],
+    [
+      'a position that is not an object',
+      { kind: 'transform-overlay', placementId: 'p1', position: 0.5 },
+    ],
+    ['a resize to nothing', { kind: 'transform-overlay', placementId: 'p1', height: 0 }],
+    [
+      'a resize beyond the largest height',
+      { kind: 'transform-overlay', placementId: 'p1', height: MAX_OVERLAY_HEIGHT + 1 },
+    ],
+    ['a resize to no number', { kind: 'transform-overlay', placementId: 'p1', height: NaN }],
+    ['a reorder to no place', { kind: 'move-overlay', placementId: 'p1', toIndex: -1 }],
+    ['a reorder to half a place', { kind: 'move-overlay', placementId: 'p1', toIndex: 0.5 }],
   ])('reject %s', (_case, value) => {
     expect(parseSceneEdit(value)).toBeUndefined();
+  });
+
+  it('accept only a transform as a transient update of a live drag', () => {
+    const move = { kind: 'transform-overlay', placementId: 'p1', position: { x: 0.2, y: 0.3 } };
+    expect(parseOverlayTransform({ ...move, extra: 1 })).toEqual(move);
+    const resize = { ...move, height: 0.2 };
+    expect(parseOverlayTransform(resize)).toEqual(resize);
+    expect(
+      parseOverlayTransform({ kind: 'set-visible', placementId: 'p1', visible: true }),
+    ).toBeUndefined();
+    expect(
+      parseOverlayTransform({ kind: 'move-overlay', placementId: 'p1', toIndex: 0 }),
+    ).toBeUndefined();
   });
 });
 

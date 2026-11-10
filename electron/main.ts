@@ -296,6 +296,8 @@ function startApp() {
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>
         commands.editScene(campaignId, sceneId, edit),
+      'scenes:show-transient': ({ campaignId, sceneId, edit }) =>
+        commands.showTransientEdit(campaignId, sceneId, edit),
       'scenes:delete': ({ campaignId, sceneId }) => commands.deleteScene(campaignId, sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),

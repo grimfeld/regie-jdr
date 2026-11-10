@@ -282,6 +282,11 @@ describe('Scene channels', () => {
     sceneId: 'cantina',
     edit: { kind: 'set-visible', placementId: 'b1', visible: true },
   };
+  const transient = {
+    campaignId,
+    sceneId: 'cantina',
+    edit: { kind: 'transform-overlay', placementId: 'o1', position: { x: 0.2, y: 0.3 } },
+  };
 
   it('are for the Control window only', () => {
     for (const [channel, args] of [
@@ -289,10 +294,19 @@ describe('Scene channels', () => {
       ['scenes:create', [{ campaignId, name: 'X' }]],
       ['scenes:edit', [edit]],
       ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
+      ['scenes:show-transient', [transient]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
     }
+  });
+
+  it('accept a transient update of a live drag, keeping only contract fields', () => {
+    const padded = { ...transient, extra: 1, edit: { ...transient.edit, toIndex: 1 } };
+    expect(checkInvoke('scenes:show-transient', 'control', [padded])).toEqual({
+      ok: true,
+      payload: transient,
+    });
   });
 
   it('accept an edit command, keeping only contract fields', () => {
@@ -323,6 +337,8 @@ describe('Scene channels', () => {
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],
     ['an unknown edit', 'scenes:edit', [{ ...edit, edit: { kind: 'replace-scene' } }]],
+    ['a transient update that is not a move or resize', 'scenes:show-transient', [edit]],
+    ['a transient update with no Scene', 'scenes:show-transient', [{ ...transient, sceneId: '' }]],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });

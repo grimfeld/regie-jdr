@@ -7,7 +7,7 @@
  * Adding an edit: a variant of SceneEdit (shared/contract.ts), its case in `applySceneEdit`
  * and in `parseSceneEdit`.
  */
-import type { SceneEdit } from '../shared/contract.js';
+import type { OverlayTransform, SceneEdit } from '../shared/contract.js';
 import type {
   Background,
   ImageMedia,
@@ -16,13 +16,13 @@ import type {
   Overlay,
   Scene,
 } from '../shared/domain.js';
-import { clampZoom } from './canvas.js';
+import { CANVAS, clampZoom } from './canvas.js';
 import { isRecord } from './guards.js';
 
 /** A Scene error the Game Master can read (French message). */
 export class SceneError extends Error {}
 
-export type { SceneEdit };
+export type { OverlayTransform, SceneEdit };
 
 export const MAX_SCENE_NAME_LENGTH = 100;
 
@@ -67,6 +67,77 @@ export function cleanLabelText(text: string): string {
 
 /** Height of a new Overlay, as a fraction of the canvas height. */
 export const NEW_OVERLAY_HEIGHT = 0.5;
+
+/** Smallest and largest Overlay height, as fractions of the canvas height. */
+export const MIN_OVERLAY_HEIGHT = 0.05;
+export const MAX_OVERLAY_HEIGHT = 2;
+
+/** One arrow-key nudge, in canvas units (Shift: the coarse step). */
+const NUDGE_STEP = 10;
+const COARSE_NUDGE_STEP = 50;
+
+export type ArrowKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
+
+/**
+ * Where an Overlay's centre goes when nudged with an arrow key: 10 canvas units that way, 50
+ * with Shift (`coarse`), stopping at the canvas edge.
+ */
+export function nudgedPosition(
+  position: NormalizedPoint,
+  key: ArrowKey,
+  coarse: boolean,
+): NormalizedPoint {
+  const step = coarse ? COARSE_NUDGE_STEP : NUDGE_STEP;
+  const dx = step / CANVAS.width;
+  const dy = step / CANVAS.height;
+  switch (key) {
+    case 'ArrowLeft':
+      return { x: clampUnit(position.x - dx), y: position.y };
+    case 'ArrowRight':
+      return { x: clampUnit(position.x + dx), y: position.y };
+    case 'ArrowUp':
+      return { x: position.x, y: clampUnit(position.y - dy) };
+    case 'ArrowDown':
+      return { x: position.x, y: clampUnit(position.y + dy) };
+  }
+}
+
+/** A height kept between the smallest and the largest Overlay height. */
+export function clampOverlayHeight(height: number): number {
+  return Math.min(MAX_OVERLAY_HEIGHT, Math.max(MIN_OVERLAY_HEIGHT, height));
+}
+
+/** Where an Overlay is and how high it is (canvas fractions). */
+export type OverlayBox = Pick<Overlay, 'position' | 'height'>;
+
+/**
+ * An Overlay resized by dragging its bottom-right corner to `corner` (canvas fractions, may be
+ * off the canvas): proportions kept (`aspect` is the image's width over its height), its
+ * top-left corner staying put, as far as whichever of the pointer's two directions goes
+ * further. The height stays between the smallest and the largest Overlay height.
+ */
+export function resizedOverlay(
+  overlay: OverlayBox,
+  aspect: number,
+  corner: NormalizedPoint,
+): OverlayBox {
+  const height = overlay.height * CANVAS.height;
+  const width = height * aspect;
+  const left = overlay.position.x * CANVAS.width - width / 2;
+  const top = overlay.position.y * CANVAS.height - height / 2;
+  const wanted = Math.max(
+    corner.y * CANVAS.height - top,
+    (corner.x * CANVAS.width - left) / aspect,
+  );
+  const newHeight = clampOverlayHeight(wanted / CANVAS.height) * CANVAS.height;
+  return {
+    position: onCanvas({
+      x: (left + (newHeight * aspect) / 2) / CANVAS.width,
+      y: (top + newHeight / 2) / CANVAS.height,
+    }),
+    height: newHeight / CANVAS.height,
+  };
+}
 
 /** Whether an edit places a Media (whose existence the caller checks). */
 export function placedMedia(edit: SceneEdit): MediaId | undefined {
@@ -154,6 +225,10 @@ function withBackground(
   };
 }
 
+function onCanvas({ x, y }: NormalizedPoint): NormalizedPoint {
+  return { x: clampUnit(x), y: clampUnit(y) };
+}
+
 /**
  * The Scene after `edit`. `newId` names new placements. Throws a SceneError when the edit
  * names a placement that is not on the Scene.
@@ -226,6 +301,22 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         zoom: edit.zoom === undefined ? item.zoom : clampZoom(edit.zoom),
         focus: { x: edit.focus?.x ?? item.focus.x, y: edit.focus?.y ?? item.focus.y },
       }));
+    case 'transform-overlay':
+      return withOverlay(scene, edit.placementId, (item) => ({
+        ...item,
+        position: onCanvas({
+          x: edit.position?.x ?? item.position.x,
+          y: edit.position?.y ?? item.position.y,
+        }),
+        height: edit.height === undefined ? item.height : clampOverlayHeight(edit.height),
+      }));
+    case 'move-overlay': {
+      const moving = scene.overlays.find((item) => item.id === edit.placementId);
+      if (!moving) throw new SceneError('Cet élément n’est plus sur la scène.');
+      const overlays = scene.overlays.filter((item) => item !== moving);
+      overlays.splice(Math.min(edit.toIndex, overlays.length), 0, moving);
+      return { ...scene, overlays };
+    }
     case 'rename':
       return { ...scene, name: cleanSceneName(edit.name) };
     case 'set-title':
@@ -259,6 +350,25 @@ function isUnit(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+function parsePoint(value: unknown): NormalizedPoint | undefined {
+  return isRecord(value) && isUnit(value.x) && isUnit(value.y)
+    ? { x: value.x, y: value.y }
+    : undefined;
+}
+
+function isOverlayHeight(value: unknown): value is number {
+  return typeof value === 'number' && value >= MIN_OVERLAY_HEIGHT && value <= MAX_OVERLAY_HEIGHT;
+}
+
+/**
+ * A transient update of a live drag from untrusted data: a transform of an Overlay, keeping
+ * only its fields; or undefined.
+ */
+export function parseOverlayTransform(value: unknown): OverlayTransform | undefined {
+  const edit = parseSceneEdit(value);
+  return edit?.kind === 'transform-overlay' ? edit : undefined;
+}
+
 /** A SceneEdit from untrusted data (a window message), keeping only its fields; or undefined. */
 export function parseSceneEdit(value: unknown): SceneEdit | undefined {
   if (!isRecord(value)) return undefined;
@@ -268,13 +378,8 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
     case 'place-overlay': {
       if (!isId(value.mediaId)) return undefined;
       if (value.position === undefined) return { kind: 'place-overlay', mediaId: value.mediaId };
-      const { position } = value;
-      if (!isRecord(position) || !isUnit(position.x) || !isUnit(position.y)) return undefined;
-      return {
-        kind: 'place-overlay',
-        mediaId: value.mediaId,
-        position: { x: position.x, y: position.y },
-      };
+      const position = parsePoint(value.position);
+      return position && { kind: 'place-overlay', mediaId: value.mediaId, position };
     }
     case 'set-visible':
       if (!isId(value.placementId) || typeof value.visible !== 'boolean') return undefined;
@@ -312,6 +417,28 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
         edit.focus = { ...(x === undefined ? {} : { x }), ...(y === undefined ? {} : { y }) };
       }
       return edit;
+    }
+    case 'transform-overlay': {
+      const { placementId, position, height } = value;
+      if (!isId(placementId)) return undefined;
+      const edit: OverlayTransform = { kind: 'transform-overlay', placementId };
+      if (position !== undefined) {
+        if (!isRecord(position)) return undefined;
+        const { x, y } = position;
+        if ((x !== undefined && !isUnit(x)) || (y !== undefined && !isUnit(y))) return undefined;
+        edit.position = { ...(x === undefined ? {} : { x }), ...(y === undefined ? {} : { y }) };
+      }
+      if (height !== undefined) {
+        if (!isOverlayHeight(height)) return undefined;
+        edit.height = height;
+      }
+      return edit;
+    }
+    case 'move-overlay': {
+      const { placementId, toIndex } = value;
+      if (!isId(placementId) || typeof toIndex !== 'number') return undefined;
+      if (!Number.isSafeInteger(toIndex) || toIndex < 0) return undefined;
+      return { kind: 'move-overlay', placementId, toIndex };
     }
     case 'rename':
       if (!isText(value.name)) return undefined;

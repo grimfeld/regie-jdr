@@ -53,6 +53,8 @@ const bridge: ControlBridge = {
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
   createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
   editScene: (campaignId, sceneId, edit) => invoke('scenes:edit', { campaignId, sceneId, edit }),
+  showTransientEdit: (campaignId, sceneId, edit) =>
+    invoke('scenes:show-transient', { campaignId, sceneId, edit }),
   deleteScene: (campaignId, sceneId) => invoke('scenes:delete', { campaignId, sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
   toggleBroadcastFullscreen: () => invoke('broadcast:toggle-fullscreen'),

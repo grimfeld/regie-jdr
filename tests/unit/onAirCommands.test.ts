@@ -248,6 +248,80 @@ describe('on-air commands', () => {
     expect(ctx.broadcast.map((s) => s.version)).toEqual([1]);
   });
 
+  describe('a live drag of an Overlay', () => {
+    /** A Scene with one visible Overlay p1 at the centre; Active unless `active` is false. */
+    async function dragging(ctx: Awaited<ReturnType<typeof setup>>, active = true) {
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      const edit = (command: SceneEdit) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+      await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+      const saved = await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      if (active) await ctx.commands.activateScene(scene.id);
+      return { saved, edit };
+    }
+    const move = (x: number, y: number) =>
+      ({ kind: 'transform-overlay', placementId: 'p1', position: { x, y } }) as const;
+    const onAirOverlay = (ctx: Awaited<ReturnType<typeof setup>>) =>
+      ctx.broadcast.at(-1)?.scene?.overlays[0];
+
+    it('shows each transient update on the Active Scene without saving it', async () => {
+      const ctx = await setup();
+      const { saved } = await dragging(ctx);
+
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.2, y: 0.3 }, height: 0.5 });
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, {
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.25, y: 0.35 },
+        height: 0.4,
+      });
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.25, y: 0.35 }, height: 0.4 });
+
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
+    });
+
+    it('saves the drag once, with the committed edit at its end', async () => {
+      const ctx = await setup();
+      const { saved, edit } = await dragging(ctx);
+      for (const x of [0.1, 0.2, 0.3]) {
+        await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(x, 0.5));
+      }
+
+      const committed = await edit(move(0.4, 0.6));
+
+      expect(committed.overlays[0].position).toEqual({ x: 0.4, y: 0.6 });
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(committed);
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.4, y: 0.6 } });
+    });
+
+    it('never touches the broadcast, nor saves, on a Scene that is not active', async () => {
+      const ctx = await setup();
+      const { saved } = await dragging(ctx, false);
+      const sent = ctx.broadcast.length;
+
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+
+      expect(ctx.broadcast.length).toBe(sent);
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
+    });
+
+    it('refuses a transient update of an Overlay that is gone, in French', async () => {
+      const ctx = await setup();
+      const { saved } = await dragging(ctx);
+      const sent = ctx.broadcast.length;
+
+      await expect(
+        ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, {
+          ...move(0.2, 0.3),
+          placementId: 'absent',
+        }),
+      ).rejects.toThrow('Cet élément n’est plus sur la scène.');
+      expect(ctx.broadcast.length).toBe(sent);
+    });
+  });
+
   it('renames a Scene; on the Active Scene the broadcast carries no Scene name', async () => {
     const ctx = await setup();
     const scene = await sceneShowing(ctx, 'Cantina');

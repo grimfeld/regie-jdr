@@ -41,6 +41,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'setBlackout',
     'setHomeTheme',
     'setImageCategory',
+    'showTransientEdit',
     'takeNotices',
     'toggleBroadcastFullscreen',
     'updateCampaign',

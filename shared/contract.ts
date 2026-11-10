@@ -54,6 +54,22 @@ export type SceneEdit =
       zoom?: number;
       focus?: Partial<NormalizedPoint>;
     }
+  /**
+   * Moves and/or resizes an Overlay (a drag, a resize, or a burst of arrow-key nudges): sets
+   * either coordinate of its centre and its height (kept within limits), each only when given,
+   * so a move never overwrites a resize sent alongside it.
+   */
+  | {
+      kind: 'transform-overlay';
+      placementId: string;
+      position?: Partial<NormalizedPoint>;
+      height?: number;
+    }
+  /**
+   * Moves an Overlay to `toIndex` among the Overlays (0 is the back; past the front stays in
+   * front), so it stands in front of the ones below it. Overlays stay above every Background.
+   */
+  | { kind: 'move-overlay'; placementId: string; toIndex: number }
   /** Renames the Scene (its private name; never shown to players). */
   | { kind: 'rename'; name: string }
   /**
@@ -67,6 +83,12 @@ export type SceneEdit =
   | { kind: 'set-label-text'; overlayId: string; text: string }
   /** Shows or hides an Overlay's Label, independently of the Overlay. */
   | { kind: 'set-label-visible'; overlayId: string; visible: boolean };
+
+/**
+ * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
+ * never saved. The drag's end is sent as the same edit through `scenes:edit`.
+ */
+export type OverlayTransform = Extract<SceneEdit, { kind: 'transform-overlay' }>;
 
 /** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
 export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
@@ -123,6 +145,16 @@ export interface InvokeChannels {
   'scenes:edit': {
     payload: { campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit };
     result: Scene;
+  };
+  /**
+   * Show a transient update of a live drag: on the Active Scene, the broadcast shows the Scene
+   * with `edit` applied, without saving it (nor adding an undo step); on any other Scene it does
+   * nothing. The window sends at most one per animation frame, then commits the drag's end
+   * with `scenes:edit`.
+   */
+  'scenes:show-transient': {
+    payload: { campaignId: CampaignId; sceneId: SceneId; edit: OverlayTransform };
+    result: void;
   };
   /**
    * Delete a Scene. When it is the Active Scene, the Active Scene is cleared: nothing of it
@@ -246,6 +278,11 @@ export interface ControlBridge extends BroadcastBridge {
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
+  showTransientEdit(
+    campaignId: CampaignId,
+    sceneId: SceneId,
+    edit: OverlayTransform,
+  ): Promise<void>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;
