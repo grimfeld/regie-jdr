@@ -8,7 +8,15 @@
  * and in `parseSceneEdit`.
  */
 import type { SceneEdit } from '../shared/contract.js';
-import type { ImageMedia, MediaId, NormalizedPoint, Overlay, Scene } from '../shared/domain.js';
+import type {
+  Background,
+  ImageMedia,
+  MediaId,
+  NormalizedPoint,
+  Overlay,
+  Scene,
+} from '../shared/domain.js';
+import { clampZoom } from './canvas.js';
 import { isRecord } from './guards.js';
 
 /** A Scene error the Game Master can read (French message). */
@@ -131,6 +139,21 @@ function withOverlay(
   };
 }
 
+/** The Scene with Background `placementId` changed by `change`; throws if it is not there. */
+function withBackground(
+  scene: Scene,
+  placementId: string,
+  change: (background: Background) => Background,
+): Scene {
+  if (!scene.backgrounds.some((item) => item.id === placementId)) {
+    throw new SceneError('Cet arrière-plan n’est plus sur la scène.');
+  }
+  return {
+    ...scene,
+    backgrounds: scene.backgrounds.map((item) => (item.id === placementId ? change(item) : item)),
+  };
+}
+
 /**
  * The Scene after `edit`. `newId` names new placements. Throws a SceneError when the edit
  * names a placement that is not on the Scene.
@@ -188,6 +211,21 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         overlays: scene.overlays.filter((item) => item.id !== placementId),
       };
     }
+    case 'move-background': {
+      const moving = scene.backgrounds.find((item) => item.id === edit.placementId);
+      if (!moving) throw new SceneError('Cet arrière-plan n’est plus sur la scène.');
+      const backgrounds = scene.backgrounds.filter((item) => item !== moving);
+      backgrounds.splice(Math.min(edit.toIndex, backgrounds.length), 0, moving);
+      return { ...scene, backgrounds };
+    }
+    case 'set-background-fit':
+      return withBackground(scene, edit.placementId, (item) => ({ ...item, fit: edit.fit }));
+    case 'frame-background':
+      return withBackground(scene, edit.placementId, (item) => ({
+        ...item,
+        zoom: clampZoom(edit.zoom),
+        focus: { ...edit.focus },
+      }));
     case 'rename':
       return { ...scene, name: cleanSceneName(edit.name) };
     case 'set-title':
@@ -245,6 +283,25 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
       return isId(value.placementId)
         ? { kind: 'remove-placement', placementId: value.placementId }
         : undefined;
+    case 'move-background': {
+      const { placementId, toIndex } = value;
+      if (!isId(placementId) || typeof toIndex !== 'number') return undefined;
+      if (!Number.isSafeInteger(toIndex) || toIndex < 0) return undefined;
+      return { kind: 'move-background', placementId, toIndex };
+    }
+    case 'set-background-fit': {
+      const { placementId, fit } = value;
+      if (!isId(placementId) || (fit !== 'cover' && fit !== 'contain')) return undefined;
+      return { kind: 'set-background-fit', placementId, fit };
+    }
+    case 'frame-background': {
+      const { placementId, zoom, focus } = value;
+      if (!isId(placementId) || typeof zoom !== 'number' || !Number.isFinite(zoom)) {
+        return undefined;
+      }
+      if (!isRecord(focus) || !isUnit(focus.x) || !isUnit(focus.y)) return undefined;
+      return { kind: 'frame-background', placementId, zoom, focus: { x: focus.x, y: focus.y } };
+    }
     case 'rename':
       if (!isText(value.name)) return undefined;
       return { kind: 'rename', name: value.name };

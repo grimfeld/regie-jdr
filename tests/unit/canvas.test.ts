@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CANVAS, layOutCanvas, type CanvasPicture } from '../../core/canvas';
+import {
+  CANVAS,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  clampZoom,
+  layOutCanvas,
+  type CanvasPicture,
+} from '../../core/canvas';
 
 const empty: CanvasPicture = { backgrounds: [], overlays: [] };
 
@@ -123,6 +130,27 @@ describe('a Background on the canvas', () => {
   it('has no place until its image size is known', () => {
     expect(background(undefined, 'cover').backgrounds).toEqual({});
   });
+
+  it('in Contain, always shows the whole image centred, whatever its Cover framing', () => {
+    expect(
+      background({ width: 1000, height: 1000 }, 'contain', 3, { x: 0, y: 1 }).backgrounds.b,
+    ).toEqual({ x: 420, y: 0, width: 1080, height: 1080 });
+  });
+
+  it('in Cover, pans across a wider image without uncovering the canvas', () => {
+    // A 32:9 image covers at the canvas height: 3840 wide, 1920 to pan across.
+    const wide = { width: 3200, height: 900 };
+    expect(background(wide, 'cover', 1, { x: 0, y: 0.5 }).backgrounds.b).toEqual({
+      x: 0,
+      y: 0,
+      width: 3840,
+      height: 1080,
+    });
+    expect(background(wide, 'cover', 1, { x: 1, y: 0.5 }).backgrounds.b).toMatchObject({
+      x: -1920,
+      y: 0,
+    });
+  });
 });
 
 describe('an Overlay on the canvas', () => {
@@ -163,5 +191,14 @@ describe('an Overlay on the canvas', () => {
 
   it('has no place until its image size is known', () => {
     expect(overlay({ width: 1920, height: 1080 }, undefined)).toBeUndefined();
+  });
+});
+
+describe('the zoom of a Background', () => {
+  it('stays between no zoom (the fitted size) and the largest zoom', () => {
+    expect(clampZoom(0.5)).toBe(MIN_ZOOM);
+    expect(MIN_ZOOM).toBe(1);
+    expect(clampZoom(2.5)).toBe(2.5);
+    expect(clampZoom(MAX_ZOOM * 10)).toBe(MAX_ZOOM);
   });
 });

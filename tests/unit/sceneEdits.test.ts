@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_ZOOM, MIN_ZOOM } from '../../core/canvas';
 import { applySceneEdit, parseSceneEdit, placementEdit } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { ImageCategory, ImageMedia, Scene } from '../../shared/domain';
@@ -323,6 +324,143 @@ describe('Scene edit commands from a window message', () => {
     ['a title far too long for a message', { kind: 'set-title', title: 'x'.repeat(1001) }],
     ['not an object', 'place-background'],
   ])('reject %s', (_case, value) => {
+    expect(parseSceneEdit(value)).toBeUndefined();
+  });
+});
+
+describe('Background stack and fit edits', () => {
+  const stacked = applyAll(
+    empty,
+    { kind: 'place-background', mediaId: 'm1' },
+    { kind: 'place-background', mediaId: 'm2' },
+    { kind: 'place-background', mediaId: 'm3' },
+    { kind: 'place-overlay', mediaId: 'm4' },
+  );
+  const order = (scene: Scene) => scene.backgrounds.map((item) => item.id);
+
+  it('move a Background to another place in the stack, keeping the others in order', () => {
+    expect(
+      order(applyAll(stacked, { kind: 'move-background', placementId: 'p1', toIndex: 2 })),
+    ).toEqual(['p2', 'p3', 'p1']);
+    expect(
+      order(applyAll(stacked, { kind: 'move-background', placementId: 'p3', toIndex: 0 })),
+    ).toEqual(['p3', 'p1', 'p2']);
+    expect(
+      order(applyAll(stacked, { kind: 'move-background', placementId: 'p2', toIndex: 1 })),
+    ).toEqual(['p1', 'p2', 'p3']);
+  });
+
+  it('keep a move past either end of the stack at that end', () => {
+    expect(
+      order(applyAll(stacked, { kind: 'move-background', placementId: 'p1', toIndex: 9 })),
+    ).toEqual(['p2', 'p3', 'p1']);
+  });
+
+  it('set a Background to Contain or Cover, keeping its framing', () => {
+    const framed = applyAll(stacked, {
+      kind: 'frame-background',
+      placementId: 'p2',
+      zoom: 2,
+      focus: { x: 0, y: 1 },
+    });
+    const contained = applyAll(framed, {
+      kind: 'set-background-fit',
+      placementId: 'p2',
+      fit: 'contain',
+    });
+    expect(contained.backgrounds[1]).toMatchObject({
+      fit: 'contain',
+      zoom: 2,
+      focus: { x: 0, y: 1 },
+    });
+    expect(contained.backgrounds[0]).toEqual(stacked.backgrounds[0]);
+    const covered = applyAll(contained, {
+      kind: 'set-background-fit',
+      placementId: 'p2',
+      fit: 'cover',
+    });
+    expect(covered.backgrounds[1]).toEqual(framed.backgrounds[1]);
+  });
+
+  it('frame a Background with a zoom and a focal point, the zoom kept within its limits', () => {
+    const framed = applyAll(stacked, {
+      kind: 'frame-background',
+      placementId: 'p1',
+      zoom: 1.5,
+      focus: { x: 0.25, y: 0.75 },
+    });
+    expect(framed.backgrounds[0]).toMatchObject({ zoom: 1.5, focus: { x: 0.25, y: 0.75 } });
+    const tooFar = applyAll(stacked, {
+      kind: 'frame-background',
+      placementId: 'p1',
+      zoom: 100,
+      focus: { x: 0.5, y: 0.5 },
+    });
+    expect(tooFar.backgrounds[0].zoom).toBe(MAX_ZOOM);
+    const tooClose = applyAll(stacked, {
+      kind: 'frame-background',
+      placementId: 'p1',
+      zoom: 0.2,
+      focus: { x: 0.5, y: 0.5 },
+    });
+    expect(tooClose.backgrounds[0].zoom).toBe(MIN_ZOOM);
+  });
+
+  it('refuse to move or fit a Background that is not on the Scene, or an Overlay, in French', () => {
+    const refused = 'Cet arrière-plan n’est plus sur la scène.';
+    expect(() =>
+      applyAll(stacked, { kind: 'move-background', placementId: 'absent', toIndex: 0 }),
+    ).toThrow(refused);
+    expect(() =>
+      applyAll(stacked, { kind: 'set-background-fit', placementId: 'p4', fit: 'contain' }),
+    ).toThrow(refused);
+    expect(() =>
+      applyAll(stacked, {
+        kind: 'frame-background',
+        placementId: 'p4',
+        zoom: 1,
+        focus: { x: 0.5, y: 0.5 },
+      }),
+    ).toThrow(refused);
+  });
+
+  it.each([
+    [
+      { kind: 'move-background', placementId: 'p1', toIndex: 2, extra: true },
+      { kind: 'move-background', placementId: 'p1', toIndex: 2 },
+    ],
+    [
+      { kind: 'set-background-fit', placementId: 'p1', fit: 'contain', zoom: 3 },
+      { kind: 'set-background-fit', placementId: 'p1', fit: 'contain' },
+    ],
+    [
+      { kind: 'frame-background', placementId: 'p1', zoom: 2, focus: { x: 0, y: 1, z: 3 } },
+      { kind: 'frame-background', placementId: 'p1', zoom: 2, focus: { x: 0, y: 1 } },
+    ],
+  ])('accept %o from a window, keeping only its fields', (value, expected) => {
+    expect(parseSceneEdit(value)).toEqual(expected);
+  });
+
+  it.each([
+    ['a move to no place', { kind: 'move-background', placementId: 'p1' }],
+    ['a move to a negative place', { kind: 'move-background', placementId: 'p1', toIndex: -1 }],
+    ['a move to a fractional place', { kind: 'move-background', placementId: 'p1', toIndex: 0.5 }],
+    ['an unknown fit', { kind: 'set-background-fit', placementId: 'p1', fit: 'stretch' }],
+    ['a fit naming no placement', { kind: 'set-background-fit', fit: 'cover' }],
+    [
+      'a zoom that is not a number',
+      { kind: 'frame-background', placementId: 'p1', zoom: '2', focus: { x: 0, y: 0 } },
+    ],
+    [
+      'an infinite zoom',
+      { kind: 'frame-background', placementId: 'p1', zoom: Infinity, focus: { x: 0, y: 0 } },
+    ],
+    [
+      'a focal point off the image',
+      { kind: 'frame-background', placementId: 'p1', zoom: 1, focus: { x: 1.5, y: 0 } },
+    ],
+    ['a framing with no focal point', { kind: 'frame-background', placementId: 'p1', zoom: 1 }],
+  ])('reject %s from a window', (_case, value) => {
     expect(parseSceneEdit(value)).toBeUndefined();
   });
 });

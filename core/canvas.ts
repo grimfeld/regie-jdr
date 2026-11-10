@@ -16,6 +16,15 @@ export interface Size {
   height: number;
 }
 
+/** A Background's zoom in Cover: 1 is the fitted size (zooming out would uncover the canvas). */
+export const MIN_ZOOM = 1;
+export const MAX_ZOOM = 4;
+
+/** A zoom kept between MIN_ZOOM and MAX_ZOOM. */
+export function clampZoom(zoom: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
 /** A rectangle in pixels. */
 export interface Box {
   x: number;
@@ -68,10 +77,12 @@ export interface CanvasLayout {
  * Lays out a picture in a window of `window` pixels.
  *
  * - The canvas is the largest 16:9 box that fits, centred.
- * - A Background is scaled to cover (or, in Contain, fit inside) the canvas, times its zoom.
- *   Its focal point picks which part shows where the image is larger than the canvas: 0 aligns
- *   the image's left (top) edge with the canvas's, 1 its right (bottom) edge, 0.5 centres it.
- *   So panning never uncovers the canvas in Cover.
+ * - In Cover, a Background is scaled to cover the canvas, times its zoom. Its focal point picks
+ *   which part shows where the image is larger than the canvas: 0 aligns the image's left (top)
+ *   edge with the canvas's, 1 its right (bottom) edge, 0.5 centres it. So panning never
+ *   uncovers the canvas.
+ * - In Contain, a Background is scaled to fit inside the canvas, centred: the whole image shows.
+ *   Its zoom and focal point are ignored (kept for when it goes back to Cover).
  * - An Overlay is centred on its position, its height a fraction of the canvas height.
  */
 export function layOutCanvas(window: Size, picture: CanvasPicture): CanvasLayout {
@@ -86,9 +97,13 @@ export function layOutCanvas(window: Size, picture: CanvasPicture): CanvasLayout
   };
 
   const backgrounds: Record<string, Box> = {};
-  for (const { id, image, fit, zoom, focus } of picture.backgrounds) {
+  for (const background of picture.backgrounds) {
+    const { id, image } = background;
     if (!hasArea(image)) continue;
-    const fill = fit === 'cover' ? Math.max : Math.min;
+    const cover = background.fit === 'cover';
+    const zoom = cover ? background.zoom : 1;
+    const focus = cover ? background.focus : { x: 0.5, y: 0.5 };
+    const fill = cover ? Math.max : Math.min;
     const imageScale = fill(width / image.width, height / image.height) * zoom;
     const drawn = { width: image.width * imageScale, height: image.height * imageScale };
     backgrounds[id] = {

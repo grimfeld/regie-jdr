@@ -7,6 +7,7 @@
  */
 import type {
   AudioRole,
+  BackgroundFit,
   Campaign,
   CampaignId,
   ImageCategory,
@@ -36,6 +37,15 @@ export type SceneEdit =
   | { kind: 'set-visible'; placementId: string; visible: boolean }
   /** Removes a Background or Overlay from the Scene. */
   | { kind: 'remove-placement'; placementId: string }
+  /**
+   * Moves a Background to `toIndex` in the stack (0 is the bottom; past the top stays on top),
+   * so it covers the ones below it.
+   */
+  | { kind: 'move-background'; placementId: string; toIndex: number }
+  /** Sets a Background to Cover or Contain, keeping its Cover zoom and focal point. */
+  | { kind: 'set-background-fit'; placementId: string; fit: BackgroundFit }
+  /** Frames a Background in Cover: its zoom (kept within limits) and focal point. */
+  | { kind: 'frame-background'; placementId: string; zoom: number; focus: NormalizedPoint }
   /** Renames the Scene (its private name; never shown to players). */
   | { kind: 'rename'; name: string }
   /**
