@@ -175,6 +175,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   const [sfxVolume, setSfxVolume] = useState(75);
   const [localVolume, setLocalVolume] = useState(80);
   const [stageVolume, setStageVolume] = useState(80);
+  /** Bumped when a Media is deleted: the Scenes panel reloads (placements may be gone). */
+  const [mediaRevision, setMediaRevision] = useState(0);
 
   const themeLabel = themes.find(t => t.id === theme)?.label ?? 'Imperium';
 
@@ -201,9 +203,9 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             <div className="scene-edit"><label>TITRE DE LA SCÈNE<input value={scene.title} onChange={e => updateScene({ ...scene, title: e.target.value })} /></label><label>DESCRIPTION<input value={scene.description} onChange={e => updateScene({ ...scene, description: e.target.value })} /></label></div>
           </div>
 
-          <ScenesPanel campaignId={campaign.id} control={control} />
+          <ScenesPanel campaignId={campaign.id} control={control} mediaRevision={mediaRevision} />
 
-          <MediaLibrary campaignId={campaign.id} control={control} onShowImage={(image, address) => updateScene({ ...scene, background: address, title: image.name })} />
+          <MediaLibrary campaignId={campaign.id} control={control} onShowImage={(image, address) => updateScene({ ...scene, background: address, title: image.name })} onMediaDeleted={() => setMediaRevision((revision) => revision + 1)} />
         </section>
 
         <aside className="control-column">

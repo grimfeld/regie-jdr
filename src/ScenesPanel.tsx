@@ -10,6 +10,8 @@ import { showNotice } from './notices';
 interface Props {
   campaignId: CampaignId;
   control: ControlBridge | undefined;
+  /** Changes when a Media was deleted: Scenes and images are read again. */
+  mediaRevision: number;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  * Scene, place a library image as a Background, show or hide it, Activate it. Edits are saved
  * at once; the main process puts them on air only when the Scene is the Active Scene.
  */
-export function ScenesPanel({ campaignId, control }: Props) {
+export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [selectedId, setSelectedId] = useState<SceneId | null>(null);
   const [onAir, setOnAir] = useState<OnAirState | null>(null);
@@ -38,7 +40,7 @@ export function ScenesPanel({ campaignId, control }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [control, campaignId]);
+  }, [control, campaignId, mediaRevision]);
 
   // Which Scene is on air: subscribe, then read, keeping the newest snapshot.
   useEffect(() => {
@@ -58,7 +60,7 @@ export function ScenesPanel({ campaignId, control }: Props) {
       .then((media) => setImages(media.filter((m): m is ImageMedia => m.kind === 'image')))
       .catch((error) => showNotice(errorMessage(error)));
   }, [control, campaignId]);
-  useEffect(refreshImages, [refreshImages, selectedId]);
+  useEffect(refreshImages, [refreshImages, selectedId, mediaRevision]);
 
   // The Scene that was last Active in this Campaign (Settings), highlighted so the Game Master
   // can resume with one click. Only while no Scene of the Campaign is on air.

@@ -29,6 +29,16 @@ export interface MediaImportResult {
   refused: string[];
 }
 
+/**
+ * Outcome of deleting a Media. Media that Scenes use is only deleted once the Game Master
+ * confirms: until then `deleted` is false and `affectedScenes` lists the Scenes using it.
+ * Once deleted, `affectedScenes` lists the Scenes whose placements were removed.
+ */
+export interface MediaDeletion {
+  deleted: boolean;
+  affectedScenes: { id: SceneId; name: string }[];
+}
+
 /** What can be changed on a Campaign; absent fields are left as they are. */
 export interface CampaignChanges {
   name?: string;
@@ -73,6 +83,14 @@ export interface InvokeChannels {
   'media:set-category': {
     payload: { campaignId: CampaignId; mediaId: MediaId; category: ImageCategory };
     result: Media;
+  };
+  /**
+   * Delete a Media. Unused Media is deleted at once. Media that Scenes use is deleted only
+   * when `confirmed`; otherwise nothing changes and the result lists the Scenes using it.
+   */
+  'media:delete': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; confirmed: boolean };
+    result: MediaDeletion;
   };
   /** Every Campaign, sorted by name. */
   'campaigns:list': { payload: void; result: Campaign[] };
@@ -151,6 +169,7 @@ export interface ControlBridge extends BroadcastBridge {
     mediaId: MediaId,
     category: ImageCategory,
   ): Promise<Media>;
+  deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;
   updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;

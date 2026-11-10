@@ -38,6 +38,7 @@ describe('on-air commands', () => {
     const [image] = (await library.import(campaign.id, [picked], { accept: 'image' })).imported;
     return {
       storage,
+      library,
       scenes,
       commands,
       campaign,
@@ -157,6 +158,94 @@ describe('on-air commands', () => {
       'Cette scène n’existe plus.',
     );
     expect(ctx.broadcast.map((s) => s.version)).toEqual([1]);
+  });
+
+  describe('deleting Media', () => {
+    const mediaFiles = (ctx: Awaited<ReturnType<typeof setup>>) =>
+      fs.readdir(path.join(ctx.storage.campaignFolder(ctx.campaign.id), 'media'));
+
+    it('deletes unused Media and its file at once', async () => {
+      const ctx = await setup();
+      await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false)).toEqual({
+        deleted: true,
+        affectedScenes: [],
+      });
+
+      expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
+      expect(await mediaFiles(ctx)).toEqual([]);
+    });
+
+    it('lists the Scenes using the Media and changes nothing until confirmed', async () => {
+      const ctx = await setup();
+      const cantina = await sceneShowing(ctx, 'Cantina');
+      const hangar = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(cantina.id);
+      const sent = ctx.broadcast.length;
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false)).toEqual({
+        deleted: false,
+        affectedScenes: [{ id: cantina.id, name: 'Cantina' }],
+      });
+
+      expect(await ctx.library.list(ctx.campaign.id)).toEqual([ctx.image]);
+      expect(await mediaFiles(ctx)).toEqual([`${ABC_SHA256}.png`]);
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([cantina, hangar]);
+      expect(ctx.broadcast.length).toBe(sent);
+    });
+
+    it('on confirmation removes the Media, its file and its placements; the broadcast drops it', async () => {
+      const ctx = await setup();
+      const cantina = await sceneShowing(ctx, 'Cantina');
+      const hangar = await sceneShowing(ctx, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(cantina.id);
+      expect(ctx.broadcast.at(-1)?.scene).toEqual(cantinaPicture);
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true)).toEqual({
+        deleted: true,
+        affectedScenes: [
+          { id: cantina.id, name: 'Cantina' },
+          { id: hangar.id, name: 'Hangar' },
+        ],
+      });
+
+      expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
+      expect(await mediaFiles(ctx)).toEqual([]);
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([
+        { ...cantina, backgrounds: [] },
+        { ...hangar, backgrounds: [] },
+      ]);
+      expect(ctx.broadcast.at(-1)).toEqual({
+        campaignId: ctx.campaign.id,
+        activeSceneId: cantina.id,
+        scene: { backgrounds: [], overlays: [] },
+        version: 3,
+      });
+    });
+
+    it('leaves the broadcast alone when the Active Scene did not use the Media', async () => {
+      const ctx = await setup();
+      await sceneShowing(ctx, 'Cantina');
+      const hangar = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(hangar.id);
+      const sent = ctx.broadcast.length;
+
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true);
+
+      expect(ctx.broadcast.length).toBe(sent);
+    });
+
+    it('refuses Media that no longer exists', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.deleteMedia(ctx.campaign.id, 'gone', true)).rejects.toThrow(
+        'Ce média n’existe plus.',
+      );
+    });
   });
 
   it('does not put a Scene of another Campaign on air', async () => {
