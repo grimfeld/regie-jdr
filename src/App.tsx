@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SpikePanel } from './spike/SpikePanel';
 import { Aperture, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
 
 type ThemeId = 'retro' | 'imperium' | 'fantasy';
@@ -61,6 +62,7 @@ export default function App() {
           <p>{scene.description}</p>
         </div>
         <button className="stage-fullscreen" onClick={() => window.regie?.toggleStageFullscreen()} title="Plein écran">⛶</button>
+        <SpikePanel where="broadcast" />
       </main>
     );
   }
@@ -117,6 +119,7 @@ export default function App() {
         </aside>
       </div>
       <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
+      <SpikePanel where="control" />
     </main>
   );
 }

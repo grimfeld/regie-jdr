@@ -12,6 +12,16 @@ let currentScene: unknown = { title: 'Le sanctuaire oublié', background: '', de
 // Whole-app tests point the app at a temporary data folder.
 if (process.env.REGIE_USER_DATA_DIR) app.setPath('userData', process.env.REGIE_USER_DATA_DIR);
 
+// THROWAWAY spike #19 toggles. Command-line flag or env var:
+//   --no-throttle   / REGIE_SPIKE_NO_THROTTLE=1  -> backgroundThrottling: false on the Broadcast window
+//   --no-occlusion  / REGIE_SPIKE_NO_OCCLUSION=1 -> disable Chromium's CalculateNativeWinOcclusion
+const spikeNoThrottle = process.argv.includes('--no-throttle') || process.env.REGIE_SPIKE_NO_THROTTLE === '1';
+const spikeNoOcclusion = process.argv.includes('--no-occlusion') || process.env.REGIE_SPIKE_NO_OCCLUSION === '1';
+if (spikeNoOcclusion) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+const spikeQuery = { spikeNoThrottle: spikeNoThrottle ? '1' : '0', spikeNoOcclusion: spikeNoOcclusion ? '1' : '0' };
+const spikeQueryString = new URLSearchParams(spikeQuery).toString();
+console.log(`[spike #19] backgroundThrottling disabled: ${spikeNoThrottle}, native occlusion disabled: ${spikeNoOcclusion}`);
+
 // Imported images are served via a custom scheme: file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
 const ASSET_SCHEME = 'regie-asset';
@@ -42,10 +52,10 @@ function createControlWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   if (process.env.VITE_DEV_SERVER_URL) {
-    controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    controlWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?${spikeQueryString}`);
     controlWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    controlWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    controlWindow.loadFile(path.join(__dirname, '../dist/index.html'), { query: spikeQuery });
   }
 }
 
@@ -54,12 +64,12 @@ function createStageWindow() {
   stageWindow = new BrowserWindow({
     width: 1280, height: 720, title: 'Régie JDR — Diffusion',
     backgroundColor: '#08090c', autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: !spikeNoThrottle }
   });
   stageWindow.setMenuBarVisibility(false);
   stageWindow.webContents.on('did-finish-load', () => sendToStage('scene:updated', currentScene));
-  if (process.env.VITE_DEV_SERVER_URL) stageWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage`);
-  else stageWindow.loadFile(path.join(__dirname, '../dist/index.html'), { query: { view: 'stage' } });
+  if (process.env.VITE_DEV_SERVER_URL) stageWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage&${spikeQueryString}`);
+  else stageWindow.loadFile(path.join(__dirname, '../dist/index.html'), { query: { view: 'stage', ...spikeQuery } });
   stageWindow.on('closed', () => { stageWindow = null; });
 }
 
