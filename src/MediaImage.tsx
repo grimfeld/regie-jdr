@@ -9,7 +9,7 @@ interface Props {
   window: 'control' | 'broadcast';
   className?: string;
   /** Called with the image's natural size once it has loaded. */
-  onLoad?(size: { width: number; height: number }): void;
+  onLoad?: (size: { width: number; height: number }) => void;
 }
 
 /**

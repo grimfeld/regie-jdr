@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { BrowserWindow } from 'electron';
 import type { ControlBridge, SceneEdit } from '../../shared/contract';
 import type { Media, Scene } from '../../shared/domain';
 import {
@@ -56,10 +57,13 @@ async function resizeBroadcast(
   height: number,
 ) {
   const browserWindow = await broadcastBrowserWindow(app, page);
-  await browserWindow.evaluate((w, size) => w.setContentSize(size.width, size.height), {
-    width,
-    height,
-  });
+  await browserWindow.evaluate(
+    (w: BrowserWindow, size) => w.setContentSize(size.width, size.height),
+    {
+      width,
+      height,
+    },
+  );
   await expect
     .poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight]))
     .toEqual([width, height]);
@@ -120,12 +124,17 @@ test('the letterbox bars are black whatever the theme', async ({ regie }) => {
     const broadcastWindow = await openBroadcastWindow(app, controlWindow);
     await resizeBroadcast(app, broadcastWindow, 600, 600);
     const backgrounds = await broadcastWindow.evaluate(() =>
-      ['html', 'body', 'main.broadcast-screen', '.scene-canvas'].map(
-        (selector) => getComputedStyle(document.querySelector(selector)!).backgroundColor,
-      ),
+      ['html', 'body', 'main.broadcast-screen', '.scene-canvas'].map((selector) => {
+        const element = document.querySelector(selector);
+        return element ? getComputedStyle(element).backgroundColor : `missing ${selector}`;
+      }),
     );
     expect(backgrounds).toEqual(Array(4).fill('rgb(0, 0, 0)'));
-    await (await broadcastBrowserWindow(app, broadcastWindow)).evaluate((w) => w.close());
+    await (
+      await broadcastBrowserWindow(app, broadcastWindow)
+    ).evaluate((w: BrowserWindow) => {
+      w.close();
+    });
   }
 });
 
@@ -146,7 +155,7 @@ test('Hidden placements and Labels, notes, the Scene name and Media names never 
   // Notes, Labels and the Scene title have no editing commands yet: written as stored.
   const scenesFile = path.join(regie.dataDir, 'campaigns', campaignId, 'scenes.json');
   await regie.app.close();
-  const stored = JSON.parse(await fs.readFile(scenesFile, 'utf8'));
+  const stored = JSON.parse(await fs.readFile(scenesFile, 'utf8')) as { scenes: Scene[] };
   const [storedScene] = stored.scenes;
   storedScene.notes = 'Le traître est le capitaine';
   storedScene.title = 'Le vieux moulin';
@@ -209,7 +218,7 @@ test('the Broadcast window fullscreen toggles from the Control window; Esc leave
   const { app, controlWindow } = regie;
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   const browserWindow = await broadcastBrowserWindow(app, broadcastWindow);
-  const isFullscreen = () => browserWindow.evaluate((w) => w.isFullScreen());
+  const isFullscreen = () => browserWindow.evaluate((w: BrowserWindow) => w.isFullScreen());
   const toggle = controlWindow.getByRole('button', { name: 'Plein écran' });
 
   await toggle.click();
@@ -221,7 +230,7 @@ test('the Broadcast window fullscreen toggles from the Control window; Esc leave
   await expect.poll(isFullscreen).toBe(true);
   // A key press as the window receives it from the system (Playwright's keyboard goes straight
   // to the page, past the main process).
-  await browserWindow.evaluate((w) => {
+  await browserWindow.evaluate((w: BrowserWindow) => {
     w.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
     w.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
   });

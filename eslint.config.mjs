@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 /** Core modules the Control and Broadcast windows may import: no Node or Electron inside. */
-const RENDERER_SAFE_CORE = ['onAir', 'mediaAddress', 'sceneEdits'];
+const RENDERER_SAFE_CORE = ['onAir', 'mediaAddress', 'sceneEdits', 'canvas', 'guards'];
 
 const noElectronOrReact = [
   {
@@ -129,7 +129,14 @@ export default tseslint.config(
           patterns: [
             { group: ['node:*'], message: 'The windows run this module: no Node modules.' },
             {
-              group: ['./*', '!./mediaAddress*', '!./onAir*', '!./sceneEdits*'],
+              group: [
+                './*',
+                '!./mediaAddress*',
+                '!./onAir*',
+                '!./sceneEdits*',
+                '!./canvas*',
+                '!./guards*',
+              ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',
             },

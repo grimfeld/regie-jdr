@@ -53,7 +53,7 @@ export function SceneCanvas({ picture, blackout = false, window: shownIn }: Prop
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   // Natural size of each loaded image, by Media address.
-  const [imageSizes, setImageSizes] = useState<Record<string, Size>>({});
+  const [imageSizes, setImageSizes] = useState<Partial<Record<string, Size>>>({});
 
   useLayoutEffect(() => {
     const element = root.current;
@@ -120,7 +120,7 @@ export function SceneCanvas({ picture, blackout = false, window: shownIn }: Prop
             )}
           </div>
         ))}
-        {picture?.title && <div className="canvas-title">{picture.title}</div>}
+        {picture?.title ? <div className="canvas-title">{picture.title}</div> : null}
         {blackout && <div className="canvas-blackout" />}
       </div>
     </div>

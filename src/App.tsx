@@ -168,7 +168,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
           <button
             className="secondary-button"
-            onClick={() => control?.toggleBroadcastFullscreen()}
+            onClick={() => void control?.toggleBroadcastFullscreen()}
             title="Mettre la diffusion en plein écran, ou l’en sortir"
           >
             <Maximize size={14} /> Plein écran

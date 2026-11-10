@@ -23,8 +23,10 @@ import { CampaignError } from './campaigns.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
+import { SceneError } from './sceneEdits.js';
 
-export class SceneError extends Error {}
+// Defined with the Scene edit commands, which the windows may run (no Node there).
+export { SceneError };
 
 export interface SceneLibrary {
   /** The Campaign's Scenes, in creation order. */
@@ -185,7 +187,7 @@ function migrateScenesV1(fields: Record<string, unknown>): Record<string, unknow
         })
       : scene.backgrounds;
     const overlays = Array.isArray(scene.overlays)
-      ? [...scene.overlays]
+      ? [...(scene.overlays as unknown[])]
           .sort((a: unknown, b: unknown) => zIndexOf(a) - zIndexOf(b))
           .map((item: unknown) => {
             if (!isRecord(item)) return item;

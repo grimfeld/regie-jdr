@@ -12,7 +12,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 | `src/`      | Control and Broadcast windows          | `react`, `shared/` types, and only the Node-free core modules _(lint)_                |
 
 - Domain logic lives in `core/`, testable without Electron. `electron/` wires it to Electron and stays thin.
-- The Node-free core modules are listed in `RENDERER_SAFE_CORE` in `eslint.config.mjs` (`onAir`, `mediaAddress`, `sceneEdits`). A new one imports no `node:*` and only other Node-free modules; add it to that list and to the pattern beside it.
+- The Node-free core modules are listed in `RENDERER_SAFE_CORE` in `eslint.config.mjs` (`onAir`, `mediaAddress`, `sceneEdits`, `canvas`, `guards`). A new one imports no `node:*` and only other Node-free modules; add it to that list and to the pattern beside it.
 - `shared/` holds no runtime code _(lint)_: the sandboxed preloads load nothing but `electron`.
 
 ## The window contract

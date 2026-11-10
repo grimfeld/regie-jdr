@@ -10,7 +10,9 @@
 import type { SceneEdit } from '../shared/contract.js';
 import type { MediaId, Overlay, Scene } from '../shared/domain.js';
 import { isRecord } from './guards.js';
-import { SceneError } from './scenes.js';
+
+/** A Scene error the Game Master can read (French message). */
+export class SceneError extends Error {}
 
 export type { SceneEdit };
 
