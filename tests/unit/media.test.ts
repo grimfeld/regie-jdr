@@ -343,17 +343,25 @@ describe('media addresses', () => {
     const { storage, campaign, library, media } = await importedImage();
 
     expect(mediaAddress(media)).toBe(`regie-asset://media/${campaign.id}/${ABC_SHA256}.jpeg`);
-    expect(await library.resolveAddress(mediaAddress(media))).toEqual({
+    expect(await library.resolveAddress(mediaAddress(media), campaign.id)).toEqual({
       file: path.join(storage.campaignFolder(campaign.id), 'media', `${ABC_SHA256}.jpeg`),
       mimeType: 'image/jpeg',
     });
+  });
+
+  it('serve only the open Campaign media: nothing from another Campaign, nothing when none is open', async () => {
+    const { storage, library, media } = await importedImage();
+    const other = await createCampaign(storage.campaigns, 'Dune');
+
+    expect(await library.resolveAddress(mediaAddress(media), other.id)).toBeUndefined();
+    expect(await library.resolveAddress(mediaAddress(media), null)).toBeUndefined();
   });
 
   it('serve nothing for a Media whose file is missing', async () => {
     const { storage, campaign, library, media } = await importedImage();
     await fs.rm(path.join(storage.campaignFolder(campaign.id), 'media'), { recursive: true });
 
-    expect(await library.resolveAddress(mediaAddress(media))).toBeUndefined();
+    expect(await library.resolveAddress(mediaAddress(media), campaign.id)).toBeUndefined();
   });
 
   it('serve nothing outside the Campaign media folder or for a disallowed type', async () => {
@@ -376,7 +384,7 @@ describe('media addresses', () => {
       `file:///${folder}/media/${ABC_SHA256}.jpeg`,
       'not a url',
     ]) {
-      expect(await library.resolveAddress(url), url).toBeUndefined();
+      expect(await library.resolveAddress(url, campaign.id), url).toBeUndefined();
     }
   });
 
@@ -401,11 +409,11 @@ describe('media addresses', () => {
 
     for (const [extension, mimeType] of Object.entries(served)) {
       const url = `regie-asset://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
-      expect(await library.resolveAddress(url), url).toMatchObject({ mimeType });
+      expect(await library.resolveAddress(url, campaign.id), url).toMatchObject({ mimeType });
     }
     for (const extension of refused) {
       const url = `regie-asset://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
-      expect(await library.resolveAddress(url), url).toBeUndefined();
+      expect(await library.resolveAddress(url, campaign.id), url).toBeUndefined();
     }
   });
 
@@ -423,7 +431,7 @@ describe('media addresses', () => {
       `regie-asset://media/${encodeURIComponent(storage.campaignFolder(campaign.id))}/${ABC_SHA256}.jpeg`,
       `regie-asset://media/${campaign.id}/${ABC_SHA256}.jpeg%00.png`,
     ]) {
-      expect(await library.resolveAddress(url), url).toBeUndefined();
+      expect(await library.resolveAddress(url, campaign.id), url).toBeUndefined();
     }
   });
 });

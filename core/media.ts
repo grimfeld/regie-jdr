@@ -48,9 +48,13 @@ export interface MediaLibrary {
   listOrphanFiles(campaignId: CampaignId): Promise<string[]>;
   /**
    * The file and content type a Media address serves, or undefined (a 404) when the address
-   * is malformed, its Campaign or file does not exist, or it points outside the media folder.
+   * is malformed, its Campaign is not the open Campaign (`openCampaignId`, null when none is
+   * open), its file does not exist, or it points outside the media folder.
    */
-  resolveAddress(url: string): Promise<{ file: string; mimeType: string } | undefined>;
+  resolveAddress(
+    url: string,
+    openCampaignId: CampaignId | null,
+  ): Promise<{ file: string; mimeType: string } | undefined>;
 }
 
 export const IMAGE_CATEGORIES: readonly ImageCategory[] = ['scenery', 'character'];
@@ -274,9 +278,9 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
         .sort();
     },
 
-    async resolveAddress(url) {
+    async resolveAddress(url, openCampaignId) {
       const address = parseMediaAddress(url);
-      if (!address) return undefined;
+      if (!address || address.campaignId !== openCampaignId) return undefined;
       let folder: string;
       try {
         folder = storage.campaignFolder(address.campaignId);

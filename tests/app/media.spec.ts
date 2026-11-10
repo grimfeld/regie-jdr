@@ -206,6 +206,37 @@ test('Media addresses serve only the Campaign media files, with their content ty
   });
 });
 
+test('Media addresses serve only the open Campaign media', async ({ regie }) => {
+  const { app, controlWindow } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  await stubFilePicker(app, [fixture('red-16x9.png')]);
+  await importImages(controlWindow);
+  const address = await mediaItem(controlWindow, 'red-16x9').getByRole('img').getAttribute('src');
+  const status = () =>
+    app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, address!);
+  expect(await status()).toBe(200);
+
+  // Another Campaign open: the first one's Media are not served.
+  await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
+  await createCampaign(controlWindow, 'Dune');
+  expect(await status()).toBe(404);
+
+  // No Campaign open: nothing is served.
+  await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
+  await expect(controlWindow.getByRole('heading', { name: 'Vos campagnes' })).toBeVisible();
+  await expect.poll(status).toBe(404);
+
+  // Back in the first Campaign: served again, and its thumbnail loads (no missing placeholder).
+  await controlWindow
+    .getByRole('list', { name: 'Campagnes' })
+    .getByRole('button', { name: 'Star Wars', exact: true })
+    .click();
+  const item = mediaItem(controlWindow, 'red-16x9');
+  await expect(item.getByRole('img', { name: 'red-16x9', exact: true })).toBeVisible();
+  await expect(item).not.toContainText('Média manquant');
+  expect(await status()).toBe(200);
+});
+
 test('a Media file deleted outside the app shows the missing placeholder in the Control window', async ({
   regie,
 }) => {

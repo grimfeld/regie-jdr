@@ -64,15 +64,16 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 /**
- * Serves Media files from their Campaign's media folder only, with an explicit content type.
- * Anything else (malformed address, missing file, disallowed type, outside the folder) is a 404.
+ * Serves Media files from the open Campaign's media folder only, with an explicit content type.
+ * Anything else (another Campaign, malformed address, missing file, disallowed type, outside
+ * the folder) is a 404.
  * Whole files only: range requests (audio seeking) come with the audio engine.
  */
 function registerMediaProtocol(library: MediaLibrary) {
   protocol.handle(MEDIA_SCHEME, async (request) => {
     const notFound = () => new Response(null, { status: 404 });
     try {
-      const resolved = await library.resolveAddress(request.url);
+      const resolved = await library.resolveAddress(request.url, onAir.current().campaignId);
       if (!resolved) return notFound();
       const content = await fs.readFile(resolved.file);
       return new Response(content, {

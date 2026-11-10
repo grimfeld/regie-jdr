@@ -72,14 +72,22 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
 
   /**
    * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
-   * state, which clears the Active Scene on every switch.
+   * state, which clears the Active Scene on every switch. A Campaign's screen shows once it is
+   * open: its Media are only served for the open Campaign.
    */
   async function enter(id: CampaignId | null) {
-    setOpenId(id);
-    if (!control) return;
+    if (!control) {
+      setOpenId(id);
+      return;
+    }
     try {
-      if (id) await control.openCampaign(id);
-      else await control.closeCampaign();
+      if (id) {
+        await control.openCampaign(id);
+        setOpenId(id);
+      } else {
+        setOpenId(null);
+        await control.closeCampaign();
+      }
     } catch (error) {
       showNotice(errorMessage(error));
     }
