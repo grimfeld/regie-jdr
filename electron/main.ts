@@ -11,6 +11,7 @@ let stageWindow: BrowserWindow | null = null;
 let currentScene: unknown = { title: 'Le sanctuaire oublié', background: '', description: 'Choisissez un décor pour commencer la scène.' };
 
 // Whole-app tests point the app at a temporary data folder.
+// Must stay before the single-instance lock, which is scoped to the data folder.
 if (process.env.REGIE_USER_DATA_DIR) app.setPath('userData', process.env.REGIE_USER_DATA_DIR);
 
 // Imported images are served via a custom scheme: file:// URLs are blocked
@@ -85,7 +86,15 @@ function createStageWindow() {
   stageWindow.on('closed', () => { stageWindow = null; });
 }
 
-app.whenReady().then(() => {
+/** A second launch of the app brings the existing Control window forward. */
+function focusControlWindow() {
+  if (!controlWindow || controlWindow.isDestroyed()) return;
+  if (controlWindow.isMinimized()) controlWindow.restore();
+  controlWindow.show();
+  controlWindow.focus();
+}
+
+function startApp() {
   registerAssetProtocol();
   ipcMain.handle('stage:open', () => { createStageWindow(); return true; });
   ipcMain.handle('media:import-images', async (): Promise<ImportedAsset[]> => {
@@ -112,6 +121,14 @@ app.whenReady().then(() => {
   ipcMain.on('stage:fullscreen', () => stageWindow?.setFullScreen(!stageWindow.isFullScreen()));
   createControlWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createControlWindow(); });
-});
+}
+
+// Only one app per data folder: a second launch hands over to the first and quits.
+if (app.requestSingleInstanceLock()) {
+  app.on('second-instance', focusControlWindow);
+  app.whenReady().then(startApp);
+} else {
+  app.quit();
+}
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
