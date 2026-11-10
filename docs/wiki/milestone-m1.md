@@ -19,3 +19,10 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - 2026-11-11: #23 On-air monitor and Blackout merged at `caf0d4b` (236 unit, 64 app tests). Shared on-air subscription hook `src/useOnAir.ts`; Control-only channel `onAir:set-blackout`. No deviations.
 - 2026-11-11: guardrail backlog slice merged at `8198f81` (252 unit, 64 app tests). See [backlog](guardrail-backlog.md).
 - 2026-11-11: #25 library merged at `5cbaeb5` (296 unit, 67 app tests). See [subsystem page](subsystem-media-library.md). Manual 500-image scroll check pending for the PR.
+- 2026-11-11: #24 Scene list and editor merged at `4555b1c` (314 unit, 72 app tests). Deviations to list in the PR: badge text "EN DIRECT" replaces "Scène active"; with no last Active Scene, opening a Campaign selects the first Scene; empty editor's "Créer une scène" focuses the name field instead of creating.
+
+## Follow-ups to clear before the M1 PR
+
+- Deleting a Scene leaves its id in Settings `lastActiveSceneByCampaign` (UI ignores it). Source: #24 report, 2026-11-11.
+- Manual check: ~500 images scroll smoothly in the library. Source: #25 report.
+- `GLOSSARY.md` lacks "broadcast projection". Source: #22 report.

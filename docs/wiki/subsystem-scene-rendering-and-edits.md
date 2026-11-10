@@ -27,3 +27,9 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - "broadcast projection" is not in `GLOSSARY.md` yet; needs `/domain-modeling`. Raise in the M1 PR.
 - As of `caf0d4b`, windows subscribe to on-air state through `src/useOnAir.ts` (subscribe then read). Reuse it; do not copy the logic.
 - As of `8198f81`, `tests/unit/broadcastProjection.test.ts` holds an allow-list for every field of Scene, Background, Overlay, Label and OnAirState. Adding a field fails typecheck until the slice states whether it goes on air. Expect to touch this list when adding Scene data.
+
+## Scene list and editor (#24, 2026-11-11, `4555b1c`)
+
+- Rename is a `SceneEdit` (`kind: 'rename'`), so undo covers it. Delete is a separate command (`commands.deleteScene`, `scenes:delete`) outside undo; deleting the Active Scene calls `OnAir.clearActiveScene` and leaves Blackout as is.
+- `editorPictureOf` (`core/onAir.ts`) builds the editor's full picture with Hidden placements and Labels marked.
+- Renommer, Supprimer, Activer sit in the editor heading and act on the Selected Scene only.

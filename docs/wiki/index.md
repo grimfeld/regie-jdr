@@ -18,6 +18,10 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 
 - [Media library](subsystem-media-library.md): thumbnails, search, rename, WebP caveat.
 
+## Recurring problems
+
+- [Piped merge hides a failed fast-forward](problem-piped-merge-hides-failure.md)
+
 ## Process
 
 - [Slice agent brief](slice-agent-brief.md): how an agent implements one slice issue and merges it into its milestone branch. Every slice agent reads this.
