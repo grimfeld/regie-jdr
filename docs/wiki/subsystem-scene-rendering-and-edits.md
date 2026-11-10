@@ -18,10 +18,11 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 ## Data shape
 
 - `scenes.json` schema 2 (tested migration from 1) already holds the M1 fields: Scene title, Cover/Contain, zoom and focal point, Overlay height, Overlay order by list position, Labels as `{text, visible}`.
-- Built ahead of their slices: `OnAir.setBlackout` (#23 owns the command and button), `place-overlay` edit (#26 owns placing by drag).
+- Built ahead of their slices: `OnAir.setBlackout` (#23 added the command and button on 2026-11-11, `caf0d4b`), `place-overlay` edit (#26 owns placing by drag).
 
 ## Choices open to review (2026-11-11)
 
 - Esc leaves fullscreen via main-process `before-input-event`; the Playwright test uses `sendInputEvent` because Playwright's keyboard bypasses that hook.
 - `canvas` and `guards` joined `RENDERER_SAFE_CORE` in `eslint.config.mjs`.
 - "broadcast projection" is not in `GLOSSARY.md` yet; needs `/domain-modeling`. Raise in the M1 PR.
+- As of `caf0d4b`, windows subscribe to on-air state through `src/useOnAir.ts` (subscribe then read). Reuse it; do not copy the logic.
