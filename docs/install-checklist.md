@@ -4,8 +4,10 @@ Run on a Windows 11 PC before calling a build good. The installer is unsigned on
 
 ## Get the installer
 
-- From CI: Actions → CI → a run on `main` (or **Run workflow** for any branch) → artifact `windows-installer` → `Regie-JDR-Setup-<version>.exe`.
-- Or locally: `npm ci` then `npm run package:win` → `release/Regie-JDR-Setup-<version>.exe`.
+- From a release: the GitHub Release created by pushing a `vX.Y.Z` tag (`release.yml`) → assets `Regie-JDR-Setup-<version>.exe` (NSIS) and `Regie-JDR-Setup-<version>.msi`.
+- Or locally: `npm ci` then `npm run package:win` → both files in `release/`.
+
+Run the checklist with each installer. Uninstall one before installing the other: both install the same app.
 
 ## Checklist
 
@@ -14,7 +16,7 @@ Run on a Windows 11 PC before calling a build good. The installer is unsigned on
 3. **Shortcuts**: a "Regie JDR" shortcut is on the desktop and in the Start menu.
 4. **Launch**: open it from the Start-menu shortcut. The Control window shows the app interface, not a blank window.
 5. **Single instance**: launch it again from the desktop shortcut. No second app opens; the existing Control window comes to the front.
-6. **Import an image**: import a PNG or JPEG. It appears in the library and in the preview.
+6. **Import an image**: import a PNG or JPEG. It appears in the library.
 7. **Broadcast window**: open the Broadcast window ("Ouvrir la diffusion"). It opens and shows the on-air content, with no broken images.
 8. **Restart**: quit and relaunch. The imported image is still in the library.
 9. **No run-as-Node**: in a terminal, `set ELECTRON_RUN_AS_NODE=1` then `"<install folder>\Regie JDR.exe" -e "console.log('node')"`. Nothing is printed: the app opens as normal (close it). The run-as-Node fuse is off.

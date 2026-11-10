@@ -50,23 +50,3 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
-
-  # Windows minutes cost double on the private repo: only on main and on demand.
-  # (When release.yml calls this workflow the ref is a tag, so this job is skipped there.)
-  windows-installer:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-    needs: check
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: ./.github/actions/windows-installer
-
-      - name: Upload installer
-        uses: actions/upload-artifact@v5
-        with:
-          name: windows-installer
-          path: release/Regie-JDR-Setup-*.exe
-          if-no-files-found: error
-          retention-days: 14
