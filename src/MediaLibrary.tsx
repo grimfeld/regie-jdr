@@ -5,7 +5,8 @@ import type { ControlBridge, MediaDeletion, MediaImportKind } from '../shared/co
 import { imageLibrary, type LibraryFilter } from '../core/librarySearch';
 import { thumbnailAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
-import { startMediaDrag } from './mediaDrag';
+import { carriesFiles, droppedFiles, startMediaDrag } from './mediaDrag';
+import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
 import { gridColumns, gridWindow } from './virtualGrid';
@@ -34,13 +35,22 @@ interface Props {
   onMediaDeleted: (deletion: MediaDeletion) => void;
   /** A Media got a new name. */
   onMediaRenamed: () => void;
+  /** Changes when Media were imported elsewhere (dropped on the Scene editor): read again. */
+  importRevision: number;
 }
 
 /**
- * The open Campaign's Media library: import, the image library (thumbnails, filter by Image
- * category, search by name), the sounds, renaming, changing an image's category, deleting.
+ * The open Campaign's Media library: import (with the picker, or by dropping image files from
+ * Explorer on it), the image library (thumbnails, filter by Image category, search by name), the
+ * sounds, renaming, changing an image's category, deleting.
  */
-export function MediaLibrary({ campaignId, control, onMediaDeleted, onMediaRenamed }: Props) {
+export function MediaLibrary({
+  campaignId,
+  control,
+  onMediaDeleted,
+  onMediaRenamed,
+  importRevision,
+}: Props) {
   const [media, setMedia] = useState<Media[]>([]);
   const [audioRole, setAudioRole] = useState<AudioRole>('music');
   const [filter, setFilter] = useState<LibraryFilter>('all');
@@ -66,7 +76,7 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted, onMediaRenam
     return () => {
       cancelled = true;
     };
-  }, [control, campaignId]);
+  }, [control, campaignId, importRevision]);
 
   function merge(changed: Media[]) {
     setMedia((current) => {
@@ -87,6 +97,16 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted, onMediaRenam
     merge(imported);
     refused.forEach(showNotice);
   }
+
+  /** Image files dropped from Explorer, imported like picked ones. Failures: as above. */
+  async function importDropped(files: readonly File[]) {
+    if (!control || files.length === 0) return;
+    const { imported, refused } = await control.importDroppedImages(campaignId, files);
+    merge(imported);
+    refused.forEach(showNotice);
+  }
+  // Only files from outside: a library image dropped back on the library is no import.
+  const drop = useDropTarget((event) => void importDropped(droppedFiles(event)), carriesFiles);
 
   async function changeCategory(image: ImageMedia, category: ImageCategory) {
     if (!control) return;
@@ -137,7 +157,12 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted, onMediaRenam
   );
 
   return (
-    <>
+    <div
+      className={`library-drop${drop.over ? ' drop-ready' : ''}`}
+      role="region"
+      aria-label="Bibliothèque"
+      {...drop.props}
+    >
       <div className="section-heading compact">
         <div>
           <span className="eyebrow">BIBLIOTHÈQUE DE LA CAMPAGNE</span>
@@ -270,9 +295,10 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted, onMediaRenam
       {media.length === 0 && (
         <div className="asset-empty">
           Vos décors, personnages, musiques, bruitages et ambiances apparaîtront ici après import.
+          Vous pouvez aussi glisser des images ici depuis l’Explorateur.
         </div>
       )}
-    </>
+    </div>
   );
 }
 

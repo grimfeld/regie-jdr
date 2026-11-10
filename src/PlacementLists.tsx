@@ -7,16 +7,19 @@ import { carriesMedia } from './mediaDrag';
 import { LabelControls } from './PlayerTextFields';
 
 /**
- * Props of a drop target: it accepts a dragged library image, shows it is ready while one is
- * over it, and hands the drop to `onDrop`.
+ * Props of a drop target: it accepts what `accepts` says (by default a library image or files
+ * from Explorer), shows it is ready while one is over it, and hands the drop to `onDrop`.
  */
-export function useDropTarget(onDrop: (event: DragEvent<HTMLElement>) => void) {
+export function useDropTarget(
+  onDrop: (event: DragEvent<HTMLElement>) => void,
+  accepts: (event: DragEvent<HTMLElement>) => boolean = carriesMedia,
+) {
   const [over, setOver] = useState(false);
   return {
     over,
     props: {
       onDragOver(event: DragEvent<HTMLElement>) {
-        if (!carriesMedia(event)) return;
+        if (!accepts(event)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
         setOver(true);
@@ -33,7 +36,7 @@ export function useDropTarget(onDrop: (event: DragEvent<HTMLElement>) => void) {
       },
       onDrop(event: DragEvent<HTMLElement>) {
         setOver(false);
-        if (!carriesMedia(event)) return;
+        if (!accepts(event)) return;
         event.preventDefault();
         onDrop(event);
       },

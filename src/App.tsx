@@ -247,6 +247,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
    * names may have changed).
    */
   const [mediaRevision, setMediaRevision] = useState(0);
+  /** Bumped when Media were dropped on the Scene editor and imported: the library reloads. */
+  const [importRevision, setImportRevision] = useState(0);
 
   const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
 
@@ -265,13 +267,19 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
 
       <div className="workspace">
         <section className="main-column">
-          <ScenesPanel campaignId={campaign.id} control={control} mediaRevision={mediaRevision} />
+          <ScenesPanel
+            campaignId={campaign.id}
+            control={control}
+            mediaRevision={mediaRevision}
+            onMediaImported={() => setImportRevision((revision) => revision + 1)}
+          />
 
           <MediaLibrary
             campaignId={campaign.id}
             control={control}
             onMediaDeleted={() => setMediaRevision((revision) => revision + 1)}
             onMediaRenamed={() => setMediaRevision((revision) => revision + 1)}
+            importRevision={importRevision}
           />
         </section>
 

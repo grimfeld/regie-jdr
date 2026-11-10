@@ -6,7 +6,7 @@ import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
-import { droppedMediaId } from './mediaDrag';
+import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
 import { SceneTitleField } from './PlayerTextFields';
@@ -18,6 +18,8 @@ interface Props {
   control: ControlBridge | undefined;
   /** Changes when a Media was deleted: Scenes and images are read again. */
   mediaRevision: number;
+  /** Image files dropped on the editor were imported: the library reads its Media again. */
+  onMediaImported: () => void;
 }
 
 /**
@@ -28,7 +30,7 @@ interface Props {
  * Opening a Campaign selects its last Active Scene (or its first Scene) without putting it on
  * air.
  */
-export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
+export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImported }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
   /** The Scene the Game Master opened; undefined until they open one (see `selected`). */
   const [selectedId, setSelectedId] = useState<SceneId | undefined>(undefined);
@@ -150,7 +152,10 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
     await edit(scene, placementEdit(image, target, dropPoint));
   }
 
-  /** A library image dropped on the editor: placed with its current Image category. */
+  /**
+   * Something dropped on the editor: a library image, placed with its current Image category,
+   * or image files from Explorer, imported (refusals shown) then each placed the same way.
+   */
   async function placeDropped(
     scene: Scene,
     event: DragEvent,
@@ -158,8 +163,19 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
     dropPoint?: NormalizedPoint,
   ) {
     const mediaId = droppedMediaId(event);
-    if (!control || mediaId === undefined) return;
+    const files = droppedFiles(event);
+    if (!control) return;
     try {
+      if (mediaId === undefined) {
+        if (files.length === 0) return;
+        const { imported, refused } = await control.importDroppedImages(campaignId, files);
+        refused.forEach(showNotice);
+        if (imported.length > 0) onMediaImported();
+        for (const media of imported) {
+          if (media.kind === 'image') await place(scene, media, target, dropPoint);
+        }
+        return;
+      }
       const library = (await control.listMedia(campaignId)).filter(
         (m): m is ImageMedia => m.kind === 'image',
       );

@@ -2,6 +2,7 @@ import {
   _electron as electron,
   test as base,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test';
 import fs from 'node:fs/promises';
@@ -61,6 +62,59 @@ export async function stubFilePicker(app: ElectronApplication, filePaths: string
   await app.evaluate(({ dialog }, paths) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: paths });
   }, filePaths);
+}
+
+/**
+ * Drops files from disk on `target`, as from Windows Explorer: the files come from a file input
+ * (so they carry their paths, as dropped files do), then dragenter, dragover and drop are sent
+ * with them at `point` (page coordinates; the target's centre when absent). Returns whether the
+ * dragover was cancelled: a drop target took it, or the page refused it (else a real drop would
+ * open the file in the window).
+ */
+export async function dropFiles(
+  target: Locator,
+  filePaths: string[],
+  point?: { x: number; y: number },
+): Promise<boolean> {
+  const page = target.page();
+  const box = await target.boundingBox();
+  if (!box) throw new Error('The drop target is not shown.');
+  const at = point ?? { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.evaluate(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.id = 'test-dropped-files';
+    input.hidden = true;
+    document.body.append(input);
+  });
+  const input = page.locator('#test-dropped-files');
+  await input.setInputFiles(filePaths);
+  const dataTransfer = await input.evaluateHandle((element: HTMLInputElement) => {
+    const transfer = new DataTransfer();
+    for (const file of element.files ?? []) transfer.items.add(file);
+    element.remove();
+    return transfer;
+  });
+  const init = { dataTransfer, clientX: at.x, clientY: at.y };
+  await target.dispatchEvent('dragenter', init);
+  const over = await target.evaluate(
+    (element, { clientX, clientY, transfer }) => {
+      const event = new DragEvent('dragover', {
+        dataTransfer: transfer,
+        clientX,
+        clientY,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    },
+    { clientX: at.x, clientY: at.y, transfer: dataTransfer },
+  );
+  await target.dispatchEvent('drop', init);
+  return over;
 }
 
 /** Clicks "Ouvrir la diffusion" in the Control window and returns the Broadcast window. */
