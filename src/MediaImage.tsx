@@ -8,7 +8,7 @@ interface Props {
   /** Which window shows it: decides what a missing Media looks like. */
   window: 'control' | 'broadcast';
   className?: string;
-  /** Called with the image's natural size once it has loaded. */
+  /** Called with the image's natural size once it has loaded and is decoded. */
   onLoad?: (size: { width: number; height: number }) => void;
 }
 
@@ -17,6 +17,8 @@ interface Props {
  * was deleted or moved outside the app (its address answers 404) never shows a broken image:
  * - Control window: a "Média manquant" placeholder, so the Game Master knows.
  * - Broadcast window: nothing at all; the image also stays hidden until it has loaded.
+ * An image counts as loaded once decoded too, so it is never drawn half-done (the renderer
+ * fades it in from then on).
  */
 export function MediaImage({ address, alt, window: shownIn, className, onLoad }: Props) {
   // Per address, so another address (another Media, or the file put back) is tried again.
@@ -45,9 +47,14 @@ export function MediaImage({ address, alt, window: shownIn, className, onLoad }:
       alt={alt}
       hidden={shownIn === 'broadcast' && status !== 'loaded'}
       onLoad={(event) => {
-        setState({ address, status: 'loaded' });
-        const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
-        onLoad?.({ width, height });
+        const image = event.currentTarget;
+        const size = { width: image.naturalWidth, height: image.naturalHeight };
+        const loaded = () => {
+          setState({ address, status: 'loaded' });
+          onLoad?.(size);
+        };
+        // A decoding failure still leaves a loaded image: show it as the browser can.
+        void image.decode().then(loaded, loaded);
       }}
       onError={() => setState({ address, status: 'missing' })}
     />

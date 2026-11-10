@@ -18,7 +18,12 @@ export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | un
       data-active-scene-id={onAir ? (onAir.activeSceneId ?? '') : undefined}
       data-version={onAir?.version}
     >
-      <SceneCanvas picture={onAir?.scene ?? null} blackout={onAir?.blackout} window="broadcast" />
+      <SceneCanvas
+        picture={onAir?.scene ?? null}
+        blackout={onAir?.blackout}
+        window="broadcast"
+        fadeDurationMs={onAir?.fadeDurationMs}
+      />
     </main>
   );
 }

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MediaImage } from '../../src/MediaImage';
 
-// jsdom loads no images: the tests fire the image's load / error events themselves, as the
-// browser does when the Media address answers 200 or 404.
+// jsdom loads and decodes no images: the tests fire the image's load / error events themselves,
+// as the browser does when the Media address answers 200 or 404, and finish decoding by hand.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ADDRESS = `regie-media://media/campagne/${'a'.repeat(64)}.png`;
@@ -13,11 +13,20 @@ const OTHER_ADDRESS = `regie-media://media/campagne/${'b'.repeat(64)}.png`;
 
 let container: HTMLElement;
 let root: Root;
+/** Finishes decoding the images decoded so far (HTMLImageElement.decode). */
+let finishDecoding: () => Promise<void>;
 
 beforeEach(() => {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
+  const decoding: (() => void)[] = [];
+  HTMLImageElement.prototype.decode = () => new Promise<void>((resolve) => decoding.push(resolve));
+  finishDecoding = () =>
+    act(async () => {
+      decoding.splice(0).forEach((resolve) => resolve());
+      await Promise.resolve();
+    });
 });
 
 afterEach(() => {
@@ -79,12 +88,24 @@ describe('a Media image in the Control window', () => {
 });
 
 describe('a Media image in the Broadcast window', () => {
-  it('keeps the image hidden until its file has loaded', () => {
+  it('keeps the image hidden until its file has loaded and is decoded', async () => {
     render(<MediaImage address={ADDRESS} alt="" window="broadcast" />);
     expect(image()?.hidden).toBe(true);
 
     fire('load');
+    expect(image()?.hidden).toBe(true);
+    await finishDecoding();
     expect(image()?.hidden).toBe(false);
+  });
+
+  it('reports the natural size only once the image is decoded, so it never shows half-drawn', async () => {
+    const loaded = vi.fn();
+    render(<MediaImage address={ADDRESS} alt="" window="broadcast" onLoad={loaded} />);
+    fire('load');
+    expect(loaded).not.toHaveBeenCalled();
+
+    await finishDecoding();
+    expect(loaded).toHaveBeenCalledTimes(1);
   });
 
   it('shows nothing at all when the file is missing', () => {

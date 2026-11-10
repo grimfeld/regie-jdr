@@ -273,6 +273,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
           scene={selected}
           images={images}
           active={isActive(selected)}
+          fadeDurationMs={onAir?.fadeDurationMs}
           onRefreshImages={refreshImages}
           onEdit={(command) => edit(selected, command)}
           onEditShowingFailure={(command) => editShowingFailure(selected, command)}
@@ -307,6 +308,8 @@ interface EditorProps {
   images: ImageMedia[];
   /** Whether the Selected Scene is the Active Scene: its edits go on air. */
   active: boolean;
+  /** The fade duration setting (OnAirState.fadeDurationMs), undefined until known. */
+  fadeDurationMs: number | undefined;
   onRefreshImages: () => void;
   /** Sends an edit; rejects with the failure, the Scene already reloaded. */
   onEdit: (command: SceneEdit) => Promise<void>;
@@ -446,6 +449,7 @@ function SceneEditor(props: EditorProps) {
         <SceneCanvas
           picture={editorPictureOf(transforms.scene, images)}
           window="control"
+          fadeDurationMs={props.fadeDurationMs}
           editing={{
             selectedOverlayId: transforms.selectedId,
             onOverlayPointerDown: transforms.onOverlayPointerDown,

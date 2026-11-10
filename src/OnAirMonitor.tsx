@@ -40,7 +40,12 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
         data-active-scene-id={onAir ? (onAir.activeSceneId ?? '') : undefined}
         data-version={onAir?.version}
       >
-        <SceneCanvas picture={onAir?.scene ?? null} blackout={blackout} window="control" />
+        <SceneCanvas
+          picture={onAir?.scene ?? null}
+          blackout={blackout}
+          window="control"
+          fadeDurationMs={onAir?.fadeDurationMs}
+        />
         {badge && <span className="on-air-badge">{badge}</span>}
       </div>
       <button
