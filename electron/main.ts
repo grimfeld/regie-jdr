@@ -9,6 +9,9 @@ let controlWindow: BrowserWindow | null = null;
 let stageWindow: BrowserWindow | null = null;
 let currentScene: unknown = { title: 'Le sanctuaire oublié', background: '', description: 'Choisissez un décor pour commencer la scène.' };
 
+// Whole-app tests point the app at a temporary data folder.
+if (process.env.REGIE_USER_DATA_DIR) app.setPath('userData', process.env.REGIE_USER_DATA_DIR);
+
 // Imported images are served via a custom scheme: file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
 const ASSET_SCHEME = 'regie-asset';
