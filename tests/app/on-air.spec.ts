@@ -163,13 +163,19 @@ test('Activating a Scene with no Campaign open is refused and changes nothing', 
   regie,
 }) => {
   const { app, controlWindow } = regie;
-  const outcome = await control(controlWindow)
-    .activateScene('cantina')
-    .then(
+  // A failed call rejects with a typed IpcFailure (shared/contract.ts), caught in the page.
+  const outcome = await controlWindow.evaluate(() =>
+    (window as unknown as { regie: ControlBridge }).regie.activateScene('cantina').then(
       () => 'accepted',
-      (error: unknown) => String(error),
-    );
-  expect(outcome).toContain('no Campaign is open');
+      (failure: unknown) => failure,
+    ),
+  );
+  expect(outcome).toMatchObject({
+    kind: 'ipc-failure',
+    code: 'failed',
+    channel: 'onAir:activate-scene',
+    message: expect.stringContaining('no Campaign is open'),
+  });
 
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await expectOnAir(broadcastWindow, { campaignId: null, activeSceneId: null, version: 0 });

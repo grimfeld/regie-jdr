@@ -62,6 +62,24 @@ export type EventChannel = keyof EventChannels;
 export type Payload<C extends InvokeChannel> = InvokeChannels[C]['payload'];
 export type Result<C extends InvokeChannel> = InvokeChannels[C]['result'];
 
+/**
+ * Why a window message failed: `rejected` when the sender policy or payload checks refused it
+ * (core/ipc.ts), `failed` when the main process could not carry it out. Details are in the log.
+ */
+export type IpcFailureCode = 'rejected' | 'failed';
+
+/**
+ * What a bridge call's promise rejects with when its message fails. A plain object, not an
+ * Error: an Error loses its extra fields when it crosses the bridge.
+ */
+export interface IpcFailure {
+  kind: 'ipc-failure';
+  code: IpcFailureCode;
+  channel: InvokeChannel;
+  /** Technical message, for the console; not meant for the Game Master. */
+  message: string;
+}
+
 /** Stops a subscription. */
 export type Unsubscribe = () => void;
 

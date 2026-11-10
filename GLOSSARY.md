@@ -48,14 +48,19 @@ UI: Musique
 _Avoid_: Track, song, BGM
 
 **Sound effect**:
-An audio Media meant to be triggered over the music, once or looping (rain, fire, crowd). Its role is fixed at import.
+An audio Media played once, on demand, over everything else (sword clash, door, scream). Never loops. Its role is fixed at import.
 UI: Bruitage
-_Avoid_: SFX, sound, ambience, ambient sound
+_Avoid_: SFX, sound, one-shot
+
+**Ambience**:
+An audio Media meant as a looping background sound under the Music (rain, fire, tavern crowd). A Scene may list several, each switched on or off independently; all that are on play together. Its role is fixed at import.
+UI: Ambiance
+_Avoid_: Ambient sound, loop, background sound, Sound effect (that is one-shot)
 
 ## Scenes
 
 **Scene**:
-A reusable, saved audiovisual setup in a Campaign: stacked Backgrounds, Overlays, Music, looping Sound effects, volumes and private notes.
+A reusable, saved audiovisual setup in a Campaign: stacked Backgrounds, Overlays, Music, Ambiences, volumes and private notes.
 UI: Scène
 _Avoid_: Setup, preset, layout
 
@@ -104,12 +109,12 @@ UI: Noir
 _Avoid_: Fade-to-black, pause, curtain
 
 **Silence**:
-A temporary on-air fade-out of all audio, leaving the Active Scene and the picture unchanged. Not saved into any Scene; the next sound started or Scene Activated ends it.
+A temporary on-air fade-out of all audio, leaving the Active Scene and the picture unchanged. Lifting it brings the same mix back. Not saved into any Scene; Activating a Scene lifts it.
 UI: Silence
 _Avoid_: Stop all, mute, panic
 
 **Soundboard**:
-A Campaign's set of pads for triggering Sound effects during play, available whichever Scene is active.
+A Campaign's set of pads for triggering Sound effects during play, available whichever Scene is active, or none.
 UI: Table de bruitages
 _Avoid_: Sound panel, SFX board, pads
 
