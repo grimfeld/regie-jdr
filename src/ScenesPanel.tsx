@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Clapperboard, History, Pencil, Plus, Radio, Trash2 } from 'lucide-react';
-import type { CampaignId, ImageMedia, OnAirState, Scene, SceneId } from '../shared/domain';
+import type { CampaignId, ImageMedia, Scene, SceneId } from '../shared/domain';
 import type { ControlBridge, SceneEdit } from '../shared/contract';
-import { editorPictureOf, latestOnAir } from '../core/onAir';
+import { editorPictureOf } from '../core/onAir';
 import { errorMessage } from './CampaignList';
 import { SceneCanvas } from './SceneCanvas';
 import { showNotice } from './notices';
+import { useOnAir } from './useOnAir';
 
 interface Props {
   campaignId: CampaignId;
@@ -26,7 +27,8 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
   /** The Scene the Game Master opened; undefined until they open one (see `selected`). */
   const [selectedId, setSelectedId] = useState<SceneId | undefined>(undefined);
-  const [onAir, setOnAir] = useState<OnAirState | null>(null);
+  // Which Scene is on air.
+  const onAir = useOnAir(control);
   const [images, setImages] = useState<ImageMedia[]>([]);
   const [newName, setNewName] = useState('');
   const nameField = useRef<HTMLInputElement>(null);
@@ -46,15 +48,6 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
       cancelled = true;
     };
   }, [control, campaignId, mediaRevision]);
-
-  // Which Scene is on air: subscribe, then read, keeping the newest snapshot.
-  useEffect(() => {
-    if (!control) return;
-    const show = (snapshot: OnAirState) => setOnAir((shown) => latestOnAir(shown, snapshot));
-    const unsubscribe = control.onOnAirChanged(show);
-    void control.getOnAir().then(show);
-    return unsubscribe;
-  }, [control]);
 
   // The library's images, to draw and to place as Backgrounds. Read again whenever a Scene is
   // opened and when the picker gets focus, so images imported meanwhile are offered.
