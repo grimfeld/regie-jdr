@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AudioLines, ImagePlus, Music2 } from 'lucide-react';
+import { AudioLines, ImagePlus, Music2, Trash2 } from 'lucide-react';
 import type { AudioRole, CampaignId, ImageCategory, ImageMedia, Media } from '../shared/domain';
-import type { ControlBridge, MediaImportKind } from '../shared/contract';
+import type { ControlBridge, MediaDeletion, MediaImportKind } from '../shared/contract';
 import { mediaAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
@@ -23,12 +23,16 @@ interface Props {
   control: ControlBridge | undefined;
   /** The Game Master clicked an image (the prototype preview shows it). */
   onShowImage(image: ImageMedia, address: string): void;
+  /** A Media was deleted, with its placements in these Scenes. */
+  onMediaDeleted(deletion: MediaDeletion): void;
 }
 
-/** The open Campaign's Media library: import, list, change an image's category. */
-export function MediaLibrary({ campaignId, control, onShowImage }: Props) {
+/** The open Campaign's Media library: import, list, change an image's category, delete. */
+export function MediaLibrary({ campaignId, control, onShowImage, onMediaDeleted }: Props) {
   const [media, setMedia] = useState<Media[]>([]);
   const [audioRole, setAudioRole] = useState<AudioRole>('music');
+  /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
+  const [pending, setPending] = useState<{ media: Media; scenes: string[] } | null>(null);
 
   useEffect(() => {
     if (!control) return;
@@ -71,6 +75,24 @@ export function MediaLibrary({ campaignId, control, onShowImage }: Props) {
     try {
       merge([await control.setImageCategory(campaignId, image.id, category)]);
     } catch (error) {
+      showNotice(errorMessage(error));
+    }
+  }
+
+  /** Deletes at once when no Scene uses the Media; otherwise asks first, listing the Scenes. */
+  async function remove(item: Media, confirmed: boolean) {
+    if (!control) return;
+    try {
+      const deletion = await control.deleteMedia(campaignId, item.id, confirmed);
+      if (deletion.deleted) {
+        setPending(null);
+        setMedia((current) => current.filter((m) => m.id !== item.id));
+        onMediaDeleted(deletion);
+      } else {
+        setPending({ media: item, scenes: deletion.affectedScenes.map((scene) => scene.name) });
+      }
+    } catch (error) {
+      setPending(null);
       showNotice(errorMessage(error));
     }
   }
@@ -120,9 +142,45 @@ export function MediaLibrary({ campaignId, control, onShowImage }: Props) {
                 <span className="media-role">{roleLabels[item.role]}</span>
               </>
             )}
+            <button
+              className="media-delete"
+              aria-label={`Supprimer ${item.name}`}
+              title={`Supprimer ${item.name}`}
+              onClick={() => void remove(item, false)}
+            >
+              <Trash2 size={13} aria-hidden /> Supprimer
+            </button>
           </li>
         ))}
       </ul>
+      {pending && (
+        <div
+          className="media-delete-confirm"
+          role="alertdialog"
+          aria-label="Supprimer le média"
+          aria-describedby="media-delete-message"
+        >
+          <p id="media-delete-message">
+            « {pending.media.name} » est utilisé dans{' '}
+            {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}. Le supprimer le retire aussi
+            de {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}, et de la diffusion s’il y
+            est affiché.
+          </p>
+          <ul aria-label="Scènes concernées">
+            {pending.scenes.map((name, index) => (
+              <li key={index}>{name}</li>
+            ))}
+          </ul>
+          <div className="media-delete-actions">
+            <button className="secondary-button" autoFocus onClick={() => setPending(null)}>
+              Annuler
+            </button>
+            <button className="primary-button" onClick={() => void remove(pending.media, true)}>
+              <Trash2 size={14} aria-hidden /> Supprimer quand même
+            </button>
+          </div>
+        </div>
+      )}
       {media.length === 0 && (
         <div className="asset-empty">
           Vos décors, personnages, musiques, bruitages et ambiances apparaîtront ici après import.

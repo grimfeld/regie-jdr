@@ -311,6 +311,44 @@ button {
 .media-role {
   color: var(--muted);
 }
+.media-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.media-delete:hover,
+.media-delete:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.media-delete-confirm {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel2);
+  font-size: 12px;
+}
+.media-delete-confirm p {
+  margin: 0 0 6px;
+}
+.media-delete-confirm ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+.media-delete-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
 .asset-empty {
   font-size: 11px;
   color: var(--muted);

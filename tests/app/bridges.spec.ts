@@ -16,6 +16,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'closeCampaign',
     'createCampaign',
     'createScene',
+    'deleteMedia',
     'getOnAir',
     'importMedia',
     'listCampaigns',
