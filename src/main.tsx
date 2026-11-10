@@ -7,7 +7,10 @@ import './styles.css';
 
 const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root');
+if (!root) throw new Error('index.html has no #root element');
+
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />

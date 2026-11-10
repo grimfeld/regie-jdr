@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { BrowserWindow } from 'electron';
 import {
   createCampaign,
   expect,
@@ -20,16 +21,23 @@ function theme(page: Page) {
   return page.locator('html');
 }
 
-type Bounds = { x: number; y: number; width: number; height: number };
+interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 async function boundsOf(app: ElectronApplication, page: Page): Promise<Bounds> {
   const window = await app.browserWindow(page);
-  return window.evaluate((w) => w.getNormalBounds());
+  return window.evaluate((w: BrowserWindow) => w.getNormalBounds());
 }
 
 async function moveWindow(app: ElectronApplication, page: Page, bounds: Bounds): Promise<Bounds> {
   const window = await app.browserWindow(page);
-  await window.evaluate((w, b) => w.setBounds(b), bounds);
+  await window.evaluate((w: BrowserWindow, b) => {
+    w.setBounds(b);
+  }, bounds);
   return boundsOf(app, page);
 }
 

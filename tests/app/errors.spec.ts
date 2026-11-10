@@ -44,9 +44,7 @@ test('a window message the main process fails to carry out shows a notice and is
   const { app, controlWindow, dataDir } = regie;
   await createCampaign(controlWindow);
   await app.evaluate(({ dialog }) => {
-    dialog.showOpenDialog = (async () => {
-      throw new Error('sélecteur de fichiers indisponible');
-    }) as typeof dialog.showOpenDialog;
+    dialog.showOpenDialog = () => Promise.reject(new Error('sélecteur de fichiers indisponible'));
   });
 
   await controlWindow.getByRole('button', { name: 'Importer des images' }).click();

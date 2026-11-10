@@ -22,7 +22,7 @@ interface Props {
   campaignId: CampaignId;
   control: ControlBridge | undefined;
   /** A Media was deleted, with its placements in these Scenes. */
-  onMediaDeleted(deletion: MediaDeletion): void;
+  onMediaDeleted: (deletion: MediaDeletion) => void;
 }
 
 /** The open Campaign's Media library: import, list, change an image's category, delete. */
@@ -40,7 +40,7 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted }: Props) {
       .then((list) => {
         if (!cancelled) setMedia(list);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       });
     return () => {
@@ -103,7 +103,10 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted }: Props) {
           <h2>Médias</h2>
         </div>
         <div className="library-actions">
-          <button className="secondary-button" onClick={() => importMedia({ accept: 'image' })}>
+          <button
+            className="secondary-button"
+            onClick={() => void importMedia({ accept: 'image' })}
+          >
             <ImagePlus size={16} /> Importer des images
           </button>
           <label className="library-role">
@@ -118,7 +121,7 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted }: Props) {
           </label>
           <button
             className="secondary-button"
-            onClick={() => importMedia({ accept: 'audio', role: audioRole })}
+            onClick={() => void importMedia({ accept: 'audio', role: audioRole })}
           >
             <AudioLines size={16} /> Importer des sons
           </button>
@@ -128,7 +131,10 @@ export function MediaLibrary({ campaignId, control, onMediaDeleted }: Props) {
         {media.map((item) => (
           <li className="media-item" key={item.id}>
             {item.kind === 'image' ? (
-              <ImageItem image={item} onCategory={changeCategory} />
+              <ImageItem
+                image={item}
+                onCategory={(image, category) => void changeCategory(image, category)}
+              />
             ) : (
               <>
                 <span className="media-audio-icon">
@@ -193,7 +199,7 @@ function ImageItem({
   onCategory,
 }: {
   image: ImageMedia;
-  onCategory(image: ImageMedia, category: ImageCategory): void;
+  onCategory: (image: ImageMedia, category: ImageCategory) => void;
 }) {
   return (
     <>

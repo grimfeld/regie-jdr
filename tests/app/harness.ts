@@ -10,7 +10,7 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(__dirname, '../..');
 
-export type RunningApp = {
+export interface RunningApp {
   app: ElectronApplication;
   /** Temporary data folder the app uses as its userData for this test. */
   dataDir: string;
@@ -22,7 +22,7 @@ export type RunningApp = {
   mainLog: string[];
   /** The Control window (the first window the app opens). */
   controlWindow: Page;
-};
+}
 
 /** Launches the built app on `dataDir` and records failed requests in every window. */
 export async function launchApp(dataDir: string): Promise<RunningApp> {
@@ -59,8 +59,7 @@ export const appPath = repoRoot;
 /** Replaces the native file picker in the main process: the next pickers return `filePaths`. */
 export async function stubFilePicker(app: ElectronApplication, filePaths: string[]): Promise<void> {
   await app.evaluate(({ dialog }, paths) => {
-    const picked = async () => ({ canceled: false, filePaths: paths });
-    dialog.showOpenDialog = picked as typeof dialog.showOpenDialog;
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: paths });
   }, filePaths);
 }
 

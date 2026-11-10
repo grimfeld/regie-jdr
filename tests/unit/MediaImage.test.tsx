@@ -35,7 +35,9 @@ function image() {
 
 function fire(type: 'load' | 'error') {
   act(() => {
-    image()!.dispatchEvent(new Event(type));
+    const shown = image();
+    if (!shown) throw new Error('No image rendered');
+    shown.dispatchEvent(new Event(type));
   });
 }
 

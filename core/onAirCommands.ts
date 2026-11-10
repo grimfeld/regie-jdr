@@ -66,7 +66,7 @@ export function createOnAirCommands(deps: {
       }),
 
     closeCampaign: () =>
-      serialized(async () => {
+      serialized(() => {
         audio.halt();
         return onAir.closeCampaign();
       }),

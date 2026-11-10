@@ -1,8 +1,15 @@
 import { expect, fixture, openBroadcastWindow, test } from './harness';
 
-type Rogue = { rogue: { invoke(channel: string, ...args: unknown[]): Promise<unknown> } };
-type Recorder = { calls: unknown[][]; unsubscribe(): void };
-type Bridge = { regie: Record<string, (...args: unknown[]) => unknown> };
+interface Rogue {
+  rogue: { invoke(channel: string, ...args: unknown[]): Promise<unknown> };
+}
+interface Recorder {
+  calls: unknown[][];
+  unsubscribe(): void;
+}
+interface Bridge {
+  regie: Record<string, (...args: unknown[]) => unknown>;
+}
 
 test('the Control window gets the full bridge, the Broadcast window only reads and subscribes', async ({
   regie,
@@ -85,7 +92,7 @@ test('a malformed message from the Control window is rejected and logged', async
     const { rogue } = window as unknown as Rogue;
     return rogue.invoke('onAir:open-campaign', { campaignId: 42 }).then(
       () => 'accepted',
-      (error) => String(error),
+      (error: unknown) => String(error),
     );
   });
 

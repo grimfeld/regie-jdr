@@ -34,7 +34,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
       .then((list) => {
         if (!cancelled) setScenes(list);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       });
     return () => {
@@ -58,7 +58,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
     control
       .listMedia(campaignId)
       .then((media) => setImages(media.filter((m): m is ImageMedia => m.kind === 'image')))
-      .catch((error) => showNotice(errorMessage(error)));
+      .catch((error: unknown) => showNotice(errorMessage(error)));
   }, [control, campaignId]);
   useEffect(refreshImages, [refreshImages, selectedId, mediaRevision]);
 
@@ -73,7 +73,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
       .then((settings) => {
         if (!cancelled) setLastActiveId(settings.lastActiveSceneByCampaign[campaignId] ?? null);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       });
     return () => {
@@ -132,7 +132,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
         </div>
       </div>
 
-      <form className="campaign-form" onSubmit={create}>
+      <form className="campaign-form" onSubmit={(event) => void create(event)}>
         <label>
           NOM DE LA SCÈNE
           <input
@@ -227,12 +227,12 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
 
 function BackgroundPicker(props: {
   images: ImageMedia[];
-  onFocus(): void;
-  onAdd(image: ImageMedia): void;
+  onFocus: () => void;
+  onAdd: (image: ImageMedia) => void;
 }) {
   const { images, onFocus, onAdd } = props;
   const [chosenId, setChosenId] = useState('');
-  const chosen = images.find((image) => image.id === chosenId) ?? images[0];
+  const chosen = images.find((image) => image.id === chosenId) ?? images.at(0);
   return (
     <div className="background-picker">
       <label>

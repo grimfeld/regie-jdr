@@ -36,7 +36,7 @@ describe('campaigns', () => {
     const second = await createCampaign(storage.campaigns, 'Warhammer');
 
     expect(storage.campaignFolder(first.id)).not.toBe(storage.campaignFolder(second.id));
-    const onDisk = JSON.parse(
+    const onDisk: unknown = JSON.parse(
       await fs.readFile(path.join(storage.campaignFolder(second.id), 'campaign.json'), 'utf8'),
     );
     expect(onDisk).toMatchObject({ schemaVersion: 1, name: 'Warhammer', theme: 'imperium' });

@@ -51,7 +51,7 @@ export function registerHandlers(
         const message = `${failurePrefix.failed}: "${channel}"`;
         log.error(message, error);
         const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`${message}: ${reason}`);
+        throw new Error(`${message}: ${reason}`, { cause: error });
       }
     });
   }

@@ -10,7 +10,7 @@
  * Errors meant for the Game Master are MediaError with a French message.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type Dirent } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { MediaImportKind, MediaImportResult } from '../shared/contract.js';
@@ -292,7 +292,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
     async listOrphanFiles(campaignId) {
       const folder = await campaignFolder(campaignId);
       const known = new Set((await readIndex(folder, campaignId)).map(mediaFileName));
-      let entries: import('node:fs').Dirent[];
+      let entries: Dirent[];
       try {
         entries = await fsp.readdir(path.join(folder, MEDIA_FOLDER), { withFileTypes: true });
       } catch (error) {
@@ -307,7 +307,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
 
     async resolveAddress(url, openCampaignId) {
       const address = parseMediaAddress(url);
-      if (!address || address.campaignId !== openCampaignId) return undefined;
+      if (address?.campaignId !== openCampaignId) return undefined;
       let folder: string;
       try {
         folder = storage.campaignFolder(address.campaignId);

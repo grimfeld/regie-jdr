@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Aperture, ArrowLeft, MonitorPlay, Palette, Settings2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
-import type { BroadcastBridge, CampaignChanges, ControlBridge } from '../shared/contract';
+import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
 import { MediaLibrary } from './MediaLibrary';
@@ -20,7 +20,7 @@ const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 export default function App() {
   const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
   // Each window's preload exposes its own bridge (see shared/contract.ts).
-  if (isBroadcast) return <BroadcastView bridge={window.regie as BroadcastBridge | undefined} />;
+  if (isBroadcast) return <BroadcastView bridge={window.regie} />;
   return <ControlApp control={window.regie as ControlBridge | undefined} />;
 }
 
@@ -41,6 +41,32 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     (await control.takeNotices()).forEach(showNotice);
   }, [control]);
 
+  /**
+   * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
+   * state, which clears the Active Scene on every switch. A Campaign's screen shows once it is
+   * open: its Media are only served for the open Campaign.
+   */
+  const enter = useCallback(
+    async (id: CampaignId | null) => {
+      if (!control) {
+        setOpenId(id);
+        return;
+      }
+      try {
+        if (id) {
+          await control.openCampaign(id);
+          setOpenId(id);
+        } else {
+          setOpenId(null);
+          await control.closeCampaign();
+        }
+      } catch (error) {
+        showNotice(errorMessage(error));
+      }
+    },
+    [control],
+  );
+
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
@@ -51,7 +77,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         setCampaigns(list);
         if (list.length === 1) void enter(list[0].id);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       })
       .finally(() => {
@@ -60,30 +86,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     return () => {
       cancelled = true;
     };
-  }, [control, collectNotices]);
-
-  /**
-   * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
-   * state, which clears the Active Scene on every switch. A Campaign's screen shows once it is
-   * open: its Media are only served for the open Campaign.
-   */
-  async function enter(id: CampaignId | null) {
-    if (!control) {
-      setOpenId(id);
-      return;
-    }
-    try {
-      if (id) {
-        await control.openCampaign(id);
-        setOpenId(id);
-      } else {
-        setOpenId(null);
-        await control.closeCampaign();
-      }
-    } catch (error) {
-      showNotice(errorMessage(error));
-    }
-  }
+  }, [control, collectNotices, enter]);
 
   // The global theme (Settings) dresses the home page; inside a Campaign, its own theme.
   const [homeTheme, setHomeTheme] = useState<ThemeId>(DEFAULT_HOME_THEME);
@@ -95,7 +98,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       .then((settings) => {
         if (!cancelled) setHomeTheme(settings.theme);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       });
     return () => {
@@ -159,7 +162,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           ) : (
             <HomeThemePicker theme={homeTheme} onChange={(next) => void changeHomeTheme(next)} />
           )}
-          <button className="primary-button" onClick={() => control?.openBroadcast()}>
+          <button className="primary-button" onClick={() => void control?.openBroadcast()}>
             <MonitorPlay size={16} /> Ouvrir la diffusion
           </button>
         </div>
@@ -170,9 +173,9 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           campaign={openCampaign}
           control={control}
           onThemeChange={(next) =>
-            update(openCampaign.id, { theme: next }).catch((error) =>
-              showNotice(errorMessage(error)),
-            )
+            void update(openCampaign.id, { theme: next }).catch((error: unknown) => {
+              showNotice(errorMessage(error));
+            })
           }
         />
       ) : (
@@ -196,7 +199,13 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
 }
 
 /** Minimal picker for the home page theme (finished themes and their picker come later). */
-function HomeThemePicker({ theme, onChange }: { theme: ThemeId; onChange(theme: ThemeId): void }) {
+function HomeThemePicker({
+  theme,
+  onChange,
+}: {
+  theme: ThemeId;
+  onChange: (theme: ThemeId) => void;
+}) {
   return (
     <label className="home-theme">
       <Palette size={14} />
@@ -218,7 +227,7 @@ function HomeThemePicker({ theme, onChange }: { theme: ThemeId; onChange(theme: 
 interface CampaignScreenProps {
   campaign: Campaign;
   control: ControlBridge | undefined;
-  onThemeChange(theme: ThemeId): void;
+  onThemeChange: (theme: ThemeId) => void;
 }
 
 /** The screen of the open Campaign: its Scenes, its Media library and its theme. */

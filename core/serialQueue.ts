@@ -4,10 +4,10 @@
  */
 
 /** Runs tasks one at a time per key; tasks with different keys run independently. */
-export type KeyedSerialQueue<K> = <T>(key: K, task: () => Promise<T>) => Promise<T>;
+export type KeyedSerialQueue<K> = <T>(key: K, task: () => T | Promise<T>) => Promise<T>;
 
 /** Runs tasks one at a time. */
-export type SerialQueue = <T>(task: () => Promise<T>) => Promise<T>;
+export type SerialQueue = <T>(task: () => T | Promise<T>) => Promise<T>;
 
 export function createKeyedSerialQueue<K>(): KeyedSerialQueue<K> {
   const tails = new Map<K, Promise<unknown>>();

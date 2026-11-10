@@ -30,7 +30,11 @@ describe('on-air commands', () => {
       library,
       scenes,
       onAir,
-      audio: { halt: () => void audioHalts++ },
+      audio: {
+        halt: () => {
+          audioHalts++;
+        },
+      },
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const picked = path.join(dir.path, 'Cantina.png');

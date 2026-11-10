@@ -1,4 +1,5 @@
 import type { ElectronApplication } from '@playwright/test';
+import electronPath from 'electron';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -6,7 +7,7 @@ import path from 'node:path';
 import { appEnv, appPath, expect, launchApp, test } from './harness';
 
 // The `electron` package resolves to the path of the Electron executable.
-const electronExecutable = require('electron') as unknown as string;
+const electronExecutable = electronPath as unknown as string;
 
 /** Starts the app a second time, as the Game Master would, and resolves with its exit code. */
 function launchAgain(dataDir: string): Promise<number | null> {

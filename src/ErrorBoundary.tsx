@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
-type State = { failed: boolean };
+interface State {
+  failed: boolean;
+}
 
 /**
  * Catches errors while rendering the window: shows a short French message with a way to

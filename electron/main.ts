@@ -102,7 +102,9 @@ function roleOf(sender: WebContents): WindowRole | undefined {
 /** Runs a Settings write; failures are logged, and the app waits for it before quitting. */
 function saveSetting(write: (store: SettingsStore) => Promise<unknown>) {
   if (!settings) return;
-  const pending = write(settings).catch((error) => log.error('Saving the settings failed', error));
+  const pending = write(settings).catch((error: unknown) => {
+    log.error('Saving the settings failed', error);
+  });
   pendingWrites.add(pending);
   void pending.finally(() => pendingWrites.delete(pending));
 }
@@ -135,6 +137,13 @@ function rememberBounds(window: BrowserWindow, name: SettingsWindow) {
   });
 }
 
+/** Loads a window's page; a page that fails to load is logged (the window stays blank). */
+function loadPage(window: SettingsWindow, loading: Promise<void>) {
+  loading.catch((error: unknown) => {
+    log.error(`Loading the ${window} window failed`, error);
+  });
+}
+
 async function createControlWindow() {
   const placement = await savedPlacement('control');
   controlWindow = new BrowserWindow({
@@ -149,10 +158,10 @@ async function createControlWindow() {
   });
   rememberBounds(controlWindow, 'control');
   if (process.env.VITE_DEV_SERVER_URL) {
-    controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    loadPage('control', controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL));
     controlWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    controlWindow.loadFile(appIndexFile);
+    loadPage('control', controlWindow.loadFile(appIndexFile));
   }
 }
 
@@ -179,9 +188,12 @@ async function createBroadcastWindow() {
   rememberBounds(broadcastWindow, 'broadcast');
   broadcastWindow.setMenuBarVisibility(false);
   // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
-  if (process.env.VITE_DEV_SERVER_URL)
-    broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`);
-  else broadcastWindow.loadFile(appIndexFile, { query: { view: 'broadcast' } });
+  loadPage(
+    'broadcast',
+    process.env.VITE_DEV_SERVER_URL
+      ? broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`)
+      : broadcastWindow.loadFile(appIndexFile, { query: { view: 'broadcast' } }),
+  );
   broadcastWindow.on('closed', () => {
     broadcastWindow = null;
   });
@@ -295,7 +307,12 @@ app.on('will-quit', (event) => {
 // Only one app per data folder: a second launch hands over to the first and quits.
 if (app.requestSingleInstanceLock()) {
   app.on('second-instance', focusControlWindow);
-  app.whenReady().then(startApp);
+  app
+    .whenReady()
+    .then(startApp)
+    .catch((error: unknown) => {
+      log.error('Starting the app failed', error);
+    });
 } else {
   app.quit();
 }
