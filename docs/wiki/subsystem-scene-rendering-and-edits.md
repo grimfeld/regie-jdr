@@ -43,3 +43,9 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Plug-in points: #27 adds a files branch next to `placeDropped` and extends `carriesMedia`; #28 fit/zoom controls in Background rows (and decides top-first vs bottom-first order); #29 forward/back in Overlay rows; #30 Label controls in Overlay rows, Scene title in the `SceneEditor` heading; #31 fades on the unchanged `is-hidden` canvas style.
 - The image picker stays as a keyboard way to place, with "Ajouter en superposition".
 - Playwright `dragTo` works in Electron (`tests/app/placing.spec.ts`).
+
+## Labels and Scene title (#30, 2026-11-11, `d9156b8`)
+
+- `SceneEdit`s `set-title`, `set-label-text`, `set-label-visible`. New Label starts Hidden; clearing its text removes it; a Label needs text to be shown. Limits: Label 60 chars, Scene title 100, trimmed.
+- UI in `src/PlayerTextFields.tsx`; `LabelControls` is a child of each Overlay row.
+- Convention set here: text fields commit on Enter or blur (Escape restores), so one change = one `SceneEdit` = one undo step. The editor's instant preview calls the core's `applySceneEdit` instead of copying logic.

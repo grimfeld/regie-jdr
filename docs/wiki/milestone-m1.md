@@ -29,3 +29,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - 2026-11-11: #26 placing Media merged at `b8a3580` (325 unit, 77 app tests). Kept the image picker for keyboard users.
 - Follow-up (from #26): `GLOSSARY.md` has no French UI term for Overlay; "Superpositions" / "Ajouter en superposition" are working labels. User decision.
   - 2026-11-11: user decided "Superposition" is the French UI term for Overlay. Closeout adds it to `GLOSSARY.md`.
+- 2026-11-11: #30 Labels and Scene title merged at `d9156b8` (343 unit, 80 app tests). No deviations.
