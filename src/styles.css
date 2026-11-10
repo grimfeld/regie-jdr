@@ -551,6 +551,25 @@ button {
   inset: 0;
   background: #000;
 }
+/* The On-air monitor (Control window only): the broadcast at 16:9, its badges, the Blackout button. */
+.on-air-screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+}
+.on-air-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--accent2);
+  background: rgb(0 0 0 / 0.7);
+  border: 1px solid var(--accent2);
+  border-radius: 4px;
+}
 /* Hidden placements and Labels, in the editor only: the Game Master sees them, faded. */
 .canvas-background.is-hidden,
 .canvas-overlay.is-hidden,

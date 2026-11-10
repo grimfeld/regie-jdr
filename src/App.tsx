@@ -5,6 +5,7 @@ import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
 import { MediaLibrary } from './MediaLibrary';
+import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
 import { showNotice } from './notices';
 
@@ -271,6 +272,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
         </section>
 
         <aside className="control-column">
+          <OnAirMonitor control={control} />
           <div className="panel">
             <div className="panel-heading">
               <div>
