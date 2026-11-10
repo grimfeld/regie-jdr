@@ -1,9 +1,12 @@
 name: CI
 
 on:
+  # Branches only: version tags run the same checks through release.yml.
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   check:
@@ -49,6 +52,7 @@ jobs:
           retention-days: 7
 
   # Windows minutes cost double on the private repo: only on main and on demand.
+  # (When release.yml calls this workflow the ref is a tag, so this job is skipped there.)
   windows-installer:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: check
@@ -57,26 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      # Unsigned x64 NSIS installer; the afterPack hook (build/fuses.mjs) flips the Electron fuses.
-      - name: Build installer
-        run: npm run package:win -- --publish never
-
-      - name: Check fuses on the packaged app
-        shell: bash
-        run: |
-          node --input-type=module -e "
-            import { FuseState, FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
-            const wire = await getCurrentFuseWire('release/win-unpacked/Regie JDR.exe');
-            if (wire[FuseV1Options.RunAsNode] !== FuseState.DISABLE) throw new Error('RunAsNode fuse is not disabled');
-            console.log('RunAsNode fuse disabled');
-          "
+      - uses: ./.github/actions/windows-installer
 
       - name: Upload installer
         uses: actions/upload-artifact@v5

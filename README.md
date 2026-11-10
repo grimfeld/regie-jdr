@@ -18,6 +18,14 @@ npm run package:win
 L’installateur NSIS sera créé dans le dossier `release/`. Le projet doit être construit sur Windows pour produire et valider l’installeur Windows.
 La CI le construit aussi sur `main` et à la demande (artefact `windows-installer`). Vérification avant diffusion : `docs/install-checklist.md`.
 
+## Publier une version
+```bash
+npm run release -- 0.1.0              # version exacte, ou patch / minor / major
+npm run release -- 0.2.0 --dry-run    # affiche les commandes sans rien modifier
+```
+À lancer depuis `main` propre et à jour. Le script met la version dans `package.json` (commit `Release vX.Y.Z`), crée le tag `vX.Y.Z` et pousse `main` puis le tag.
+Le tag `vX.Y.Z` déclenche `.github/workflows/release.yml` : vérification que le tag correspond à `package.json`, tests complets, construction de l’installeur Windows, puis Release GitHub avec `Regie-JDR-Setup-X.Y.Z.exe`. Un tag avec suffixe (`v0.2.0-beta.1`) est publié en pré-version.
+
 ## Lancer en développement
 ```bash
 npm run electron:dev

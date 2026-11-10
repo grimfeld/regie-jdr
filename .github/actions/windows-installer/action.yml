@@ -1,0 +1,28 @@
+name: Build Windows installer
+description: Build the unsigned x64 NSIS installer and check the Electron fuses on the packaged app.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 22
+        cache: npm
+
+    - shell: bash
+      run: npm ci
+
+    # Unsigned x64 NSIS installer; the afterPack hook (build/fuses.mjs) flips the Electron fuses.
+    - name: Build installer
+      shell: bash
+      run: npm run package:win -- --publish never
+
+    - name: Check fuses on the packaged app
+      shell: bash
+      run: |
+        node --input-type=module -e "
+          import { FuseState, FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
+          const wire = await getCurrentFuseWire('release/win-unpacked/Regie JDR.exe');
+          if (wire[FuseV1Options.RunAsNode] !== FuseState.DISABLE) throw new Error('RunAsNode fuse is not disabled');
+          console.log('RunAsNode fuse disabled');
+        "

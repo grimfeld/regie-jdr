@@ -31,6 +31,11 @@ Turning an Export back into a Campaign. It always creates a new Campaign and nev
 UI: Importer
 _Avoid_: Restore, load
 
+**Theme**:
+The look of the Control window and the home page: Rétro SF, Imperium or Fantasy. Each Campaign has one (a new Campaign takes the home page's); the home page uses the global one. It never reaches the Broadcast window, the editor canvas or the On-air monitor.
+UI: Thème
+_Avoid_: Skin, palette, style
+
 ## Media
 
 **Media**:
@@ -78,6 +83,11 @@ _Avoid_: Ambient sound, loop, background sound, Sound effect (that is one-shot)
 A reusable, saved audiovisual setup in a Campaign: stacked Backgrounds, Overlays, Music, Ambiences, volumes and private notes.
 UI: Scène
 _Avoid_: Setup, preset, layout
+
+**Chapter**:
+A named, collapsible group of Scenes in a Campaign's running order. One level only; a Scene may sit outside any Chapter. Deleting a Chapter keeps its Scenes.
+UI: Chapitre
+_Avoid_: Folder, act, session, group
 
 **Notes**:
 The Game Master's private rich text on a Scene, which may include images. Never shown to players.
