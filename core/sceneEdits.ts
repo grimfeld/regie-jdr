@@ -223,8 +223,8 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
     case 'frame-background':
       return withBackground(scene, edit.placementId, (item) => ({
         ...item,
-        zoom: clampZoom(edit.zoom),
-        focus: { ...edit.focus },
+        zoom: edit.zoom === undefined ? item.zoom : clampZoom(edit.zoom),
+        focus: { x: edit.focus?.x ?? item.focus.x, y: edit.focus?.y ?? item.focus.y },
       }));
     case 'rename':
       return { ...scene, name: cleanSceneName(edit.name) };
@@ -296,11 +296,22 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
     }
     case 'frame-background': {
       const { placementId, zoom, focus } = value;
-      if (!isId(placementId) || typeof zoom !== 'number' || !Number.isFinite(zoom)) {
-        return undefined;
+      if (!isId(placementId)) return undefined;
+      const edit: Extract<SceneEdit, { kind: 'frame-background' }> = {
+        kind: 'frame-background',
+        placementId,
+      };
+      if (zoom !== undefined) {
+        if (typeof zoom !== 'number' || !Number.isFinite(zoom)) return undefined;
+        edit.zoom = zoom;
       }
-      if (!isRecord(focus) || !isUnit(focus.x) || !isUnit(focus.y)) return undefined;
-      return { kind: 'frame-background', placementId, zoom, focus: { x: focus.x, y: focus.y } };
+      if (focus !== undefined) {
+        if (!isRecord(focus)) return undefined;
+        const { x, y } = focus;
+        if ((x !== undefined && !isUnit(x)) || (y !== undefined && !isUnit(y))) return undefined;
+        edit.focus = { ...(x === undefined ? {} : { x }), ...(y === undefined ? {} : { y }) };
+      }
+      return edit;
     }
     case 'rename':
       if (!isText(value.name)) return undefined;

@@ -2,6 +2,7 @@ import { useState, type DragEvent, type ReactNode } from 'react';
 import { Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { SceneEdit } from '../shared/contract';
 import type { ImageMedia, MediaId, Scene } from '../shared/domain';
+import { BackgroundControls } from './BackgroundControls';
 import { carriesMedia } from './mediaDrag';
 import { LabelControls } from './PlayerTextFields';
 
@@ -54,25 +55,39 @@ function mediaName(images: readonly ImageMedia[], mediaId: MediaId): string {
 }
 
 /**
- * The Selected Scene's Backgrounds, bottom of the stack first, each with show/hide and remove.
+ * The Selected Scene's Backgrounds, top of the stack first (as in a layer panel: a row covers
+ * the rows below it), each with show/hide, its place in the stack, its fit, and remove.
  * Dropping a library image here places it as a Background, whatever its Image category.
  */
 export function BackgroundList({ scene, images, onEdit, onDrop }: ListProps) {
+  const count = scene.backgrounds.length;
+  const topFirst = scene.backgrounds.map((background, index) => ({ background, index })).reverse();
   return (
     <PlacementList
       title="Arrière-plans"
       empty="Déposez une image ici pour l’ajouter en arrière-plan."
       onDrop={onDrop}
     >
-      {scene.backgrounds.map((background) => (
-        <PlacementRow
-          key={background.id}
-          name={mediaName(images, background.mediaId)}
-          visible={background.visible}
-          onEdit={onEdit}
-          placementId={background.id}
-        />
-      ))}
+      {topFirst.map(({ background, index }) => {
+        const name = mediaName(images, background.mediaId);
+        return (
+          <PlacementRow
+            key={background.id}
+            name={name}
+            visible={background.visible}
+            onEdit={onEdit}
+            placementId={background.id}
+          >
+            <BackgroundControls
+              background={background}
+              index={index}
+              count={count}
+              name={name}
+              onEdit={onEdit}
+            />
+          </PlacementRow>
+        );
+      })}
     </PlacementList>
   );
 }

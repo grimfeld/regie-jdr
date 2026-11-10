@@ -406,6 +406,17 @@ describe('Background stack and fit edits', () => {
     expect(tooClose.backgrounds[0].zoom).toBe(MIN_ZOOM);
   });
 
+  it('frame only what is given, keeping the rest of the framing as saved', () => {
+    const zoomed = applyAll(stacked, { kind: 'frame-background', placementId: 'p1', zoom: 3 });
+    expect(zoomed.backgrounds[0]).toMatchObject({ zoom: 3, focus: { x: 0.5, y: 0.5 } });
+    const panned = applyAll(
+      zoomed,
+      { kind: 'frame-background', placementId: 'p1', focus: { x: 0 } },
+      { kind: 'frame-background', placementId: 'p1', focus: { y: 1 } },
+    );
+    expect(panned.backgrounds[0]).toMatchObject({ zoom: 3, focus: { x: 0, y: 1 } });
+  });
+
   it('refuse to move or fit a Background that is not on the Scene, or an Overlay, in French', () => {
     const refused = 'Cet arrière-plan n’est plus sur la scène.';
     expect(() =>
@@ -437,6 +448,10 @@ describe('Background stack and fit edits', () => {
       { kind: 'frame-background', placementId: 'p1', zoom: 2, focus: { x: 0, y: 1, z: 3 } },
       { kind: 'frame-background', placementId: 'p1', zoom: 2, focus: { x: 0, y: 1 } },
     ],
+    [
+      { kind: 'frame-background', placementId: 'p1', focus: { y: 0.3 } },
+      { kind: 'frame-background', placementId: 'p1', focus: { y: 0.3 } },
+    ],
   ])('accept %o from a window, keeping only its fields', (value, expected) => {
     expect(parseSceneEdit(value)).toEqual(expected);
   });
@@ -459,7 +474,11 @@ describe('Background stack and fit edits', () => {
       'a focal point off the image',
       { kind: 'frame-background', placementId: 'p1', zoom: 1, focus: { x: 1.5, y: 0 } },
     ],
-    ['a framing with no focal point', { kind: 'frame-background', placementId: 'p1', zoom: 1 }],
+    [
+      'a focal point that is not an object',
+      { kind: 'frame-background', placementId: 'p1', focus: 0.5 },
+    ],
+    ['a framing naming no placement', { kind: 'frame-background', zoom: 1 }],
   ])('reject %s from a window', (_case, value) => {
     expect(parseSceneEdit(value)).toBeUndefined();
   });

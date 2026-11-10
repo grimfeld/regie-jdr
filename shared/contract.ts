@@ -44,8 +44,16 @@ export type SceneEdit =
   | { kind: 'move-background'; placementId: string; toIndex: number }
   /** Sets a Background to Cover or Contain, keeping its Cover zoom and focal point. */
   | { kind: 'set-background-fit'; placementId: string; fit: BackgroundFit }
-  /** Frames a Background in Cover: its zoom (kept within limits) and focal point. */
-  | { kind: 'frame-background'; placementId: string; zoom: number; focus: NormalizedPoint }
+  /**
+   * Frames a Background in Cover: sets its zoom (kept within limits) and either coordinate of
+   * its focal point, each only when given, so one slider never overwrites another's change.
+   */
+  | {
+      kind: 'frame-background';
+      placementId: string;
+      zoom?: number;
+      focus?: Partial<NormalizedPoint>;
+    }
   /** Renames the Scene (its private name; never shown to players). */
   | { kind: 'rename'; name: string }
   /**
