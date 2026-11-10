@@ -7,7 +7,7 @@
  *   <root>/campaigns/<campaignId>/campaign.json   Campaign (name, theme, timestamps)
  *   <root>/campaigns/<campaignId>/media.json      Media index (core/media.ts)
  *   <root>/campaigns/<campaignId>/media/          Media files, named <sha256><extension>
- *   <root>/campaigns/<campaignId>/...             Scenes... (later tickets)
+ *   <root>/campaigns/<campaignId>/scenes.json     Scenes (core/scenes.ts)
  *   <root>/settings.json                          global Settings (core/settings.ts)
  * Every document has a `<file>.bak` (previous good version) next to it once rewritten.
  */
