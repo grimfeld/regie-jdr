@@ -63,5 +63,5 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 ## Lint suppressions
 
 - A rule is changed only in `eslint.config.mjs`, scoped to the files that need it, with a comment saying why; the commit body says why too.
-- An inline `eslint-disable-next-line <rule> -- <reason>` is allowed only where the code cannot be written to satisfy the rule (a third-party type that is wrong, a platform API with no typed form), names one rule, and gives the reason. Never a file-wide or rule-less disable, never `@ts-ignore`; `@ts-expect-error -- <reason>` only under the same condition.
+- An inline `eslint-disable-next-line <rule> -- <reason>` is allowed only where the code cannot be written to satisfy the rule (a third-party type that is wrong, a platform API with no typed form), names one rule, and gives the reason _(lint)_. Never a file-wide or rule-less disable, nor a rule set in a comment (`/* eslint <rule>: off */`) _(lint)_; a disable that suppresses nothing is an error _(lint)_. Never `@ts-ignore`; `@ts-expect-error -- <reason>` only under the same condition.
 - A test is never skipped, deleted or loosened to get to green.

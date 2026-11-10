@@ -7,6 +7,45 @@ import tseslint from 'typescript-eslint';
 /** Core modules the Control and Broadcast windows may import: no Node or Electron inside. */
 const RENDERER_SAFE_CORE = ['onAir', 'mediaAddress', 'sceneEdits', 'canvas', 'guards'];
 
+/**
+ * Every lint suppression is one rule with a reason (CODING_STANDARDS.md, "Lint suppressions"):
+ * `eslint-disable-next-line <rule> -- <reason>` or `eslint-disable-line <rule> -- <reason>`.
+ * Block `eslint-disable` comments and inline rule settings (`/* eslint <rule>: off *\/`) are
+ * refused: a rule changes only in this file.
+ */
+const disableDirectives = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      block: 'No block eslint-disable: use eslint-disable-next-line <rule> -- <reason>.',
+      inlineConfig: 'Rules change only in eslint.config.mjs, not in a comment.',
+      noRule: 'Name the one rule this eslint-disable is for.',
+      noReason: 'Give the reason: eslint-disable-next-line <rule> -- <reason>.',
+    },
+  },
+  create(context) {
+    return {
+      Program() {
+        for (const comment of context.sourceCode.getAllComments()) {
+          const text = comment.value.trim();
+          const directive =
+            /^eslint(-disable-next-line|-disable-line|-disable|-enable)?(?=\s|$)/.exec(text);
+          if (!directive || directive[1] === '-enable') continue;
+          const report = (messageId) => context.report({ loc: comment.loc, messageId });
+          if (directive[1] === undefined) report('inlineConfig');
+          else if (directive[1] === '-disable') report('block');
+          else {
+            const [rules, reason] = text.slice(directive[0].length).split(/\s--(?:\s|$)/);
+            if (!rules?.trim()) report('noRule');
+            else if (!reason?.trim()) report('noReason');
+          }
+        }
+      },
+    };
+  },
+};
+
 const noElectronOrReact = [
   {
     name: 'electron',
@@ -31,6 +70,13 @@ export default tseslint.config(
   },
 
   js.configs.recommended,
+
+  // Suppressions: one rule, with a reason; an unneeded one is an error.
+  {
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
+    plugins: { local: { rules: { 'disable-directives': disableDirectives } } },
+    rules: { 'local/disable-directives': 'error' },
+  },
 
   // TypeScript: strict, type-aware rules everywhere.
   {
