@@ -193,6 +193,116 @@ button {
 .media-library:empty {
   display: none;
 }
+.sound-library {
+  margin-top: 12px;
+}
+/* The image library: a scrolling grid rendering only the rows near the visible area
+   (src/MediaLibrary.tsx sets its columns, row height and padding). */
+.image-library-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+.image-library-scroll.empty {
+  display: none;
+}
+.image-library {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.image-library .media-item {
+  min-height: 0;
+  overflow: hidden;
+}
+.image-library .asset-thumb {
+  height: 96px;
+  flex: none;
+}
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.library-filter {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.library-filter button {
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.library-filter button + button {
+  border-left: 1px solid var(--line);
+}
+.library-filter button.selected {
+  background: var(--panel2);
+  color: var(--text);
+}
+.library-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+}
+.library-search input {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  width: 200px;
+}
+.media-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.media-rename-button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.media-rename-button:hover,
+.media-rename-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.media-rename {
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
 .media-item {
   display: flex;
   flex-direction: column;

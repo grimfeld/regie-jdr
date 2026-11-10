@@ -3,13 +3,22 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { createCampaign, expect, fixture, launchApp, stubFilePicker, test } from './harness';
 
-/** The open Campaign's Media library. */
+/** The open Campaign's image library. */
 function library(page: Page) {
-  return page.getByRole('list', { name: 'Médias' });
+  return page.getByRole('list', { name: 'Images' });
 }
 
 function mediaItem(page: Page, name: string) {
   return library(page).getByRole('listitem').filter({ hasText: name });
+}
+
+/** The open Campaign's sounds, kept out of the image library. */
+function sounds(page: Page) {
+  return page.getByRole('list', { name: 'Sons' });
+}
+
+function soundItem(page: Page, name: string) {
+  return sounds(page).getByRole('listitem').filter({ hasText: name });
 }
 
 /** Writes a file to pick in the file picker (outside the Campaigns, removed with the test). */
@@ -156,17 +165,19 @@ test('audio gets the role chosen at import, which cannot be changed afterwards',
   await stubFilePicker(app, [await pickable(dataDir, 'Épée.wav', 'épée')]);
   await importSounds(controlWindow, 'Bruitage');
 
-  await expect(mediaItem(controlWindow, 'Pluie')).toContainText('Ambiance');
-  await expect(mediaItem(controlWindow, 'Taverne')).toContainText('Musique');
-  await expect(mediaItem(controlWindow, 'Épée')).toContainText('Bruitage');
+  await expect(soundItem(controlWindow, 'Pluie')).toContainText('Ambiance');
+  await expect(soundItem(controlWindow, 'Taverne')).toContainText('Musique');
+  await expect(soundItem(controlWindow, 'Épée')).toContainText('Bruitage');
   // A role is not a choice once imported: no control to change it.
-  await expect(mediaItem(controlWindow, 'Pluie').getByRole('combobox')).toHaveCount(0);
+  await expect(soundItem(controlWindow, 'Pluie').getByRole('combobox')).toHaveCount(0);
+  // Sounds are not in the image library.
+  await expect(library(controlWindow).getByRole('listitem')).toHaveCount(0);
 
   await app.close();
   const restarted = await launchApp(dataDir);
   try {
-    await expect(mediaItem(restarted.controlWindow, 'Pluie')).toContainText('Ambiance');
-    await expect(library(restarted.controlWindow).getByRole('listitem')).toHaveCount(3);
+    await expect(soundItem(restarted.controlWindow, 'Pluie')).toContainText('Ambiance');
+    await expect(sounds(restarted.controlWindow).getByRole('listitem')).toHaveCount(3);
   } finally {
     await restarted.app.close();
   }
@@ -180,8 +191,10 @@ test('Media addresses serve only the Campaign media files, with their content ty
   await stubFilePicker(app, [fixture('red-16x9.png')]);
   await importImages(controlWindow);
   const thumbnail = mediaItem(controlWindow, 'red-16x9').getByRole('img');
-  const address = (await thumbnail.getAttribute('src')) ?? '';
-  expect(address).toMatch(/^regie-media:\/\/media\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/);
+  const thumbnailAddress = (await thumbnail.getAttribute('src')) ?? '';
+  expect(thumbnailAddress).toMatch(/^regie-media:\/\/thumbnail\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/);
+  // The library shows thumbnails; the Media itself is at the same path on the media host.
+  const address = thumbnailAddress.replace('regie-media://thumbnail/', 'regie-media://media/');
 
   // Requested from the main process, as a window would (the page itself is a file:// origin).
   const responses = await app.evaluate(async ({ net }, url) => {

@@ -28,7 +28,7 @@ async function importImage({ app, controlWindow }: RunningApp) {
   await stubFilePicker(app, [fixture(`${IMAGE}.png`)]);
   await controlWindow.getByRole('button', { name: 'Importer des images' }).click();
   await expect(
-    controlWindow.getByRole('list', { name: 'Médias' }).getByRole('img', { name: IMAGE }),
+    controlWindow.getByRole('list', { name: 'Images' }).getByRole('img', { name: IMAGE }),
   ).toBeVisible();
 }
 

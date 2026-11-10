@@ -35,6 +35,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'onOnAirChanged',
     'openBroadcast',
     'openCampaign',
+    'renameMedia',
     'setBlackout',
     'setHomeTheme',
     'setImageCategory',

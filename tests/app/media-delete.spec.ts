@@ -14,7 +14,7 @@ import {
 const IMAGE = 'red-16x9';
 
 function library(page: Page) {
-  return page.getByRole('list', { name: 'Médias' });
+  return page.getByRole('list', { name: 'Images' });
 }
 
 function scenesPanel(page: Page) {

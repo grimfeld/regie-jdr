@@ -242,7 +242,10 @@ interface CampaignScreenProps {
 /** The screen of the open Campaign: its Scenes, its Media library and its theme. */
 function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProps) {
   const theme = campaign.theme;
-  /** Bumped when a Media is deleted: the Scenes panel reloads (placements may be gone). */
+  /**
+   * Bumped when a Media is deleted or renamed: the Scenes panel reloads (placements may be gone,
+   * names may have changed).
+   */
   const [mediaRevision, setMediaRevision] = useState(0);
 
   const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
@@ -268,6 +271,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             campaignId={campaign.id}
             control={control}
             onMediaDeleted={() => setMediaRevision((revision) => revision + 1)}
+            onMediaRenamed={() => setMediaRevision((revision) => revision + 1)}
           />
         </section>
 
