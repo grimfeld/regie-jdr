@@ -199,6 +199,8 @@ test('placing, showing and removing on a Scene that is not active leaves the bro
   await createScene(controlWindow, 'Hangar');
   await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
   await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  // The list reads front first: wait for the second Overlay's row before picking rows.
+  await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(2);
   await toggle(overlayList(controlWindow), 0).check();
   await expect(toggle(overlayList(controlWindow), 0)).toBeChecked();
   await overlayList(controlWindow)
