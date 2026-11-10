@@ -56,23 +56,27 @@ test('a window message refused by the main process comes back typed and shows a 
 
   // Stand for a bug in the interface: a malformed call through the Control window's own bridge.
   const failure = await controlWindow.evaluate(() => {
-    const bridge = (window as unknown as { regie: { setDisplay(display: unknown): Promise<void> } })
+    const bridge = (window as unknown as { regie: { openCampaign(id: unknown): Promise<unknown> } })
       .regie;
     // Once fire-and-forget, as a careless caller would; once observed, to see what comes back.
-    void bridge.setDisplay({ title: 42 });
-    return bridge.setDisplay({ title: 42 }).then(
+    void bridge.openCampaign(42);
+    return bridge.openCampaign(42).then(
       () => 'accepted',
       (reason: unknown) => reason,
     );
   });
 
-  expect(failure).toMatchObject({ kind: 'ipc-failure', code: 'rejected', channel: 'display:set' });
+  expect(failure).toMatchObject({
+    kind: 'ipc-failure',
+    code: 'rejected',
+    channel: 'onAir:open-campaign',
+  });
   await expect(controlWindow.getByRole('alert')).toContainText(
     "L'application a refusé cette demande.",
   );
   await expect
     .poll(() => logFile(dataDir))
-    .toMatch(/WARN IPC message rejected: malformed payload for "display:set"/);
+    .toMatch(/WARN IPC message rejected: malformed payload for "onAir:open-campaign"/);
 });
 
 test('an unhandled rejection in the main process is logged and the app keeps working', async ({
@@ -95,22 +99,24 @@ test('an interface error shows a recoverable message instead of a blank window',
   regie,
 }) => {
   const { app, controlWindow, dataDir } = regie;
-  await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('La taverne');
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText('La taverne');
+  const stage = broadcastWindow.locator('main.stage-screen');
+  await expect(stage).toHaveAttribute('data-version', '0');
 
   // Stand for a bug: the main process sends the Broadcast window something it cannot render.
   await app.evaluate(({ BrowserWindow }) => {
-    const stage = BrowserWindow.getAllWindows().find((window) =>
+    const broadcast = BrowserWindow.getAllWindows().find((window) =>
       window.webContents.getURL().includes('view=stage'),
     );
-    stage?.webContents.send('display:changed', null);
+    broadcast?.webContents.send('onAir:changed', null);
   });
 
   const message = broadcastWindow.getByRole('alert');
   await expect(message).toContainText('Un problème est survenu dans cette fenêtre.');
+  await expect(stage).toBeHidden();
   await expect.poll(() => logFile(dataDir)).toMatch(/ERROR Window error: Interface error: /);
 
   await message.getByRole('button', { name: 'Réessayer' }).click();
-  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText('La taverne');
+  await expect(stage).toHaveAttribute('data-version', '0');
+  await expect(message).toBeHidden();
 });

@@ -29,7 +29,7 @@ const failurePrefix: Record<IpcFailureCode, string> = {
  * Registers every channel of the contract on ipcMain. Each message goes through the sender
  * policy and payload guards of core/ipc.ts first; rejects are logged as warnings and the
  * caller's promise fails with an error mentioning "rejected". A handler that throws is logged
- * with its details, which stay in the main process: the caller only learns the call failed.
+ * with its stack, which stays in the main process: the caller gets the error's message only.
  */
 export function registerHandlers(
   handlers: Handlers,
@@ -50,7 +50,8 @@ export function registerHandlers(
       } catch (error) {
         const message = `${failurePrefix.failed}: "${channel}"`;
         log.error(message, error);
-        throw new Error(message);
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`${message}: ${reason}`);
       }
     });
   }
