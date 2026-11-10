@@ -15,15 +15,16 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { MediaImportKind, MediaImportResult } from '../shared/contract.js';
 import type { AudioRole, CampaignId, ImageCategory, Media, MediaId } from '../shared/domain.js';
+import { CampaignError } from './campaigns.js';
+import { isRecord } from './guards.js';
 import {
   isMediaExtension,
   MEDIA_FILE_TYPES,
   mediaFileName,
   parseMediaAddress,
 } from './mediaAddress.js';
-import type { DocumentType, Storage } from './storage/index.js';
-import { isRecord } from './guards.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
+import type { DocumentType, Storage } from './storage/index.js';
 
 export class MediaError extends Error {}
 
@@ -139,7 +140,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
 
   async function campaignFolder(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {
-      throw new MediaError('Cette campagne n’existe plus.');
+      throw new CampaignError('Cette campagne n’existe plus.');
     }
     return storage.campaignFolder(campaignId);
   }

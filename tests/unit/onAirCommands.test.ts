@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCampaign } from '../../core/campaigns';
+import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
@@ -150,6 +150,7 @@ describe('on-air commands', () => {
     await expect(ctx.commands.openCampaign('inconnue')).rejects.toThrow(
       'Cette campagne n’existe plus.',
     );
+    await expect(ctx.commands.openCampaign('inconnue')).rejects.toBeInstanceOf(CampaignError);
     await expect(ctx.commands.activateScene(scene.id)).rejects.toThrow(
       'Ouvrez une campagne avant d’activer une scène.',
     );

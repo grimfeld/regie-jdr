@@ -8,11 +8,12 @@
  */
 import type { MediaDeletion } from '../shared/contract.js';
 import type { CampaignId, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
+import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
 import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
-import type { CampaignRepository } from './storage/index.js';
 import { createSerialQueue } from './serialQueue.js';
+import type { CampaignRepository } from './storage/index.js';
 
 /** Where audio plays. No audio engine yet: stopping is announced to the windows. */
 export interface AudioOutput {
@@ -58,7 +59,7 @@ export function createOnAirCommands(deps: {
     openCampaign: (campaignId) =>
       serialized(async () => {
         if (!(await campaigns.get(campaignId))) {
-          throw new SceneError('Cette campagne n’existe plus.');
+          throw new CampaignError('Cette campagne n’existe plus.');
         }
         audio.halt();
         return onAir.openCampaign(campaignId);

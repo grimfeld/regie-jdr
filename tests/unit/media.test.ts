@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCampaign } from '../../core/campaigns';
+import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
 import { mediaAddress } from '../../core/mediaAddress';
 import { openStorage } from '../../core/storage';
@@ -247,6 +247,7 @@ describe('media library', () => {
     await expect(
       library.import('inconnue', [await sourceFile('Cantina.png')], { accept: 'image' }),
     ).rejects.toThrow('Cette campagne n’existe plus.');
+    await expect(library.list('inconnue')).rejects.toBeInstanceOf(CampaignError);
   });
 
   it('keeps every Media when imports into a Campaign overlap', async () => {

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCampaign } from '../../core/campaigns';
+import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createSceneLibrary, parseScene } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { Scene } from '../../shared/domain';
@@ -120,6 +120,7 @@ describe('scene library', () => {
     await expect(scenes.create(campaign.id, '   ')).rejects.toThrow('Donnez un nom à la scène.');
     await expect(scenes.create('inconnue', 'X')).rejects.toThrow('Cette campagne n’existe plus.');
     await expect(scenes.list('inconnue')).rejects.toThrow('Cette campagne n’existe plus.');
+    await expect(scenes.list('inconnue')).rejects.toBeInstanceOf(CampaignError);
   });
 
   it('refuses to save a Scene that does not exist', async () => {

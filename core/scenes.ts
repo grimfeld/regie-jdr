@@ -18,9 +18,10 @@ import type {
   SceneAmbience,
   SceneId,
 } from '../shared/domain.js';
+import { CampaignError } from './campaigns.js';
+import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
-import { createKeyedSerialQueue } from './serialQueue.js';
 
 export class SceneError extends Error {}
 
@@ -178,7 +179,7 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
 
   async function fileOf(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {
-      throw new SceneError('Cette campagne n’existe plus.');
+      throw new CampaignError('Cette campagne n’existe plus.');
     }
     return path.join(storage.campaignFolder(campaignId), SCENES_FILE);
   }
