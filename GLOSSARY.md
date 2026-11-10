@@ -29,7 +29,7 @@ UI: Médias
 _Avoid_: Asset, file, resource
 
 **Image category**:
-The label on an image Media saying how the Game Master intends to use it: Scenery or Character. It filters the library and can be changed at any time; it does not restrict where the image may be placed.
+The label on an image Media saying how the Game Master intends to use it: Scenery, Character or Reference. It filters the library and can be changed at any time; it does not restrict where the image may be placed.
 _Avoid_: Image type, kind
 
 **Scenery**:
@@ -41,6 +41,11 @@ _Avoid_: Background (that is the placement), backdrop, map, wallpaper
 An image Media categorised as a figure to appear over the setting: NPC, ally, enemy, creature. Usually placed as an Overlay.
 UI: Personnage
 _Avoid_: Token, sprite, portrait, creature
+
+**Reference**:
+An image Media categorised as material for the Game Master's eyes: stat block, secret map, screenshot. Usually shown in Notes. Images added through Notes start in this category.
+UI: Référence
+_Avoid_: Handout (that would be shown to players), attachment, document
 
 **Music**:
 An audio Media meant as the atmosphere track. Its role is fixed at import. A Scene may list several; only one plays at a time, looping until switched.
@@ -63,6 +68,11 @@ _Avoid_: Ambient sound, loop, background sound, Sound effect (that is one-shot)
 A reusable, saved audiovisual setup in a Campaign: stacked Backgrounds, Overlays, Music, Ambiences, volumes and private notes.
 UI: Scène
 _Avoid_: Setup, preset, layout
+
+**Notes**:
+The Game Master's private rich text on a Scene, which may include images. Never shown to players.
+UI: Notes
+_Avoid_: Description, comments, script
 
 **Scene title**:
 An optional player-facing title of a Scene, shown discreetly on the broadcast. Separate from the Scene's name, which stays private.
@@ -122,3 +132,8 @@ _Avoid_: Sound panel, SFX board, pads
 Put a Scene on air, making it the Active Scene.
 UI: Activer
 _Avoid_: Take, load, go live, show
+
+**Transition**:
+How the picture changes from the outgoing Scene to the incoming one when a Scene is Activated: Crossfade (one dissolves into the other) or Cut (instant).
+UI: Transition
+_Avoid_: Fade (that is showing or hiding a placement), effect, wipe
