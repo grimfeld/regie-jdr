@@ -7,6 +7,7 @@ import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { createOnAir } from '../core/onAir.js';
@@ -256,7 +257,7 @@ function startApp() {
   });
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
-  const library = createMediaLibrary(storage);
+  const library = createMediaLibrary(storage, electronImageResizer);
   const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
   // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
@@ -306,6 +307,7 @@ function startApp() {
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
+      'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
       'media:delete': ({ campaignId, mediaId, confirmed }) =>
         commands.deleteMedia(campaignId, mediaId, confirmed),
       'campaigns:list': () => storage.campaigns.list(),

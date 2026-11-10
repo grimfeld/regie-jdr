@@ -5,6 +5,7 @@
  * On disk, in the Campaign's folder:
  *   media/<sha256><extension>   the files, named by content hash (one copy per content)
  *   media.json                  the Media index ({ media: Media[] }, versioned document)
+ *   thumbnails/<sha256>.png     library thumbnails of the images (core/thumbnails.ts)
  *
  * Deduplication is per Campaign: the same file imported into two Campaigns is stored in both.
  * Errors meant for the Game Master are MediaError with a French message.
@@ -33,6 +34,7 @@ import {
   parseMediaAddress,
 } from './mediaAddress.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
+import { createThumbnails, type ImageResizer } from './thumbnails.js';
 import type { DocumentType, Storage } from './storage/index.js';
 
 export class MediaError extends Error {}
@@ -52,16 +54,23 @@ export interface MediaLibrary {
     category: ImageCategory,
   ): Promise<Media>;
   /**
-   * Removes a Media from the library and deletes its file. Scenes are not touched: removing
+   * Changes the name a Media is shown under. Its original file name is kept. Fails with a
+   * French message for an empty or too long name.
+   */
+  rename(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  /**
+   * Removes a Media from the library and deletes its file and thumbnail. Scenes are not touched: removing
    * their placements first is the caller's job (core/onAirCommands.ts).
    */
   delete(campaignId: CampaignId, mediaId: MediaId): Promise<void>;
   /** Files in the Campaign's media folder that no Media refers to (file names). */
   listOrphanFiles(campaignId: CampaignId): Promise<string[]>;
   /**
-   * The file and content type a Media address serves, or undefined (a 404) when the address
-   * is malformed, its Campaign is not the open Campaign (`openCampaignId`, null when none is
-   * open), its file does not exist, or it points outside the media folder.
+   * The file and content type a Media or thumbnail address serves, or undefined (a 404) when
+   * the address is malformed, its Campaign is not the open Campaign (`openCampaignId`, null when
+   * none is open), its Media file does not exist, or it points outside the media folder.
+   * A missing thumbnail of an existing image is made again first; that throws when the image
+   * cannot be decoded.
    */
   resolveAddress(
     url: string,
@@ -78,6 +87,21 @@ export function isImageCategory(value: unknown): value is ImageCategory {
 
 export function isAudioRole(value: unknown): value is AudioRole {
   return typeof value === 'string' && (AUDIO_ROLES as readonly string[]).includes(value);
+}
+
+/** Longest Media name; longer ones are refused. */
+export const MAX_MEDIA_NAME_LENGTH = 100;
+
+/** A Media name as stored: trimmed. Throws a MediaError for an empty or too long one. */
+export function validateMediaName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed === '') throw new MediaError('Le nom du média ne peut pas être vide.');
+  if (trimmed.length > MAX_MEDIA_NAME_LENGTH) {
+    throw new MediaError(
+      `Le nom du média est trop long (${MAX_MEDIA_NAME_LENGTH} caractères au plus).`,
+    );
+  }
+  return trimmed;
 }
 
 /** Category of a newly imported image, until the Game Master changes it. */
@@ -177,9 +201,20 @@ async function storeFile(source: string, mediaFolder: string, media: Media): Pro
   await fsp.rename(partial, target);
 }
 
-export function createMediaLibrary(storage: Storage): MediaLibrary {
+/** `resizer` makes the library thumbnails (core/thumbnails.ts). */
+export function createMediaLibrary(storage: Storage, resizer: ImageResizer): MediaLibrary {
   /** Serializes the read-modify-write of each Campaign's index. */
   const serialized = createKeyedSerialQueue<CampaignId>();
+  const thumbnails = createThumbnails(resizer);
+
+  /**
+   * Makes an imported image's thumbnail if it is missing. A failure does not fail the import:
+   * the thumbnail is made again when the library asks for it, and that failure is logged.
+   */
+  async function prepareThumbnail(folder: string, media: Media): Promise<void> {
+    if (media.kind !== 'image') return;
+    await thumbnails.ensure(folder, media).catch(() => undefined);
+  }
 
   async function campaignFolder(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {
@@ -231,6 +266,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
           if (existing) {
             // Same content again: no second Media. Puts its file back if it went missing.
             await storeFile(source, mediaFolder, existing);
+            await prepareThumbnail(folder, existing);
             result.imported.push(existing);
             continue;
           }
@@ -245,6 +281,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
           };
           const media = { ...base, ...rules.defaults(kind) } as Media;
           await storeFile(source, mediaFolder, media);
+          await prepareThumbnail(folder, media);
           library.push(media);
           result.imported.push(media);
           changed = true;
@@ -273,6 +310,20 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
       });
     },
 
+    rename(campaignId, mediaId, name) {
+      return serialized(campaignId, async () => {
+        const validName = validateMediaName(name);
+        const folder = await campaignFolder(campaignId);
+        const library = await readIndex(folder, campaignId);
+        const index = library.findIndex((media) => media.id === mediaId);
+        if (index < 0) throw new MediaError('Ce média n’existe plus.');
+        const updated: Media = { ...library[index], name: validName };
+        library[index] = updated;
+        await writeIndex(folder, library);
+        return updated;
+      });
+    },
+
     delete(campaignId, mediaId) {
       return serialized(campaignId, async () => {
         const folder = await campaignFolder(campaignId);
@@ -286,6 +337,7 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
           library.filter((item) => item.id !== mediaId),
         );
         await fsp.rm(path.join(folder, MEDIA_FOLDER, mediaFileName(media)), { force: true });
+        await thumbnails.remove(folder, media);
       });
     },
 
@@ -314,9 +366,16 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
       } catch {
         return undefined;
       }
+      const type = MEDIA_FILE_TYPES[address.extension];
+      if (address.thumbnail) {
+        if (type.kind !== 'image') return undefined;
+        const contentHash = address.fileName.slice(0, -address.extension.length);
+        const file = await thumbnails.ensure(folder, { contentHash, extension: address.extension });
+        return file === undefined ? undefined : { file, mimeType: 'image/png' };
+      }
       const file = path.join(folder, MEDIA_FOLDER, address.fileName);
       if (!(await exists(file))) return undefined;
-      return { file, mimeType: MEDIA_FILE_TYPES[address.extension].mimeType };
+      return { file, mimeType: type.mimeType };
     },
   };
 }

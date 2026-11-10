@@ -114,6 +114,14 @@ export interface InvokeChannels {
     result: Media;
   };
   /**
+   * Rename a Media: changes the name it is shown under; its original file name is kept. Fails
+   * with a French message for an empty or too long name.
+   */
+  'media:rename': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; name: string };
+    result: Media;
+  };
+  /**
    * Delete a Media. Unused Media is deleted at once. Media that Scenes use is deleted only
    * when `confirmed`; otherwise nothing changes and the result lists the Scenes using it.
    */
@@ -200,6 +208,7 @@ export interface ControlBridge extends BroadcastBridge {
     mediaId: MediaId,
     category: ImageCategory,
   ): Promise<Media>;
+  renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;

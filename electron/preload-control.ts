@@ -59,6 +59,7 @@ const bridge: ControlBridge = {
   importMedia: (campaignId, kind) => invoke('media:import', { campaignId, ...kind }),
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),
+  renameMedia: (campaignId, mediaId, name) => invoke('media:rename', { campaignId, mediaId, name }),
   deleteMedia: (campaignId, mediaId, confirmed) =>
     invoke('media:delete', { campaignId, mediaId, confirmed }),
   listCampaigns: () => invoke('campaigns:list'),

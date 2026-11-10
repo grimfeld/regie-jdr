@@ -146,6 +146,7 @@ describe('Media channels', () => {
       ['media:list', [{ campaignId }]],
       ['media:import', [{ campaignId, accept: 'image' }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
+      ['media:rename', [{ campaignId, mediaId, name: 'Port de nuit' }]],
       ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -170,6 +171,14 @@ describe('Media channels', () => {
         { campaignId, mediaId, category: 'scenery', role: 'music' },
       ]),
     ).toEqual({ ok: true, payload: { campaignId, mediaId, category: 'scenery' } });
+  });
+
+  it('accept a rename, keeping only contract fields', () => {
+    expect(
+      checkInvoke('media:rename', 'control', [
+        { campaignId, mediaId, name: 'Port de nuit', originalName: 'x' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, name: 'Port de nuit' } });
   });
 
   it('accept a delete, confirmed or not, keeping only contract fields', () => {
@@ -201,6 +210,14 @@ describe('Media channels', () => {
     ],
     ['an unknown category', 'media:set-category', [{ campaignId, mediaId, category: 'creature' }]],
     ['no Media id', 'media:set-category', [{ campaignId, category: 'scenery' }]],
+    ['a rename with no name', 'media:rename', [{ campaignId, mediaId }]],
+    ['a rename with a name that is not text', 'media:rename', [{ campaignId, mediaId, name: 7 }]],
+    ['a rename with no Media id', 'media:rename', [{ campaignId, name: 'Orc' }]],
+    [
+      'a rename with a huge name',
+      'media:rename',
+      [{ campaignId, mediaId, name: 'x'.repeat(5000) }],
+    ],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });

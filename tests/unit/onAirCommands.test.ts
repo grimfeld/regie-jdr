@@ -9,6 +9,7 @@ import { createSceneLibrary } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
 import type { OnAirState } from '../../shared/domain';
+import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
 // SHA-256 of the three bytes "abc" (FIPS 180-2 test vector).
@@ -19,7 +20,7 @@ describe('on-air commands', () => {
 
   async function setup() {
     const storage = openStorage(path.join(dir.path, 'data'));
-    const library = createMediaLibrary(storage);
+    const library = createMediaLibrary(storage, fakeResizer().resizer);
     const scenes = createSceneLibrary(storage);
     const onAir = createOnAir();
     const broadcast: OnAirState[] = [];
