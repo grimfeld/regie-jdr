@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
+import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import type { BroadcastDisplay, ImportedImage } from '../shared/contract.js';
 
@@ -15,6 +16,9 @@ let currentDisplay: BroadcastDisplay = { title: 'Le sanctuaire oublié', backgro
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
 if (process.env.REGIE_USER_DATA_DIR) app.setPath('userData', process.env.REGIE_USER_DATA_DIR);
+
+// Failures are logged to <userData>/logs/regie.log and no longer kill the app (electron/logging.ts).
+installErrorLogging();
 
 // Imported images are served via a custom scheme: file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
@@ -137,7 +141,7 @@ function startApp() {
       'media:import-images': importImages
     },
     roleOf,
-    (message) => console.warn(message)
+    log
   );
   createControlWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createControlWindow(); });

@@ -25,8 +25,8 @@ export interface FileLoggerOptions {
   maxFileBytes?: number;
   /** Files kept, the current one included: regie.log, regie.1.log, … Default 3. */
   maxFiles?: number;
-  /** Also called with every entry, e.g. to echo it to the console. */
-  echo?: (level: LogLevel, entry: string) => void;
+  /** Also called with every entry (message and detail, no timestamp), e.g. for the console. */
+  echo?: (level: LogLevel, text: string) => void;
 }
 
 const BASE_NAME = 'regie';
@@ -54,10 +54,10 @@ export function createFileLogger(options: FileLoggerOptions): Logger {
   }
 
   function write(level: LogLevel, message: string, detail: unknown) {
-    let entry = `${new Date().toISOString()} ${level.toUpperCase()} ${message}`;
-    if (detail !== undefined) entry += `\n  ${describe(detail).replace(/\n/g, '\n  ')}`;
-    echo?.(level, entry);
-    let line = `${entry}\n`;
+    let text = message;
+    if (detail !== undefined) text += `\n  ${describe(detail).replace(/\n/g, '\n  ')}`;
+    echo?.(level, text);
+    let line = `${new Date().toISOString()} ${level.toUpperCase()} ${text}\n`;
     // An entry never exceeds a whole file, so the folder stays bounded whatever is logged.
     if (Buffer.byteLength(line) > maxFileBytes) {
       line = `${Buffer.from(line)

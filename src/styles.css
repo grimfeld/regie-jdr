@@ -585,6 +585,58 @@ button {
   --text: #eee4d2;
   --muted: #b1a18c;
 }
+/* Errors: short notices (src/notices.tsx) and the error boundary (src/ErrorBoundary.tsx). */
+.notices {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+}
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--panel2);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.notice button {
+  flex: none;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.error-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
+}
+.error-screen h1 {
+  margin: 0;
+  font-size: 22px;
+}
+.error-screen p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
 @media (max-width: 1150px) {
   .workspace {
     grid-template-columns: 1fr;
