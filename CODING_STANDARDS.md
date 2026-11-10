@@ -20,7 +20,8 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 - Every message between a window and the main process is a channel in `shared/contract.ts`. Adding one follows the checklist at the top of `core/ipc.ts` (contract, rule, handler, preload, bridge); the compiler refuses a channel missing a rule or a handler.
 - Every payload from a window is untrusted: its rule parses it with a guard that keeps only the contract's fields. Mutations are `controlOnly`; the Broadcast window only reads and subscribes.
 - Windows reach the main process only through `window.regie`, never `electron` _(lint)_.
-- The broadcast stays a projection: what the Broadcast window receives (`OnAirState`) carries only what the players may see.
+- The broadcast stays a projection: what the Broadcast window receives (`OnAirState`) carries only what the players may see. A new field on a Scene, a placement, a Label or the on-air types fails `tests/unit/broadcastProjection.test.ts` until its allow-list says whether it goes on air.
+- The Broadcast window may call only the channels its bridge (`electron/preload-broadcast.ts`) calls, all reads; `tests/unit/bridges.test.ts` checks the sender rules against both bridges.
 
 ## Untrusted data
 
@@ -45,6 +46,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 ## Language and naming
 
 - UI text, notices and error messages meant for the Game Master are French. Code, comments, log messages, test names and commits are English.
+- `tests/unit/uiText.test.ts` flags common English words in the text a window shows (JSX text, text attributes, notices, other prose strings); a new English word it should catch goes on its list. It is a tripwire, not a proof: review still checks the wording.
 - Names use the glossary's terms (Campaign, Scene, Active Scene, Selected Scene, Background, Overlay, Media, …), in code, tests and commits. A concept missing from the glossary is a question for `/domain-modeling`, not a new synonym.
 
 ## Types
