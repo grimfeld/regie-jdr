@@ -1,13 +1,11 @@
-export {};
+import type { BroadcastBridge, ControlBridge } from '../shared/contract';
 
 declare global {
   interface Window {
-    regie?: {
-      openStage: () => Promise<boolean>;
-      importImages: () => Promise<{ name: string; url: string }[]>;
-      updateScene: (scene: unknown) => void;
-      onSceneUpdated: (callback: (scene: unknown) => void) => void;
-      toggleStageFullscreen: () => void;
-    };
+    /**
+     * Bridge exposed by the window's preload: ControlBridge in the Control window,
+     * BroadcastBridge in the Broadcast window. Absent outside Electron.
+     */
+    regie?: ControlBridge | BroadcastBridge;
   }
 }

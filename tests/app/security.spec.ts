@@ -1,13 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
-import { expect, test } from './harness';
-
-async function openBroadcastWindow(app: ElectronApplication, controlWindow: Page): Promise<Page> {
-  const broadcastOpened = app.waitForEvent('window');
-  await controlWindow.getByRole('button', { name: 'Ouvrir la diffusion' }).click();
-  const broadcastWindow = await broadcastOpened;
-  await broadcastWindow.waitForLoadState('domcontentloaded');
-  return broadcastWindow;
-}
+import { expect, openBroadcastWindow, test } from './harness';
 
 test('both windows are sandboxed, context-isolated and without Node integration', async ({
   regie,

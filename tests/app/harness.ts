@@ -18,6 +18,8 @@ export type RunningApp = {
   failedRequests: string[];
   /** Content security policy violations reported in any window's console. */
   cspViolations: string[];
+  /** Main-process console messages, as "<type>: <text>". */
+  mainLog: string[];
   /** The Control window (the first window the app opens). */
   controlWindow: Page;
 };
@@ -26,7 +28,9 @@ export type RunningApp = {
 export async function launchApp(dataDir: string): Promise<RunningApp> {
   const failedRequests: string[] = [];
   const cspViolations: string[] = [];
+  const mainLog: string[] = [];
   const app = await electron.launch({ args: [repoRoot], env: appEnv(dataDir) });
+  app.on('console', (message) => mainLog.push(`${message.type()}: ${message.text()}`));
   const watch = (page: Page) => {
     page.on('requestfailed', (request) =>
       failedRequests.push(`${request.url()} (${request.failure()?.errorText})`),
@@ -39,7 +43,7 @@ export async function launchApp(dataDir: string): Promise<RunningApp> {
   app.on('window', watch);
   const controlWindow = await app.firstWindow();
   await controlWindow.waitForLoadState('domcontentloaded');
-  return { app, dataDir, failedRequests, cspViolations, controlWindow };
+  return { app, dataDir, failedRequests, cspViolations, mainLog, controlWindow };
 }
 
 /** Environment for a built-app process running on `dataDir`. */
@@ -58,6 +62,18 @@ export async function stubFilePicker(app: ElectronApplication, filePaths: string
     const picked = async () => ({ canceled: false, filePaths: paths });
     dialog.showOpenDialog = picked as typeof dialog.showOpenDialog;
   }, filePaths);
+}
+
+/** Clicks "Ouvrir la diffusion" in the Control window and returns the Broadcast window. */
+export async function openBroadcastWindow(
+  app: ElectronApplication,
+  controlWindow: Page,
+): Promise<Page> {
+  const broadcastOpened = app.waitForEvent('window');
+  await controlWindow.getByRole('button', { name: 'Ouvrir la diffusion' }).click();
+  const broadcastWindow = await broadcastOpened;
+  await broadcastWindow.waitForLoadState('domcontentloaded');
+  return broadcastWindow;
 }
 
 /** Path of a file in tests/app/fixtures. */

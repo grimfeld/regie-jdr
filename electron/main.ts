@@ -1,14 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron';
+import { app, BrowserWindow, dialog, net, protocol, type WebContents } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { isAppPage } from './navigation.js';
+import { registerHandlers, sendEvent } from './ipc.js';
+import type { WindowRole } from '../core/ipc.js';
+import type { BroadcastDisplay, ImportedImage } from '../shared/contract.js';
 
-type ImportedAsset = { name: string; url: string };
 let controlWindow: BrowserWindow | null = null;
-let stageWindow: BrowserWindow | null = null;
-let currentScene: unknown = { title: 'Le sanctuaire oublié', background: '', description: 'Choisissez un décor pour commencer la scène.' };
+let broadcastWindow: BrowserWindow | null = null;
+let currentDisplay: BroadcastDisplay = { title: 'Le sanctuaire oublié', background: '', description: 'Choisissez un décor pour commencer la scène.' };
 
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
@@ -22,11 +24,14 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // The page every window loads: the dev server, or the built index.html on disk.
-const appEntry = process.env.VITE_DEV_SERVER_URL ?? pathToFileURL(path.join(__dirname, '../dist/index.html')).href;
+// This file runs from dist-electron/electron/.
+const appIndexFile = path.join(__dirname, '../../dist/index.html');
+const appEntry = process.env.VITE_DEV_SERVER_URL ?? pathToFileURL(appIndexFile).href;
 
-function secureWebPreferences(): Electron.WebPreferences {
+/** Each window gets its own bridge: the Control window the full one, the Broadcast window a read-only one. */
+function secureWebPreferences(role: WindowRole): Electron.WebPreferences {
   return {
-    preload: path.join(__dirname, 'preload.js'),
+    preload: path.join(__dirname, `preload-${role}.js`),
     sandbox: true,
     contextIsolation: true,
     nodeIntegration: false,
@@ -54,36 +59,60 @@ function registerAssetProtocol() {
   });
 }
 
-function sendToStage(channel: string, payload: unknown) {
-  if (stageWindow && !stageWindow.isDestroyed()) stageWindow.webContents.send(channel, payload);
+/** Which of the app's windows sent a message; undefined for anything else. */
+function roleOf(sender: WebContents): WindowRole | undefined {
+  if (controlWindow && !controlWindow.isDestroyed() && sender === controlWindow.webContents) return 'control';
+  if (broadcastWindow && !broadcastWindow.isDestroyed() && sender === broadcastWindow.webContents) return 'broadcast';
+  return undefined;
 }
 
 function createControlWindow() {
   controlWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1080, minHeight: 700,
     title: 'Régie JDR — Poste du MJ', backgroundColor: '#101217',
-    webPreferences: secureWebPreferences()
+    webPreferences: secureWebPreferences('control')
   });
   if (process.env.VITE_DEV_SERVER_URL) {
     controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     controlWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    controlWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    controlWindow.loadFile(appIndexFile);
   }
 }
 
-function createStageWindow() {
-  if (stageWindow && !stageWindow.isDestroyed()) { stageWindow.focus(); return; }
-  stageWindow = new BrowserWindow({
+function createBroadcastWindow() {
+  if (broadcastWindow && !broadcastWindow.isDestroyed()) { broadcastWindow.focus(); return; }
+  broadcastWindow = new BrowserWindow({
     width: 1280, height: 720, title: 'Régie JDR — Diffusion',
     backgroundColor: '#08090c', autoHideMenuBar: true,
-    webPreferences: secureWebPreferences()
+    webPreferences: secureWebPreferences('broadcast')
   });
-  stageWindow.setMenuBarVisibility(false);
-  stageWindow.webContents.on('did-finish-load', () => sendToStage('scene:updated', currentScene));
-  if (process.env.VITE_DEV_SERVER_URL) stageWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage`);
-  else stageWindow.loadFile(path.join(__dirname, '../dist/index.html'), { query: { view: 'stage' } });
-  stageWindow.on('closed', () => { stageWindow = null; });
+  broadcastWindow.setMenuBarVisibility(false);
+  // The page reads the current display itself (display:get) once subscribed, on every load.
+  if (process.env.VITE_DEV_SERVER_URL) broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage`);
+  else broadcastWindow.loadFile(appIndexFile, { query: { view: 'stage' } });
+  broadcastWindow.on('closed', () => { broadcastWindow = null; });
+}
+
+async function importImages(): Promise<ImportedImage[]> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Importer des visuels', properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+  };
+  const result = controlWindow
+    ? await dialog.showOpenDialog(controlWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) return [];
+  const assetDirectory = getAssetDirectory();
+  await fs.mkdir(assetDirectory, { recursive: true });
+  const imported: ImportedImage[] = [];
+  for (const source of result.filePaths) {
+    const extension = path.extname(source).toLowerCase();
+    const fileName = `${randomUUID()}${extension}`;
+    await fs.copyFile(source, path.join(assetDirectory, fileName));
+    imported.push({ name: path.basename(source, extension), url: `${ASSET_SCHEME}://assets/${fileName}` });
+  }
+  return imported;
 }
 
 /** A second launch of the app brings the existing Control window forward. */
@@ -96,29 +125,20 @@ function focusControlWindow() {
 
 function startApp() {
   registerAssetProtocol();
-  ipcMain.handle('stage:open', () => { createStageWindow(); return true; });
-  ipcMain.handle('media:import-images', async (): Promise<ImportedAsset[]> => {
-    const options: Electron.OpenDialogOptions = {
-      title: 'Importer des visuels', properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
-    };
-    const result = controlWindow
-      ? await dialog.showOpenDialog(controlWindow, options)
-      : await dialog.showOpenDialog(options);
-    if (result.canceled || result.filePaths.length === 0) return [];
-    const assetDirectory = getAssetDirectory();
-    await fs.mkdir(assetDirectory, { recursive: true });
-    const imported: ImportedAsset[] = [];
-    for (const source of result.filePaths) {
-      const extension = path.extname(source).toLowerCase();
-      const fileName = `${randomUUID()}${extension}`;
-      await fs.copyFile(source, path.join(assetDirectory, fileName));
-      imported.push({ name: path.basename(source, extension), url: `${ASSET_SCHEME}://assets/${fileName}` });
-    }
-    return imported;
-  });
-  ipcMain.on('scene:update', (_event, scene) => { currentScene = scene; sendToStage('scene:updated', scene); });
-  ipcMain.on('stage:fullscreen', () => stageWindow?.setFullScreen(!stageWindow.isFullScreen()));
+  // One handler per channel of shared/contract.ts; payloads arrive validated (core/ipc.ts).
+  registerHandlers(
+    {
+      'display:get': () => currentDisplay,
+      'display:set': (display) => {
+        currentDisplay = display;
+        sendEvent(broadcastWindow?.webContents, 'display:changed', display);
+      },
+      'broadcast:open': () => createBroadcastWindow(),
+      'media:import-images': importImages
+    },
+    roleOf,
+    (message) => console.warn(message)
+  );
   createControlWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createControlWindow(); });
 }

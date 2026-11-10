@@ -1,49 +1,62 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Aperture, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
+import type { ThemeId } from '../shared/domain';
+import type { BroadcastBridge, BroadcastDisplay, ControlBridge, ImportedImage } from '../shared/contract';
 
-type ThemeId = 'retro' | 'imperium' | 'fantasy';
-type Scene = { title: string; background: string; description: string };
-type Asset = { name: string; url: string };
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
   { id: 'imperium', label: 'Imperium', subtitle: 'Gothique impérial, rouge, or et parchemin' },
   { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' }
 ];
 
-const initialScene: Scene = {
+const initialDisplay: BroadcastDisplay = {
   title: 'Le sanctuaire oublié',
   background: '',
   description: 'Choisissez un décor pour commencer la scène.'
 };
 
+/** The Broadcast window's fullscreen button: the page's own fullscreen, no IPC needed. */
+function toggleFullscreen() {
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen();
+}
+
 export default function App() {
   const isStage = new URLSearchParams(window.location.search).get('view') === 'stage';
+  // Each window's preload exposes its own bridge (see shared/contract.ts).
+  const control = isStage ? undefined : (window.regie as ControlBridge | undefined);
+  const broadcast = isStage ? (window.regie as BroadcastBridge | undefined) : undefined;
   const [theme, setTheme] = useState<ThemeId>('imperium');
-  const [scene, setScene] = useState<Scene>(initialScene);
+  const [scene, setScene] = useState<BroadcastDisplay>(initialDisplay);
   const [musicVolume, setMusicVolume] = useState(35);
   const [sfxVolume, setSfxVolume] = useState(75);
   const [localVolume, setLocalVolume] = useState(80);
   const [stageVolume, setStageVolume] = useState(80);
-  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assets, setAssets] = useState<ImportedImage[]>([]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  // Broadcast window: subscribe, then read the current display (also after a reload).
+  // The cleanup unsubscribes, so StrictMode's double effects leave a single listener.
   useEffect(() => {
-    if (isStage) window.regie?.onSceneUpdated((next) => setScene(next as Scene));
-  }, [isStage]);
+    if (!broadcast) return;
+    const unsubscribe = broadcast.onDisplayChanged(setScene);
+    broadcast.getDisplay().then(setScene);
+    return unsubscribe;
+  }, [broadcast]);
 
   const themeLabel = useMemo(() => themes.find(t => t.id === theme)?.label ?? 'Imperium', [theme]);
 
-  function updateScene(next: Scene) {
+  function updateScene(next: BroadcastDisplay) {
     setScene(next);
-    window.regie?.updateScene(next);
+    control?.setDisplay(next);
   }
 
   async function addImages() {
-    if (!window.regie?.importImages) return;
-    const imported = await window.regie.importImages();
+    if (!control) return;
+    const imported = await control.importImages();
     if (imported.length === 0) return;
     setAssets(current => [...current, ...imported]);
     const first = imported[0];
@@ -60,7 +73,7 @@ export default function App() {
           <h1>{scene.title}</h1>
           <p>{scene.description}</p>
         </div>
-        <button className="stage-fullscreen" onClick={() => window.regie?.toggleStageFullscreen()} title="Plein écran">⛶</button>
+        <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">⛶</button>
       </main>
     );
   }
@@ -74,7 +87,7 @@ export default function App() {
 
       <div className="workspace">
         <section className="main-column">
-          <div className="section-heading"><div><span className="eyebrow">RÉGIE VISUELLE</span><h1>La scène</h1></div><button className="primary-button" onClick={() => window.regie?.openStage()}><MonitorPlay size={16} /> Ouvrir la diffusion</button></div>
+          <div className="section-heading"><div><span className="eyebrow">RÉGIE VISUELLE</span><h1>La scène</h1></div><button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button></div>
           <div className="preview-frame">
             <div className="preview-topline"><span><span className="live-dot" /> APERÇU JOUEURS</span><span>16:9 · FENÊTRE INDÉPENDANTE</span></div>
             <div className="preview-scene">
