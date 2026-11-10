@@ -44,7 +44,9 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: windows-installer
-          path: release/Regie-JDR-Setup-*.exe
+          path: |
+            release/Regie-JDR-Setup-*.exe
+            release/Regie-JDR-Setup-*.msi
           if-no-files-found: error
           retention-days: 7
 
@@ -67,7 +69,7 @@ jobs:
         run: |
           flags=()
           case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" Regie-JDR-Setup-*.exe \
+          gh release create "$GITHUB_REF_NAME" Regie-JDR-Setup-*.exe Regie-JDR-Setup-*.msi \
             --title "Regie JDR $GITHUB_REF_NAME" \
             --generate-notes \
             --verify-tag \

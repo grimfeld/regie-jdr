@@ -1,5 +1,5 @@
 name: Build Windows installer
-description: Build the unsigned x64 NSIS installer and check the Electron fuses on the packaged app.
+description: Build the unsigned x64 NSIS and MSI installers and check the Electron fuses on the packaged app.
 
 runs:
   using: composite
@@ -12,7 +12,7 @@ runs:
     - shell: bash
       run: npm ci
 
-    # Unsigned x64 NSIS installer; the afterPack hook (build/fuses.mjs) flips the Electron fuses.
+    # Unsigned x64 NSIS (.exe) and MSI installers; the afterPack hook (build/fuses.mjs) flips the Electron fuses.
     - name: Build installer
       shell: bash
       run: npm run package:win -- --publish never
