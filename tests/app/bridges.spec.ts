@@ -1,4 +1,4 @@
-import { expect, fixture, openBroadcastWindow, test } from './harness';
+import { createCampaign, expect, fixture, openBroadcastWindow, test } from './harness';
 
 type Rogue = { rogue: { invoke(channel: string, ...args: unknown[]): Promise<unknown> } };
 type Recorder = { calls: unknown[][]; unsubscribe(): void };
@@ -11,11 +11,15 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
 
   const keysOf = () => Object.keys((window as unknown as { regie: object }).regie).sort();
   expect(await controlWindow.evaluate(keysOf)).toEqual([
+    'createCampaign',
     'getDisplay',
     'importImages',
+    'listCampaigns',
     'onDisplayChanged',
     'openBroadcast',
     'setDisplay',
+    'takeNotices',
+    'updateCampaign',
   ]);
   expect(await broadcastWindow.evaluate(keysOf)).toEqual(['getDisplay', 'onDisplayChanged']);
 });
@@ -84,6 +88,7 @@ test('a malformed message from the Control window is rejected and logged', async
 
 test('subscriptions pass only the payload and stop after unsubscribing', async ({ regie }) => {
   const { app, controlWindow } = regie;
+  await createCampaign(controlWindow);
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await broadcastWindow.evaluate(() => {
     const calls: unknown[][] = [];
@@ -119,6 +124,7 @@ test('the Broadcast window shows the current display when it opens and after a r
   regie,
 }) => {
   const { app, controlWindow } = regie;
+  await createCampaign(controlWindow);
   await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('La taverne');
 
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);

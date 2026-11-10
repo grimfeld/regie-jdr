@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain.js';
+import type { CampaignChanges } from '../shared/contract.js';
 import type { CampaignRepository } from './storage/campaigns.js';
 
 export class CampaignError extends Error {}
@@ -11,11 +12,6 @@ export class CampaignError extends Error {}
 /** Theme of a new Campaign until the theme picker lets the Game Master choose. */
 export const DEFAULT_CAMPAIGN_THEME: ThemeId = 'imperium';
 export const MAX_CAMPAIGN_NAME_LENGTH = 100;
-
-export interface CampaignChanges {
-  name?: string;
-  theme?: ThemeId;
-}
 
 interface Clock {
   now?: () => Date;

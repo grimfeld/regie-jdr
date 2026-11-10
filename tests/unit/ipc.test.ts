@@ -64,3 +64,49 @@ describe('payload guards', () => {
     expect(verdict).toEqual({ ok: true, payload: display });
   });
 });
+
+describe('Campaign channels', () => {
+  const id = '3f0c9a52-7a51-4d8e-9a43-0f0f2b0c1d2e';
+
+  it('are for the Control window only', () => {
+    for (const [channel, args] of [
+      ['campaigns:list', []],
+      ['campaigns:create', [{ name: 'Star Wars' }]],
+      ['campaigns:update', [{ id, changes: { name: 'Star Wars' } }]],
+      ['notices:take', []],
+    ] as const) {
+      expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
+      expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
+    }
+  });
+
+  it('accept a name to create, keeping only contract fields', () => {
+    expect(checkInvoke('campaigns:create', 'control', [{ name: 'Star Wars', id: 'x' }])).toEqual({
+      ok: true,
+      payload: { name: 'Star Wars' },
+    });
+  });
+
+  it('accept a rename, a theme change, or both', () => {
+    expect(
+      checkInvoke('campaigns:update', 'control', [
+        { id, changes: { name: 'Star Wars', theme: 'retro', extra: 1 } },
+      ]),
+    ).toEqual({ ok: true, payload: { id, changes: { name: 'Star Wars', theme: 'retro' } } });
+    expect(
+      checkInvoke('campaigns:update', 'control', [{ id, changes: { theme: 'fantasy' } }]),
+    ).toEqual({ ok: true, payload: { id, changes: { theme: 'fantasy' } } });
+  });
+
+  it.each([
+    ['no name', 'campaigns:create', [{}]],
+    ['a name that is not text', 'campaigns:create', [{ name: 42 }]],
+    ['a huge name', 'campaigns:create', [{ name: 'x'.repeat(10_000) }]],
+    ['an id that is a path', 'campaigns:update', [{ id: '../..', changes: { name: 'X' } }]],
+    ['an unknown theme', 'campaigns:update', [{ id, changes: { theme: 'neon' } }]],
+    ['no changes object', 'campaigns:update', [{ id }]],
+    ['a name of the wrong type', 'campaigns:update', [{ id, changes: { name: null } }]],
+  ] as const)('reject %s', (_label, channel, args) => {
+    expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
+  });
+});

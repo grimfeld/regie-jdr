@@ -76,6 +76,20 @@ export async function openBroadcastWindow(
   return broadcastWindow;
 }
 
+/**
+ * From the Campaign list home page, creates a Campaign named `name`; the Control window then
+ * shows that Campaign's screen.
+ */
+export async function createCampaign(
+  controlWindow: Page,
+  name = 'Campagne de test',
+): Promise<void> {
+  await controlWindow.getByRole('button', { name: 'Créer une campagne' }).click();
+  await controlWindow.getByLabel('Nom de la campagne').fill(name);
+  await controlWindow.getByRole('button', { name: 'Créer', exact: true }).click();
+  await controlWindow.getByRole('heading', { name, exact: true }).waitFor();
+}
+
 /** Path of a file in tests/app/fixtures. */
 export function fixture(name: string): string {
   return path.join(__dirname, 'fixtures', name);

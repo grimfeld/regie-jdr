@@ -1,9 +1,10 @@
-import { expect, fixture, stubFilePicker, test } from './harness';
+import { createCampaign, expect, fixture, stubFilePicker, test } from './harness';
 
 test('an imported image is displayed in the Control window and on the Broadcast window', async ({
   regie,
 }) => {
   const { app, controlWindow, failedRequests, cspViolations } = regie;
+  await createCampaign(controlWindow);
 
   const broadcastOpened = app.waitForEvent('window');
   await controlWindow.getByRole('button', { name: 'Ouvrir la diffusion' }).click();

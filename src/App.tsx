@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Aperture, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
-import type { ThemeId } from '../shared/domain';
-import type { BroadcastBridge, BroadcastDisplay, ControlBridge, ImportedImage } from '../shared/contract';
+import { useCallback, useEffect, useState } from 'react';
+import { Aperture, ArrowLeft, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
+import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
+import type { BroadcastBridge, BroadcastDisplay, CampaignChanges, ControlBridge, ImportedImage } from '../shared/contract';
+import { CampaignList, errorMessage } from './CampaignList';
 
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
   { id: 'imperium', label: 'Imperium', subtitle: 'Gothique impérial, rouge, or et parchemin' },
   { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' }
 ];
+
+/** Theme of the Campaign list home page, until the global theme setting lands. */
+const HOME_THEME: ThemeId = 'imperium';
 
 const initialDisplay: BroadcastDisplay = {
   title: 'Le sanctuaire oublié',
@@ -24,21 +28,14 @@ function toggleFullscreen() {
 export default function App() {
   const isStage = new URLSearchParams(window.location.search).get('view') === 'stage';
   // Each window's preload exposes its own bridge (see shared/contract.ts).
-  const control = isStage ? undefined : (window.regie as ControlBridge | undefined);
-  const broadcast = isStage ? (window.regie as BroadcastBridge | undefined) : undefined;
-  const [theme, setTheme] = useState<ThemeId>('imperium');
+  if (isStage) return <BroadcastView broadcast={window.regie as BroadcastBridge | undefined} />;
+  return <ControlApp control={window.regie as ControlBridge | undefined} />;
+}
+
+function BroadcastView({ broadcast }: { broadcast: BroadcastBridge | undefined }) {
   const [scene, setScene] = useState<BroadcastDisplay>(initialDisplay);
-  const [musicVolume, setMusicVolume] = useState(35);
-  const [sfxVolume, setSfxVolume] = useState(75);
-  const [localVolume, setLocalVolume] = useState(80);
-  const [stageVolume, setStageVolume] = useState(80);
-  const [assets, setAssets] = useState<ImportedImage[]>([]);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-
-  // Broadcast window: subscribe, then read the current display (also after a reload).
+  // Subscribe, then read the current display (also after a reload).
   // The cleanup unsubscribes, so StrictMode's double effects leave a single listener.
   useEffect(() => {
     if (!broadcast) return;
@@ -47,7 +44,120 @@ export default function App() {
     return unsubscribe;
   }, [broadcast]);
 
-  const themeLabel = useMemo(() => themes.find(t => t.id === theme)?.label ?? 'Imperium', [theme]);
+  return (
+    <main className="stage-screen">
+      {scene.background ? <img className="stage-background" src={scene.background} alt="" /> : null}
+      <div className="stage-vignette" />
+      <div className="stage-caption">
+        <span className="eyebrow">SCÈNE EN COURS</span>
+        <h1>{scene.title}</h1>
+        <p>{scene.description}</p>
+      </div>
+      <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">⛶</button>
+    </main>
+  );
+}
+
+function byName(a: Campaign, b: Campaign) {
+  return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
+}
+
+/**
+ * The Control window: the Campaign list home page, or the screen of the open Campaign.
+ * On launch, the only Campaign (when there is exactly one) opens directly.
+ */
+function ControlApp({ control }: { control: ControlBridge | undefined }) {
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
+  const [openId, setOpenId] = useState<CampaignId | null>(null);
+  const [notices, setNotices] = useState<string[]>([]);
+
+  const notify = useCallback((message: string) => setNotices(current => [...current, message]), []);
+
+  // Messages from the main process, e.g. a corrupt file recovered from its backup.
+  const collectNotices = useCallback(async () => {
+    if (!control) return;
+    const fresh = await control.takeNotices();
+    if (fresh.length) setNotices(current => [...current, ...fresh]);
+  }, [control]);
+
+  useEffect(() => {
+    if (!control) return;
+    let cancelled = false;
+    control.listCampaigns()
+      .then(list => {
+        if (cancelled) return;
+        setCampaigns(list);
+        if (list.length === 1) setOpenId(list[0].id);
+      })
+      .catch(error => { if (!cancelled) notify(errorMessage(error)); })
+      .finally(() => { if (!cancelled) void collectNotices(); });
+    return () => { cancelled = true; };
+  }, [control, collectNotices, notify]);
+
+  const openCampaign = campaigns?.find(c => c.id === openId);
+  const theme = openCampaign?.theme ?? HOME_THEME;
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  async function create(name: string) {
+    if (!control) return;
+    const created = await control.createCampaign(name);
+    setCampaigns(current => [...(current ?? []), created].sort(byName));
+    setOpenId(created.id);
+  }
+
+  async function update(id: CampaignId, changes: CampaignChanges) {
+    if (!control) return;
+    try {
+      const updated = await control.updateCampaign(id, changes);
+      setCampaigns(current => (current ?? []).map(c => (c.id === updated.id ? updated : c)).sort(byName));
+    } finally {
+      void collectNotices();
+    }
+  }
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="brand"><div className="brand-mark"><Aperture size={19} /></div><div><strong>RÉGIE JDR</strong><small>POSTE DU MAÎTRE DU JEU</small></div></div>
+        <div className="topbar-right">
+          {openCampaign && <button className="secondary-button" onClick={() => setOpenId(null)}><ArrowLeft size={14} /> Campagnes</button>}
+          <button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button>
+        </div>
+      </header>
+      {notices.length > 0 && (
+        <div className="notice-bar" role="status" aria-label="Avertissements">
+          <div>{notices.map((notice, i) => <p key={i}>{notice}</p>)}</div>
+          <button className="secondary-button" onClick={() => setNotices([])}>Fermer</button>
+        </div>
+      )}
+      {openCampaign
+        ? <CampaignScreen key={openCampaign.id} campaign={openCampaign} control={control} onThemeChange={next => update(openCampaign.id, { theme: next }).catch(error => notify(errorMessage(error)))} />
+        : campaigns && <CampaignList campaigns={campaigns} onOpen={setOpenId} onCreate={create} onRename={(id, name) => update(id, { name })} />}
+      <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
+    </main>
+  );
+}
+
+interface CampaignScreenProps {
+  campaign: Campaign;
+  control: ControlBridge | undefined;
+  onThemeChange(theme: ThemeId): void;
+}
+
+/** The screen of the open Campaign (prototype scene and library, replaced by later M0 tickets). */
+function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProps) {
+  const theme = campaign.theme;
+  const [scene, setScene] = useState<BroadcastDisplay>(initialDisplay);
+  const [musicVolume, setMusicVolume] = useState(35);
+  const [sfxVolume, setSfxVolume] = useState(75);
+  const [localVolume, setLocalVolume] = useState(80);
+  const [stageVolume, setStageVolume] = useState(80);
+  const [assets, setAssets] = useState<ImportedImage[]>([]);
+
+  const themeLabel = themes.find(t => t.id === theme)?.label ?? 'Imperium';
 
   function updateScene(next: BroadcastDisplay) {
     setScene(next);
@@ -63,31 +173,16 @@ export default function App() {
     updateScene({ ...scene, background: first.url, title: first.name || 'Nouvelle scène' });
   }
 
-  if (isStage) {
-    return (
-      <main className="stage-screen">
-        {scene.background ? <img className="stage-background" src={scene.background} alt="" /> : null}
-        <div className="stage-vignette" />
-        <div className="stage-caption">
-          <span className="eyebrow">SCÈNE EN COURS</span>
-          <h1>{scene.title}</h1>
-          <p>{scene.description}</p>
-        </div>
-        <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">⛶</button>
-      </main>
-    );
-  }
-
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand"><div className="brand-mark"><Aperture size={19} /></div><div><strong>RÉGIE JDR</strong><small>POSTE DU MAÎTRE DU JEU</small></div></div>
+    <>
+      <div className="campaign-bar">
+        <div><span className="eyebrow">CAMPAGNE</span><h1>{campaign.name}</h1></div>
         <div className="topbar-right"><span className="status-dot" /> SESSION LOCALE <span className="top-separator">|</span><span className="theme-name">{themeLabel}</span></div>
-      </header>
+      </div>
 
       <div className="workspace">
         <section className="main-column">
-          <div className="section-heading"><div><span className="eyebrow">RÉGIE VISUELLE</span><h1>La scène</h1></div><button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button></div>
+          <div className="section-heading"><div><span className="eyebrow">RÉGIE VISUELLE</span><h2>La scène</h2></div></div>
           <div className="preview-frame">
             <div className="preview-topline"><span><span className="live-dot" /> APERÇU JOUEURS</span><span>16:9 · FENÊTRE INDÉPENDANTE</span></div>
             <div className="preview-scene">
@@ -113,9 +208,9 @@ export default function App() {
           </div>
 
           <div className="panel">
-            <div className="panel-heading"><div><span className="eyebrow">APPARENCE</span><h2><Palette size={18}/> Thème d'interface</h2></div><Settings2 size={17}/></div>
+            <div className="panel-heading"><div><span className="eyebrow">APPARENCE</span><h2><Palette size={18}/> Thème de la campagne</h2></div><Settings2 size={17}/></div>
             <div className="theme-options">
-              {themes.map(item => <button key={item.id} className={`theme-option ${theme === item.id ? 'selected' : ''}`} onClick={() => setTheme(item.id)}><span className={`theme-swatch ${item.id}`}></span><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><span className="radio-indicator"/></button>)}
+              {themes.map(item => <button key={item.id} className={`theme-option ${theme === item.id ? 'selected' : ''}`} onClick={() => onThemeChange(item.id)}><span className={`theme-swatch ${item.id}`}></span><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><span className="radio-indicator"/></button>)}
             </div>
             {theme === 'imperium' && <p className="theme-footnote">Esthétique impériale uniquement : gothique monumental, héraldique, rouge et or. Aucun élément Mechanicus ou démoniaque.</p>}
           </div>
@@ -129,7 +224,6 @@ export default function App() {
           <div className="panel scene-shortcut"><div><span className="eyebrow">SCÈNES PRÉPARÉES</span><strong>Rappel en un clic</strong><small>La sauvegarde des scènes arrive dans la prochaine étape.</small></div><button disabled title="Bientôt disponible"><Plus size={18}/></button></div>
         </aside>
       </div>
-      <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
-    </main>
+    </>
   );
 }

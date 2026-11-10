@@ -5,6 +5,7 @@
  *
  * Adding a channel: see the checklist in core/ipc.ts.
  */
+import type { Campaign, CampaignId, ThemeId } from './domain.js';
 
 /** Image just imported into the library (prototype shape, until Media storage lands). */
 export interface ImportedImage {
@@ -24,6 +25,12 @@ export interface BroadcastDisplay {
   description: string;
 }
 
+/** What can be changed on a Campaign; absent fields are left as they are. */
+export interface CampaignChanges {
+  name?: string;
+  theme?: ThemeId;
+}
+
 /**
  * Request/response channels (`ipcRenderer.invoke`). `payload: void` means the call takes no
  * argument. Which window may call each one is in core/ipc.ts.
@@ -37,6 +44,17 @@ export interface InvokeChannels {
   'broadcast:open': { payload: void; result: void };
   /** Pick images with the native file picker and copy them into the library. */
   'media:import-images': { payload: void; result: ImportedImage[] };
+  /** Every Campaign, sorted by name. */
+  'campaigns:list': { payload: void; result: Campaign[] };
+  /** Create a Campaign; fails with a French message for an empty name. */
+  'campaigns:create': { payload: { name: string }; result: Campaign };
+  /** Rename a Campaign or change its theme. */
+  'campaigns:update': { payload: { id: CampaignId; changes: CampaignChanges }; result: Campaign };
+  /**
+   * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
+   * from its backup), in French. Returns them once.
+   */
+  'notices:take': { payload: void; result: string[] };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -63,4 +81,8 @@ export interface ControlBridge extends BroadcastBridge {
   setDisplay(display: BroadcastDisplay): Promise<void>;
   openBroadcast(): Promise<void>;
   importImages(): Promise<ImportedImage[]>;
+  listCampaigns(): Promise<Campaign[]>;
+  createCampaign(name: string): Promise<Campaign>;
+  updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;
+  takeNotices(): Promise<string[]>;
 }

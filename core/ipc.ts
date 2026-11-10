@@ -13,10 +13,14 @@
  */
 import type {
   BroadcastDisplay,
+  CampaignChanges,
   InvokeChannel,
   InvokeChannels,
   Payload,
 } from '../shared/contract.js';
+import type { CampaignId } from '../shared/domain.js';
+import { isThemeId } from './storage/campaigns.js';
+import { isCampaignId } from './storage/index.js';
 
 /** The windows that can send messages. */
 export type WindowRole = 'control' | 'broadcast';
@@ -58,6 +62,40 @@ function broadcastDisplay(value: unknown): Parsed<BroadcastDisplay> {
   return { title, background, description };
 }
 
+/** Names longer than this are malformed messages; core/campaigns.ts has the real limit. */
+const MAX_NAME_PAYLOAD = 1000;
+
+function isName(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= MAX_NAME_PAYLOAD;
+}
+
+function newCampaign(value: unknown): Parsed<{ name: string }> {
+  if (!isRecord(value) || !isName(value.name)) return INVALID;
+  return { name: value.name };
+}
+
+function campaignChanges(value: unknown): Parsed<CampaignChanges> {
+  if (!isRecord(value)) return INVALID;
+  const { name, theme } = value;
+  const changes: CampaignChanges = {};
+  if (name !== undefined) {
+    if (!isName(name)) return INVALID;
+    changes.name = name;
+  }
+  if (theme !== undefined) {
+    if (!isThemeId(theme)) return INVALID;
+    changes.theme = theme;
+  }
+  return changes;
+}
+
+function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: CampaignChanges }> {
+  if (!isRecord(value) || !isCampaignId(value.id)) return INVALID;
+  const changes = campaignChanges(value.changes);
+  if (changes === INVALID) return INVALID;
+  return { id: value.id, changes };
+}
+
 // Rules --------------------------------------------------------------------
 
 const rules: { [C in InvokeChannel]: Rule<C> } = {
@@ -65,6 +103,10 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'display:set': { from: controlOnly, parse: onePayload(broadcastDisplay) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'media:import-images': { from: controlOnly, parse: noPayload },
+  'campaigns:list': { from: controlOnly, parse: noPayload },
+  'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
+  'campaigns:update': { from: controlOnly, parse: onePayload(campaignUpdate) },
+  'notices:take': { from: controlOnly, parse: noPayload },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import type { WindowRole } from '../core/ipc.js';
+import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { openStorage } from '../core/storage/index.js';
 import type { BroadcastDisplay, ImportedImage } from '../shared/contract.js';
 
 let controlWindow: BrowserWindow | null = null;
@@ -125,6 +127,11 @@ function focusControlWindow() {
 
 function startApp() {
   registerAssetProtocol();
+  // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
+  const notices: string[] = [];
+  const storage = openStorage(app.getPath('userData'), {
+    notify: (message) => { notices.push(message); console.warn(message); }
+  });
   // One handler per channel of shared/contract.ts; payloads arrive validated (core/ipc.ts).
   registerHandlers(
     {
@@ -134,7 +141,11 @@ function startApp() {
         sendEvent(broadcastWindow?.webContents, 'display:changed', display);
       },
       'broadcast:open': () => createBroadcastWindow(),
-      'media:import-images': importImages
+      'media:import-images': importImages,
+      'campaigns:list': () => storage.campaigns.list(),
+      'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
+      'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
+      'notices:take': () => notices.splice(0)
     },
     roleOf,
     (message) => console.warn(message)

@@ -37,6 +37,10 @@ const bridge: ControlBridge = {
   setDisplay: (display) => invoke('display:set', display),
   openBroadcast: () => invoke('broadcast:open'),
   importImages: () => invoke('media:import-images'),
+  listCampaigns: () => invoke('campaigns:list'),
+  createCampaign: (name) => invoke('campaigns:create', { name }),
+  updateCampaign: (id, changes) => invoke('campaigns:update', { id, changes }),
+  takeNotices: () => invoke('notices:take'),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);
