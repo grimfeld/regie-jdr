@@ -261,6 +261,12 @@ export function createMediaLibrary(storage: Storage, resizer: ImageResizer): Med
             result.refused.push(rules.refusal(fileName));
             continue;
           }
+          if (!(await exists(source))) {
+            result.refused.push(
+              `« ${fileName} » n’a pas été importé : ce n’est pas un fichier lisible.`,
+            );
+            continue;
+          }
           const contentHash = await sha256Of(source);
           const existing = library.find((media) => media.contentHash === contentHash);
           if (existing) {

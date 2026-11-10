@@ -196,6 +196,26 @@ describe('media library', () => {
     expect(result.refused).toHaveLength(1);
   });
 
+  it('refuses a path that is not a file (gone, or a folder) with a message and imports the rest', async () => {
+    const { storage, campaign, library } = await setup();
+    const folder = path.join(dir.path, 'picked', 'dossier.png');
+    await fs.mkdir(folder, { recursive: true });
+
+    const result = await library.import(
+      campaign.id,
+      [path.join(dir.path, 'picked', 'parti.png'), folder, await sourceFile('Cantina.png')],
+      { accept: 'image' },
+    );
+
+    expect(result.imported.map((m) => m.name)).toEqual(['Cantina']);
+    expect(result.refused).toEqual([
+      '« parti.png » n’a pas été importé : ce n’est pas un fichier lisible.',
+      '« dossier.png » n’a pas été importé : ce n’est pas un fichier lisible.',
+    ]);
+    const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+    expect(await fs.readdir(mediaFolder)).toEqual([`${ABC_SHA256}.png`]);
+  });
+
   it('gives imported audio the role chosen at import: Music, Sound effect or Ambience', async () => {
     const { campaign, library } = await setup();
 

@@ -1,7 +1,7 @@
 // Control window bridge: the full API (contract: ControlBridge).
 // Sandboxed preload: it can only require('electron'), so contract imports are type-only and
 // the small helpers below are repeated in preload-broadcast.ts.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   ControlBridge,
   EventChannel,
@@ -58,6 +58,12 @@ const bridge: ControlBridge = {
   toggleBroadcastFullscreen: () => invoke('broadcast:toggle-fullscreen'),
   listMedia: (campaignId) => invoke('media:list', { campaignId }),
   importMedia: (campaignId, kind) => invoke('media:import', { campaignId, ...kind }),
+  // Only files the Game Master really dropped have a path; files made by the page have none.
+  importDroppedImages: (campaignId, files) =>
+    invoke('media:import-dropped', {
+      campaignId,
+      files: files.map((file) => webUtils.getPathForFile(file)).filter((file) => file !== ''),
+    }),
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),
   renameMedia: (campaignId, mediaId, name) => invoke('media:rename', { campaignId, mediaId, name }),

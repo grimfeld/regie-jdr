@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkInvoke } from '../../core/ipc';
 
@@ -145,6 +146,7 @@ describe('Media channels', () => {
     for (const [channel, args] of [
       ['media:list', [{ campaignId }]],
       ['media:import', [{ campaignId, accept: 'image' }]],
+      ['media:import-dropped', [{ campaignId, files: [] }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
       ['media:rename', [{ campaignId, mediaId, name: 'Port de nuit' }]],
       ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
@@ -163,6 +165,17 @@ describe('Media channels', () => {
         checkInvoke('media:import', 'control', [{ campaignId, accept: 'audio', role, x: 1 }]),
       ).toEqual({ ok: true, payload: { campaignId, accept: 'audio', role } });
     }
+  });
+
+  it('accept dropped files as absolute paths, keeping only contract fields', () => {
+    const files = [path.resolve('Cantina.png'), path.resolve('Orc.webp')];
+    expect(
+      checkInvoke('media:import-dropped', 'control', [{ campaignId, files, accept: 'audio' }]),
+    ).toEqual({ ok: true, payload: { campaignId, files } });
+    expect(checkInvoke('media:import-dropped', 'control', [{ campaignId, files: [] }])).toEqual({
+      ok: true,
+      payload: { campaignId, files: [] },
+    });
   });
 
   it('accept a category change, keeping only contract fields', () => {
@@ -208,6 +221,45 @@ describe('Media channels', () => {
       'media:import',
       [{ campaignId, accept: 'image' }, ['C:/x.png']],
     ],
+    ['dropped files that are not a list', 'media:import-dropped', [{ campaignId, files: 'x' }]],
+    ['a dropped file that is not text', 'media:import-dropped', [{ campaignId, files: [7] }]],
+    ['a dropped file with an empty path', 'media:import-dropped', [{ campaignId, files: [''] }]],
+    [
+      'a dropped file with a relative path',
+      'media:import-dropped',
+      [{ campaignId, files: ['x.png'] }],
+    ],
+    [
+      'a dropped file up the folder tree',
+      'media:import-dropped',
+      [{ campaignId, files: ['../../x.png'] }],
+    ],
+    [
+      'a dropped file on a network share',
+      'media:import-dropped',
+      [{ campaignId, files: ['\\\\serveur\\partage\\x.png'] }],
+    ],
+    [
+      'a dropped file on a network share, forward slashes',
+      'media:import-dropped',
+      [{ campaignId, files: ['//serveur/partage/x.png'] }],
+    ],
+    [
+      'a dropped file with a NUL character',
+      'media:import-dropped',
+      [{ campaignId, files: [`${path.resolve('x.png')}\0.txt`] }],
+    ],
+    [
+      'a dropped file with a huge path',
+      'media:import-dropped',
+      [{ campaignId, files: [path.resolve('x'.repeat(40000))] }],
+    ],
+    [
+      'too many dropped files',
+      'media:import-dropped',
+      [{ campaignId, files: Array.from({ length: 1001 }, (_, i) => path.resolve(`${i}.png`)) }],
+    ],
+    ['dropped files with no Campaign id', 'media:import-dropped', [{ files: [] }]],
     ['an unknown category', 'media:set-category', [{ campaignId, mediaId, category: 'creature' }]],
     ['no Media id', 'media:set-category', [{ campaignId, category: 'scenery' }]],
     ['a rename with no name', 'media:rename', [{ campaignId, mediaId }]],

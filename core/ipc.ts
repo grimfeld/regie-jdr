@@ -19,6 +19,7 @@ import type {
   Payload,
   SceneEdit,
 } from '../shared/contract.js';
+import path from 'node:path';
 import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
 import { parseSceneEdit } from './sceneEdits.js';
@@ -118,6 +119,34 @@ function mediaImport(value: unknown): Parsed<{ campaignId: CampaignId } & MediaI
   return INVALID;
 }
 
+/** More dropped files than this in one message is a malformed message. */
+export const MAX_DROPPED_FILES = 1000;
+/** Longest path Windows accepts (with the long-path prefix); longer ones are malformed. */
+const MAX_PATH_LENGTH = 32767;
+
+/**
+ * A dropped file's path: absolute, on a local drive. Paths on a network share (`\\server\...`)
+ * and device paths are refused, so a message can never make the app reach out to another host.
+ */
+function isDroppedPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_PATH_LENGTH &&
+    !value.includes('\0') &&
+    !/^[\\/]{2}/.test(value) &&
+    path.isAbsolute(value)
+  );
+}
+
+function droppedImport(value: unknown): Parsed<{ campaignId: CampaignId; files: string[] }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { files } = value;
+  if (!Array.isArray(files) || files.length > MAX_DROPPED_FILES) return INVALID;
+  if (!files.every(isDroppedPath)) return INVALID;
+  return { ...campaign, files: [...files] };
+}
+
 function categoryChange(
   value: unknown,
 ): Parsed<{ campaignId: CampaignId; mediaId: MediaId; category: ImageCategory }> {
@@ -196,6 +225,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
+  'media:import-dropped': { from: controlOnly, parse: onePayload(droppedImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
   'media:rename': { from: controlOnly, parse: onePayload(mediaRename) },
   'media:delete': { from: controlOnly, parse: onePayload(mediaDelete) },
