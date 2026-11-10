@@ -4,12 +4,12 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "../dist-electron",
-    "rootDir": ".",
+    "rootDir": "..",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "types": ["node"],
     "noEmit": false
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "../core/**/*.ts", "../shared/**/*.ts"]
 }

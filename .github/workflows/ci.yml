@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  # Branches only: version tags run the same checks through release.yml.
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Formatting
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
+      - name: Allow Electron sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Whole-app tests
+        run: xvfb-run --auto-servernum -- npm run test:app
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # Windows minutes cost double on the private repo: only on main and on demand.
+  # (When release.yml calls this workflow the ref is a tag, so this job is skipped there.)
+  windows-installer:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/windows-installer
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-installer
+          path: release/Regie-JDR-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14

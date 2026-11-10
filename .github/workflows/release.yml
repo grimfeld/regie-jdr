@@ -1,0 +1,74 @@
+name: Release
+
+# Push a version tag to publish a GitHub Release with the Windows installer:
+#   npm version patch   # bumps package.json and creates the v0.1.1 tag
+#   git push --follow-tags
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Fail fast and cheap (Linux) before spending Windows minutes.
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Tag matches package.json version
+        run: |
+          pkg="v$(node -p "require('./package.json').version")"
+          if [ "$pkg" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg"
+            exit 1
+          fi
+
+  check:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  windows-installer:
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/windows-installer
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-installer
+          path: release/Regie-JDR-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: windows-installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-installer
+
+      # A tag with a pre-release suffix (v0.2.0-beta.1) is published as a pre-release.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          flags=()
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" Regie-JDR-Setup-*.exe \
+            --title "Regie JDR $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag \
+            "${flags[@]}"

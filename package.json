@@ -3,14 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "description": "Régie visuelle et audio pour maître du jeu",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "vite",
     "electron:dev": "npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "tsc -b && vite build && npm run build:electron",
     "build:electron": "tsc -p electron/tsconfig.json",
     "start": "electron .",
-    "package:win": "npm run build && electron-builder --win nsis"
+    "package:win": "npm run build && electron-builder --win nsis",
+    "release": "node scripts/release.mjs",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:app": "playwright test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "howler": "^2.2.4",
@@ -19,17 +26,23 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@electron/fuses": "^2.1.3",
+    "@playwright/test": "^1.65.0",
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^24.19.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
+    "electron": "^45.2.3",
+    "electron-builder": "^25.1.8",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.9.10",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "wait-on": "^8.0.1",
-    "electron-builder": "^25.1.8"
+    "vitest": "^3.2.7",
+    "wait-on": "^8.0.1"
   },
   "build": {
     "appId": "fr.regiejdr.desktop",
@@ -58,6 +71,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    }
+    },
+    "afterPack": "./build/fuses.mjs"
   }
 }
