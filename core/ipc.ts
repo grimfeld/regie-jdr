@@ -191,6 +191,11 @@ export function isInvokeChannel(channel: string): channel is InvokeChannel {
   return Object.prototype.hasOwnProperty.call(rules, channel);
 }
 
+/** The windows allowed to call `channel` (its sender rule). */
+export function sendersOf(channel: InvokeChannel): readonly WindowRole[] {
+  return rules[channel].from;
+}
+
 /** Every channel of the contract, for wiring. */
 export const invokeChannels = Object.keys(rules) as InvokeChannel[];
 
