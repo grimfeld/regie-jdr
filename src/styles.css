@@ -930,6 +930,38 @@ button {
   align-items: center;
   gap: 8px;
 }
+/* An Overlay's Label controls, on their own line under the Overlay. */
+.placement-list li {
+  flex-wrap: wrap;
+}
+.placement-label {
+  order: 1;
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 22px;
+  color: var(--muted);
+}
+.placement-label input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 0;
+}
+.placement-label.is-hidden input:not([type='checkbox']) {
+  opacity: 0.6;
+}
+.scene-title-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.scene-title-field input {
+  flex: 1;
+}
 .placement-list li.is-hidden .placement-name {
   opacity: 0.6;
 }

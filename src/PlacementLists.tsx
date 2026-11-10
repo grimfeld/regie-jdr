@@ -3,6 +3,7 @@ import { Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { SceneEdit } from '../shared/contract';
 import type { ImageMedia, MediaId, Scene } from '../shared/domain';
 import { carriesMedia } from './mediaDrag';
+import { LabelControls } from './PlayerTextFields';
 
 /**
  * Props of a drop target: it accepts a dragged library image, shows it is ready while one is
@@ -77,8 +78,8 @@ export function BackgroundList({ scene, images, onEdit, onDrop }: ListProps) {
 }
 
 /**
- * The Selected Scene's Overlays, back first (all above every Background), each with show/hide
- * and remove. Dropping a library image here places it as an Overlay, whatever its Image category.
+ * The Selected Scene's Overlays, back first (all above every Background), each with show/hide,
+ * remove, and its Label. Dropping a library image here places it as an Overlay, whatever its Image category.
  */
 export function OverlayList({ scene, images, onEdit, onDrop }: ListProps) {
   return (
@@ -94,7 +95,13 @@ export function OverlayList({ scene, images, onEdit, onDrop }: ListProps) {
           visible={overlay.visible}
           onEdit={onEdit}
           placementId={overlay.id}
-        />
+        >
+          <LabelControls
+            overlay={overlay}
+            name={mediaName(images, overlay.mediaId)}
+            onEdit={onEdit}
+          />
+        </PlacementRow>
       ))}
     </PlacementList>
   );

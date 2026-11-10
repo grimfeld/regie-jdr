@@ -4,11 +4,12 @@ import type { CampaignId, ImageMedia, NormalizedPoint, Scene, SceneId } from '..
 import type { ControlBridge, SceneEdit } from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
-import { placementEdit, type PlacementTarget } from '../core/sceneEdits';
+import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
 import { droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
+import { SceneTitleField } from './PlayerTextFields';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
 
@@ -113,21 +114,12 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
 
   /**
    * Sends an edit command and shows the Scene as saved; on failure, reloads the Scenes and
-   * rethrows. Showing or hiding shows at once (a checkbox must follow the click), then the saved
+   * rethrows. Showing or hiding (a placement or a Label) shows at once (a checkbox must follow the click), then the saved
    * Scene replaces it.
    */
   async function edit(scene: Scene, command: SceneEdit) {
-    if (command.kind === 'set-visible') {
-      const { placementId, visible } = command;
-      const preview = {
-        ...scene,
-        backgrounds: scene.backgrounds.map((item) =>
-          item.id === placementId ? { ...item, visible } : item,
-        ),
-        overlays: scene.overlays.map((item) =>
-          item.id === placementId ? { ...item, visible } : item,
-        ),
-      };
+    if (command.kind === 'set-visible' || command.kind === 'set-label-visible') {
+      const preview = applySceneEdit(scene, command, () => '');
       setScenes((current) => current.map((item) => (item.id === scene.id ? preview : item)));
     }
     if (!control) return;
@@ -310,7 +302,7 @@ interface EditorProps {
 
 /**
  * The editor of the Selected Scene: its name (rename), "EN DIRECT" when it is the Active
- * Scene, Activate and delete (after confirmation), its full composition drawn by the shared
+ * Scene, Activate and delete (after confirmation), its Scene title, its full composition drawn by the shared
  * renderer with Hidden placements in the GM-only style, and its Background and Overlay lists.
  * Library images dropped on the canvas or on a list are placed there.
  */
@@ -384,6 +376,7 @@ function SceneEditor(props: EditorProps) {
           {renameError}
         </p>
       )}
+      <SceneTitleField title={scene.title} onEdit={onEditShowingFailure} />
 
       {confirmingDelete && (
         <div

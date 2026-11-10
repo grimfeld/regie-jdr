@@ -152,7 +152,7 @@ test('Hidden placements and Labels, notes, the Scene name and Media names never 
   const [shown, hidden] = scene.overlays;
   await edit({ kind: 'set-visible', placementId: shown.id, visible: true });
 
-  // Notes, Labels and the Scene title have no editing commands yet: written as stored.
+  // Notes have no editing command yet: written as stored, with Labels and the Scene title.
   const scenesFile = path.join(regie.dataDir, 'campaigns', campaignId, 'scenes.json');
   await regie.app.close();
   const stored = JSON.parse(await fs.readFile(scenesFile, 'utf8')) as { scenes: Scene[] };
