@@ -21,6 +21,16 @@ An independent collection of Scenes and Media belonging to one game. Nothing is 
 UI: Campagne
 _Avoid_: Profile, project, game
 
+**Export**:
+A `.zip` copy of one Campaign (its documents and Media) that can be imported back as a new Campaign. Backing up a Campaign is done by Exporting it.
+UI: Exporter
+_Avoid_: Backup, archive, save file
+
+**Import** (of a Campaign):
+Turning an Export back into a Campaign. It always creates a new Campaign and never replaces an existing one.
+UI: Importer
+_Avoid_: Restore, load
+
 ## Media
 
 **Media**:
