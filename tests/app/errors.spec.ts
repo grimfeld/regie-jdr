@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { expect, test } from './harness';
+import { expect, openBroadcastWindow, test } from './harness';
 
 /** The app's log file, as the Game Master would find it in the data folder. */
 async function logFile(dataDir: string): Promise<string> {
@@ -89,4 +89,28 @@ test('an unhandled rejection in the main process is logged and the app keeps wor
     .toMatch(/ERROR Unhandled rejection[^\n]*\n {2}Error: promesse oubliée/);
   await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('Toujours là');
   await expect(controlWindow.getByRole('heading', { level: 2, name: 'Toujours là' })).toBeVisible();
+});
+
+test('an interface error shows a recoverable message instead of a blank window', async ({
+  regie,
+}) => {
+  const { app, controlWindow, dataDir } = regie;
+  await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('La taverne');
+  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
+  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText('La taverne');
+
+  // Stand for a bug: the main process sends the Broadcast window something it cannot render.
+  await app.evaluate(({ BrowserWindow }) => {
+    const stage = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().includes('view=stage'),
+    );
+    stage?.webContents.send('display:changed', null);
+  });
+
+  const message = broadcastWindow.getByRole('alert');
+  await expect(message).toContainText('Un problème est survenu dans cette fenêtre.');
+  await expect.poll(() => logFile(dataDir)).toMatch(/ERROR Window error: Interface error: /);
+
+  await message.getByRole('button', { name: 'Réessayer' }).click();
+  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText('La taverne');
 });
