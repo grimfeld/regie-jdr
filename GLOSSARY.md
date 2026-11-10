@@ -31,6 +31,11 @@ Turning an Export back into a Campaign. It always creates a new Campaign and nev
 UI: Importer
 _Avoid_: Restore, load
 
+**Theme**:
+The look of the Control window and the home page: Rétro SF, Imperium or Fantasy. Each Campaign has one (a new Campaign takes the home page's); the home page uses the global one. It never reaches the Broadcast window, the editor canvas or the On-air monitor.
+UI: Thème
+_Avoid_: Skin, palette, style
+
 ## Media
 
 **Media**:
