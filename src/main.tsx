@@ -5,13 +5,13 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { Notices } from './notices';
 import './styles.css';
 
-const isStage = new URLSearchParams(window.location.search).get('view') === 'stage';
+const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
-    {isStage ? null : <Notices />}
+    {isBroadcast ? null : <Notices />}
   </React.StrictMode>,
 );

@@ -477,45 +477,45 @@ button {
   color: #e08a7a;
   font-size: 12px;
 }
-.stage-screen {
+.broadcast-screen {
   position: fixed;
   inset: 0;
   background: #08090c;
   overflow: hidden;
 }
 /* Active Scene placements: the wrapper carries position (custom properties), the image fills it. */
-.stage-layer {
+.broadcast-layer {
   position: absolute;
   inset: 0;
 }
-.stage-layer img {
+.broadcast-layer img {
   display: block;
   width: 100%;
   height: 100%;
   object-position: var(--x) var(--y);
 }
-.stage-layer.fit-cover img {
+.broadcast-layer.fit-cover img {
   object-fit: cover;
 }
-.stage-layer.fit-contain img {
+.broadcast-layer.fit-contain img {
   object-fit: contain;
 }
-.stage-layer.fit-stretch img {
+.broadcast-layer.fit-stretch img {
   object-fit: fill;
 }
-.stage-overlay {
+.broadcast-overlay {
   position: absolute;
   left: var(--x);
   top: var(--y);
   height: var(--height);
   transform: translate(-50%, -50%);
 }
-.stage-overlay img {
+.broadcast-overlay img {
   display: block;
   height: 100%;
   width: auto;
 }
-.stage-fullscreen {
+.broadcast-fullscreen {
   position: absolute;
   right: 20px;
   top: 20px;

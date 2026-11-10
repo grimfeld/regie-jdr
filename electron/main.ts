@@ -156,8 +156,8 @@ async function createBroadcastWindow() {
   rememberBounds(broadcastWindow, 'broadcast');
   broadcastWindow.setMenuBarVisibility(false);
   // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
-  if (process.env.VITE_DEV_SERVER_URL) broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage`);
-  else broadcastWindow.loadFile(appIndexFile, { query: { view: 'stage' } });
+  if (process.env.VITE_DEV_SERVER_URL) broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`);
+  else broadcastWindow.loadFile(appIndexFile, { query: { view: 'broadcast' } });
   broadcastWindow.on('closed', () => { broadcastWindow = null; });
 }
 

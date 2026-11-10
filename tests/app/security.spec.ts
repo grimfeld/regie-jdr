@@ -72,9 +72,9 @@ test("navigation away from the app's own pages is blocked in both windows", asyn
 test('the app can still navigate within its own pages', async ({ regie }) => {
   const { controlWindow } = regie;
   await controlWindow.evaluate(() => {
-    window.location.href = `${window.location.href.split('?')[0]}?view=stage`;
+    window.location.href = `${window.location.href.split('?')[0]}?view=broadcast`;
   });
-  await expect(controlWindow.locator('main.stage-screen')).toBeVisible();
+  await expect(controlWindow.locator('main.broadcast-screen')).toBeVisible();
 });
 
 test('the content security policy blocks inline scripts and remote content in both windows', async ({

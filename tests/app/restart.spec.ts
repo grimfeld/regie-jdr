@@ -130,7 +130,7 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
   await editor.getByRole('button', { name: 'Activer' }).click();
   await expect(editor).toContainText('Scène active');
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  await expect(broadcastWindow.locator('main.stage-screen')).not.toHaveAttribute(
+  await expect(broadcastWindow.locator('main.broadcast-screen')).not.toHaveAttribute(
     'data-active-scene-id',
     '',
   );
@@ -148,8 +148,8 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
     await expect(cantina).not.toContainText('Dernière active');
 
     const reopened = await openBroadcastWindow(restarted.app, page);
-    await expect(reopened.locator('main.stage-screen')).toHaveAttribute('data-active-scene-id', '');
-    await expect(reopened.locator('.stage-layer')).toHaveCount(0);
+    await expect(reopened.locator('main.broadcast-screen')).toHaveAttribute('data-active-scene-id', '');
+    await expect(reopened.locator('.broadcast-layer')).toHaveCount(0);
   } finally {
     await restarted.app.close();
   }

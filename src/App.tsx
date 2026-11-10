@@ -18,9 +18,9 @@ const themes: { id: ThemeId; label: string; subtitle: string }[] = [
 const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 
 export default function App() {
-  const isStage = new URLSearchParams(window.location.search).get('view') === 'stage';
+  const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
   // Each window's preload exposes its own bridge (see shared/contract.ts).
-  if (isStage) return <BroadcastView bridge={window.regie as BroadcastBridge | undefined} />;
+  if (isBroadcast) return <BroadcastView bridge={window.regie as BroadcastBridge | undefined} />;
   return <ControlApp control={window.regie as ControlBridge | undefined} />;
 }
 

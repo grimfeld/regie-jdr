@@ -6,7 +6,7 @@ describe('isAppPage, built app loaded from disk', () => {
 
   it('accepts the app page, with or without a query or hash', () => {
     expect(isAppPage(entry, entry)).toBe(true);
-    expect(isAppPage(`${entry}?view=stage`, entry)).toBe(true);
+    expect(isAppPage(`${entry}?view=broadcast`, entry)).toBe(true);
     expect(isAppPage(`${entry}#top`, entry)).toBe(true);
   });
 
@@ -30,7 +30,7 @@ describe('isAppPage, development server', () => {
 
   it('accepts any page of the dev server origin', () => {
     expect(isAppPage('http://127.0.0.1:5173/', entry)).toBe(true);
-    expect(isAppPage('http://127.0.0.1:5173/?view=stage', entry)).toBe(true);
+    expect(isAppPage('http://127.0.0.1:5173/?view=broadcast', entry)).toBe(true);
   });
 
   it('refuses other origins, including other ports and hosts', () => {

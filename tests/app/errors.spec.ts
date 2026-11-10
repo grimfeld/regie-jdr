@@ -114,23 +114,23 @@ test('an interface error shows a recoverable message instead of a blank window',
 }) => {
   const { app, controlWindow, dataDir } = regie;
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  const stage = broadcastWindow.locator('main.stage-screen');
-  await expect(stage).toHaveAttribute('data-version', '0');
+  const screen = broadcastWindow.locator('main.broadcast-screen');
+  await expect(screen).toHaveAttribute('data-version', '0');
 
   // Stand for a bug: the main process sends the Broadcast window something it cannot render.
   await app.evaluate(({ BrowserWindow }) => {
     const broadcast = BrowserWindow.getAllWindows().find((window) =>
-      window.webContents.getURL().includes('view=stage'),
+      window.webContents.getURL().includes('view=broadcast'),
     );
     broadcast?.webContents.send('onAir:changed', null);
   });
 
   const message = broadcastWindow.getByRole('alert');
   await expect(message).toContainText('Un problème est survenu dans cette fenêtre.');
-  await expect(stage).toBeHidden();
+  await expect(screen).toBeHidden();
   await expect.poll(() => logFile(dataDir)).toMatch(/ERROR Window error: Interface error: /);
 
   await message.getByRole('button', { name: 'Réessayer' }).click();
-  await expect(stage).toHaveAttribute('data-version', '0');
+  await expect(screen).toHaveAttribute('data-version', '0');
   await expect(message).toBeHidden();
 });

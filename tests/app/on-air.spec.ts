@@ -51,17 +51,17 @@ async function expectOnAir(
   broadcastWindow: Page,
   expected: { campaignId: string | null; activeSceneId: string | null; version: number },
 ) {
-  const stage = broadcastWindow.locator('main.stage-screen');
-  await expect(stage).toHaveAttribute('data-version', String(expected.version));
-  await expect(stage).toHaveAttribute('data-campaign-id', expected.campaignId ?? '');
-  await expect(stage).toHaveAttribute('data-active-scene-id', expected.activeSceneId ?? '');
+  const screen = broadcastWindow.locator('main.broadcast-screen');
+  await expect(screen).toHaveAttribute('data-version', String(expected.version));
+  await expect(screen).toHaveAttribute('data-campaign-id', expected.campaignId ?? '');
+  await expect(screen).toHaveAttribute('data-active-scene-id', expected.activeSceneId ?? '');
 }
 
 async function closeBroadcastWindow(app: ElectronApplication, broadcastWindow: Page) {
   const closed = broadcastWindow.waitForEvent('close');
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()
-      .find((window) => window.webContents.getURL().includes('view=stage'))
+      .find((window) => window.webContents.getURL().includes('view=broadcast'))
       ?.close();
   });
   await closed;
@@ -158,7 +158,7 @@ test('the Broadcast window ignores a snapshot older than the one it shows', asyn
   // A late, stale snapshot (version 1) arrives after version 2.
   await app.evaluate(({ BrowserWindow }, campaignId) => {
     BrowserWindow.getAllWindows()
-      .find((window) => window.webContents.getURL().includes('view=stage'))
+      .find((window) => window.webContents.getURL().includes('view=broadcast'))
       ?.webContents.send('onAir:changed', {
         campaignId,
         activeSceneId: null,
@@ -171,9 +171,9 @@ test('the Broadcast window ignores a snapshot older than the one it shows', asyn
     await (window as unknown as { regie: { getOnAir(): Promise<unknown> } }).regie.getOnAir();
     for (let i = 0; i < 2; i++) await new Promise((done) => requestAnimationFrame(done));
   });
-  const stage = broadcastWindow.locator('main.stage-screen');
-  expect(await stage.getAttribute('data-version')).toBe('2');
-  expect(await stage.getAttribute('data-active-scene-id')).toBe(scenes.Cantina);
+  const screen = broadcastWindow.locator('main.broadcast-screen');
+  expect(await screen.getAttribute('data-version')).toBe('2');
+  expect(await screen.getAttribute('data-active-scene-id')).toBe(scenes.Cantina);
 });
 
 test('Activating a Scene with no Campaign open is refused and changes nothing', async ({

@@ -10,7 +10,7 @@ function toggleFullscreen() {
   else void document.documentElement.requestFullscreen();
 }
 
-/** A normalized point as CSS custom properties, read by the stage styles. */
+/** A normalized point as CSS custom properties, read by the Broadcast window styles. */
 function at({ x, y }: NormalizedPoint, extra: Record<string, string> = {}): CSSProperties {
   return { '--x': `${x * 100}%`, '--y': `${y * 100}%`, ...extra } as CSSProperties;
 }
@@ -20,14 +20,14 @@ function at({ x, y }: NormalizedPoint, extra: Record<string, string> = {}): CSSP
  * Overlays by stacking order. Only visible placements are ever sent here. Images go through
  * MediaImage, which shows nothing for a missing Media. (The fixed 16:9 canvas is Milestone 1.)
  */
-function StagePicture({ scene }: { scene: OnAirScene }) {
+function BroadcastPicture({ scene }: { scene: OnAirScene }) {
   const overlays = [...scene.overlays].sort((a, b) => a.zIndex - b.zIndex);
   return (
     <>
       {scene.backgrounds.map((background) => (
         <div
           key={background.id}
-          className={`stage-layer fit-${background.fit}`}
+          className={`broadcast-layer fit-${background.fit}`}
           data-background-id={background.id}
           style={at(background.position)}
         >
@@ -37,7 +37,7 @@ function StagePicture({ scene }: { scene: OnAirScene }) {
       {overlays.map((overlay) => (
         <div
           key={overlay.id}
-          className="stage-overlay"
+          className="broadcast-overlay"
           data-overlay-id={overlay.id}
           style={at(overlay.position, { '--height': `${overlay.scale * 100}%` })}
         >
@@ -68,13 +68,13 @@ export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | un
 
   return (
     <main
-      className="stage-screen"
+      className="broadcast-screen"
       data-campaign-id={onAir ? (onAir.campaignId ?? '') : undefined}
       data-active-scene-id={onAir ? (onAir.activeSceneId ?? '') : undefined}
       data-version={onAir?.version}
     >
-      {onAir?.scene && <StagePicture scene={onAir.scene} />}
-      <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">
+      {onAir?.scene && <BroadcastPicture scene={onAir.scene} />}
+      <button className="broadcast-fullscreen" onClick={toggleFullscreen} title="Plein écran">
         ⛶
       </button>
     </main>

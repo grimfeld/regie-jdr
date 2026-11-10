@@ -123,15 +123,15 @@ test('a corrupt Campaign is recovered from its backup and the Game Master is tol
 test('opening a Campaign puts it on air, going back to the list closes it', async ({ regie }) => {
   const { app, controlWindow, dataDir } = regie;
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  const stage = broadcastWindow.locator('main.stage-screen');
+  const screen = broadcastWindow.locator('main.broadcast-screen');
 
   await createCampaign(controlWindow, 'Star Wars');
   const [id] = await fs.readdir(path.join(dataDir, 'campaigns'));
-  await expect(stage).toHaveAttribute('data-campaign-id', id);
+  await expect(screen).toHaveAttribute('data-campaign-id', id);
 
   await backToCampaignList(controlWindow);
-  await expect(stage).toHaveAttribute('data-campaign-id', '');
+  await expect(screen).toHaveAttribute('data-campaign-id', '');
 
   await campaignList(controlWindow).getByRole('button', { name: 'Star Wars', exact: true }).click();
-  await expect(stage).toHaveAttribute('data-campaign-id', id);
+  await expect(screen).toHaveAttribute('data-campaign-id', id);
 });
