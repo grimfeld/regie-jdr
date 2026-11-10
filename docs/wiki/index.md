@@ -12,6 +12,10 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Guardrails before feature work](decision-guardrails-first.md): ESLint and CODING_STANDARDS.md land first in the M1 PR.
 - [Guardrail backlog](guardrail-backlog.md): proposed guardrails not yet built.
 
+## Subsystems
+
+- [Scene rendering and Scene edits](subsystem-scene-rendering-and-edits.md): shared renderer, broadcast projection, how to add a SceneEdit.
+
 ## Process
 
 - [Slice agent brief](slice-agent-brief.md): how an agent implements one slice issue and merges it into its milestone branch. Every slice agent reads this.

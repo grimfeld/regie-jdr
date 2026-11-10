@@ -15,3 +15,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 ## Outcomes
 
 - 2026-11-10: guardrails merged at `310598d` ([decision](decision-guardrails-first.md)).
+- 2026-11-11: #22 shared renderer merged at `90ddedc` (225 unit, 60 app tests). See [subsystem page](subsystem-scene-rendering-and-edits.md). Went beyond its criteria: schema 2 data shape for all of M1.
