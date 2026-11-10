@@ -36,6 +36,10 @@ git rebase <milestone-branch>        # pick up slices merged meanwhile
 git -C MAIN merge --ff-only <prefix>/<n>-<slug>
 ```
 
+Run each step-5 command on its own and check its exit status. Never chain them with `&&` into a pipe (`| tail`, `| head`): the pipe hides a failed fast-forward and the next command removes your worktree anyway (happened on 2026-11-11 during #25; no work lost).
+
+Rebase conflicts are expected in shared lists: `RENDERER_SAFE_CORE` (`eslint.config.mjs` and `CODING_STANDARDS.md`) and the bridge key list in `tests/app/bridges.spec.ts` (seen 2026-11-11). Keep both sides.
+
 If the fast-forward fails, someone merged first: rebase again, re-run gates, retry. Then `git -C MAIN worktree remove .claude/worktrees/<n>` and delete the slice branch.
 
 Do not push, open PRs, comment on or close issues. The chief of staff does that.
