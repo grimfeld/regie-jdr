@@ -16,6 +16,7 @@ npm install
 npm run package:win
 ```
 L’installateur NSIS sera créé dans le dossier `release/`. Le projet doit être construit sur Windows pour produire et valider l’installeur Windows.
+La CI le construit aussi sur `main` et à la demande (artefact `windows-installer`). Vérification avant diffusion : `docs/install-checklist.md`.
 
 ## Lancer en développement
 ```bash
