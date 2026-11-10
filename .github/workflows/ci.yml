@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   check:
@@ -43,3 +44,41 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  # Windows minutes cost double on the private repo: only on main and on demand.
+  windows-installer:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    needs: check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Unsigned x64 NSIS installer; the afterPack hook (build/fuses.mjs) flips the Electron fuses.
+      - name: Build installer
+        run: npm run package:win -- --publish never
+
+      - name: Check fuses on the packaged app
+        shell: bash
+        run: |
+          node --input-type=module -e "
+            import { FuseState, FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
+            const wire = await getCurrentFuseWire('release/win-unpacked/Regie JDR.exe');
+            if (wire[FuseV1Options.RunAsNode] !== FuseState.DISABLE) throw new Error('RunAsNode fuse is not disabled');
+            console.log('RunAsNode fuse disabled');
+          "
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-installer
+          path: release/Regie-JDR-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
