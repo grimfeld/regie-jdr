@@ -18,7 +18,7 @@ import type {
   MediaImportKind,
   Payload,
 } from '../shared/contract.js';
-import type { CampaignId, ImageCategory, MediaId, Scene } from '../shared/domain.js';
+import type { CampaignId, ImageCategory, MediaId, Scene, ThemeId } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
 import { parseScene } from './scenes.js';
 import { isThemeId } from './storage/campaigns.js';
@@ -100,6 +100,11 @@ function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: Campa
   return { id: value.id, changes };
 }
 
+function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
+  if (!isRecord(value) || !isThemeId(value.theme)) return INVALID;
+  return { theme: value.theme };
+}
+
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
   if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
   return { campaignId: value.campaignId };
@@ -154,6 +159,8 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
   'campaigns:update': { from: controlOnly, parse: onePayload(campaignUpdate) },
   'notices:take': { from: controlOnly, parse: noPayload },
+  'settings:get': { from: controlOnly, parse: noPayload },
+  'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

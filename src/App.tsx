@@ -23,8 +23,8 @@ const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' }
 ];
 
-/** Theme of the Campaign list home page, until the global theme setting lands. */
-const HOME_THEME: ThemeId = 'imperium';
+/** Theme of the Campaign list home page until the global Settings are read. */
+const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 
 const initialPreview: PreviewScene = {
   title: 'Le sanctuaire oublié',
@@ -85,8 +85,29 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     }
   }
 
+  // The global theme (Settings) dresses the home page; inside a Campaign, its own theme.
+  const [homeTheme, setHomeTheme] = useState<ThemeId>(DEFAULT_HOME_THEME);
+  useEffect(() => {
+    if (!control) return;
+    let cancelled = false;
+    control.getSettings()
+      .then(settings => { if (!cancelled) setHomeTheme(settings.theme); })
+      .catch(error => { if (!cancelled) showNotice(errorMessage(error)); });
+    return () => { cancelled = true; };
+  }, [control]);
+
+  async function changeHomeTheme(next: ThemeId) {
+    setHomeTheme(next);
+    if (!control) return;
+    try {
+      setHomeTheme((await control.setHomeTheme(next)).theme);
+    } catch (error) {
+      showNotice(errorMessage(error));
+    }
+  }
+
   const openCampaign = campaigns?.find(c => c.id === openId);
-  const theme = openCampaign?.theme ?? HOME_THEME;
+  const theme = openCampaign?.theme ?? homeTheme;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -114,7 +135,9 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Aperture size={19} /></div><div><strong>RÉGIE JDR</strong><small>POSTE DU MAÎTRE DU JEU</small></div></div>
         <div className="topbar-right">
-          {openCampaign && <button className="secondary-button" onClick={() => void enter(null)}><ArrowLeft size={14} /> Campagnes</button>}
+          {openCampaign
+            ? <button className="secondary-button" onClick={() => void enter(null)}><ArrowLeft size={14} /> Campagnes</button>
+            : <HomeThemePicker theme={homeTheme} onChange={next => void changeHomeTheme(next)} />}
           <button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button>
         </div>
       </header>
@@ -123,6 +146,18 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         : campaigns && <CampaignList campaigns={campaigns} onOpen={id => void enter(id)} onCreate={create} onRename={(id, name) => update(id, { name })} />}
       <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
     </main>
+  );
+}
+
+/** Minimal picker for the home page theme (finished themes and their picker come later). */
+function HomeThemePicker({ theme, onChange }: { theme: ThemeId; onChange(theme: ThemeId): void }) {
+  return (
+    <label className="home-theme">
+      <Palette size={14} />
+      <select aria-label="Thème de l’accueil" value={theme} onChange={e => onChange(e.target.value as ThemeId)}>
+        {themes.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+      </select>
+    </label>
   );
 }
 

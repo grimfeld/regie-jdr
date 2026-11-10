@@ -873,6 +873,30 @@ button {
   letter-spacing: 1px;
   color: var(--accent2);
 }
+.scene-list li.last-active .scene-open {
+  border-color: var(--accent2);
+}
+.scene-last-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.home-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.home-theme select {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
 .scene-editor {
   border-top: 1px solid var(--line);
   padding-top: 12px;
