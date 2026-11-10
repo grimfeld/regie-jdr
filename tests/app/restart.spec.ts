@@ -136,7 +136,7 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
   // Hangar is the Selected Scene: Activate it.
   const editor = controlWindow.getByRole('region', { name: 'Scène ouverte' });
   await editor.getByRole('button', { name: 'Activer' }).click();
-  await expect(editor).toContainText('Scène active');
+  await expect(editor).toContainText('EN DIRECT');
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await expect(broadcastWindow.locator('main.broadcast-screen')).not.toHaveAttribute(
     'data-active-scene-id',

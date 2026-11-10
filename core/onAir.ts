@@ -132,18 +132,19 @@ export function onAirSceneOf(scene: Scene, library: readonly Media[]): OnAirScen
   return { backgrounds, overlays, ...(title && { title }) };
 }
 
-/**
- * What the editor draws of the Selected Scene: every placement whose Media is an image in
- * `library`, Hidden ones included and marked `hidden`, so the Game Master sees them in the
- * GM-only style; Labels with text, marked `labelHidden` when Hidden; the Scene title when set.
- * Only for the Control window: the Broadcast window gets `onAirSceneOf`.
- */
+/** The full Selected Scene as the editor draws it (src/SceneCanvas.tsx `Picture`). */
 export interface EditorPicture {
   backgrounds: (OnAirBackground & { hidden: boolean })[];
   overlays: (OnAirOverlay & { hidden: boolean; labelHidden?: boolean })[];
   title?: string;
 }
 
+/**
+ * What the editor draws of the Selected Scene: every placement whose Media is an image in
+ * `library`, Hidden ones included and marked `hidden`, so the Game Master sees them in the
+ * GM-only style; Labels with text, marked `labelHidden` when Hidden; the Scene title when set.
+ * Only for the Control window: the Broadcast window gets `onAirSceneOf`.
+ */
 export function editorPictureOf(scene: Scene, library: readonly Media[]): EditorPicture {
   const addressOf = (mediaId: string) => {
     const media = library.find((item) => item.id === mediaId && item.kind === 'image');
