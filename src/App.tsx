@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Aperture, ArrowLeft, AudioLines, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
+import { Aperture, ArrowLeft, AudioLines, MonitorPlay, Music2, Palette, Play, Radio, Settings2, Volume2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { BroadcastBridge, CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
 import { MediaImage } from './MediaImage';
 import { MediaLibrary } from './MediaLibrary';
+import { ScenesPanel } from './ScenesPanel';
 import { showNotice } from './notices';
 
 /** Control window preview (prototype): local only, the Broadcast window shows what is on air. */
@@ -165,6 +166,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             <div className="scene-edit"><label>TITRE DE LA SCÈNE<input value={scene.title} onChange={e => updateScene({ ...scene, title: e.target.value })} /></label><label>DESCRIPTION<input value={scene.description} onChange={e => updateScene({ ...scene, description: e.target.value })} /></label></div>
           </div>
 
+          <ScenesPanel campaignId={campaign.id} control={control} />
+
           <MediaLibrary campaignId={campaign.id} control={control} onShowImage={(image, address) => updateScene({ ...scene, background: address, title: image.name })} />
         </section>
 
@@ -191,7 +194,6 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             <div className="slider-row"><label>Diffusion</label><input type="range" min="0" max="100" value={stageVolume} onChange={e => setStageVolume(+e.target.value)}/><output>{stageVolume}%</output></div>
             <p className="muted-note">Les sorties seront reliées au moteur audio lors de l'étape d'intégration.</p>
           </div>
-          <div className="panel scene-shortcut"><div><span className="eyebrow">SCÈNES PRÉPARÉES</span><strong>Rappel en un clic</strong><small>La sauvegarde des scènes arrive dans la prochaine étape.</small></div><button disabled title="Bientôt disponible"><Plus size={18}/></button></div>
         </aside>
       </div>
     </>

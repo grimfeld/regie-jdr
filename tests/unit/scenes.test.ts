@@ -141,7 +141,10 @@ describe('Scene parsing', () => {
     ['a negative scale', { ...valid, overlays: [{ ...valid.overlays[0], scale: -1 }] }],
     ['a volume above 1', { ...valid, volumes: { music: 2, ambience: 0 } }],
     ['missing notes', { ...valid, notes: undefined }],
-    ['a visibility that is not a boolean', { ...valid, backgrounds: [{ ...valid.backgrounds[0], visible: 'yes' }] }],
+    [
+      'a visibility that is not a boolean',
+      { ...valid, backgrounds: [{ ...valid.backgrounds[0], visible: 'yes' }] },
+    ],
   ])('rejects %s', (_case, value) => {
     expect(parseScene(value, 'c1')).toBeUndefined();
   });

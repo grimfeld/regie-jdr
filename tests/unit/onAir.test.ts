@@ -3,7 +3,9 @@ import { createOnAir, latestOnAir, onAirSceneOf } from '../../core/onAir';
 import type { Media, OnAirScene, Scene } from '../../shared/domain';
 
 const cantina: OnAirScene = {
-  backgrounds: [{ id: 'b1', src: 'regie-asset://media/c/x.png', fit: 'cover', position: { x: 0.5, y: 0.5 } }],
+  backgrounds: [
+    { id: 'b1', src: 'regie-asset://media/c/x.png', fit: 'cover', position: { x: 0.5, y: 0.5 } },
+  ],
   overlays: [],
 };
 const blank: OnAirScene = { backgrounds: [], overlays: [] };
