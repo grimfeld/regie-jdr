@@ -208,36 +208,26 @@ describe('Media channels', () => {
 
 describe('Scene channels', () => {
   const campaignId = 'star-wars';
-  const sceneValue = {
-    id: 'cantina',
+  const edit = {
     campaignId,
-    name: 'La cantina',
-    backgrounds: [
-      { id: 'b1', mediaId: 'm1', fit: 'cover', position: { x: 0.5, y: 0.5 }, visible: true },
-    ],
-    overlays: [],
-    music: [],
-    ambiences: [],
-    volumes: { music: 1, ambience: 1 },
-    notes: '',
+    sceneId: 'cantina',
+    edit: { kind: 'set-visible', placementId: 'b1', visible: true },
   };
 
   it('are for the Control window only', () => {
     for (const [channel, args] of [
       ['scenes:list', [{ campaignId }]],
       ['scenes:create', [{ campaignId, name: 'X' }]],
-      ['scenes:update', [sceneValue]],
+      ['scenes:edit', [edit]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
     }
   });
 
-  it('accept a whole Scene to update, keeping only Scene fields', () => {
-    expect(checkInvoke('scenes:update', 'control', [{ ...sceneValue, extra: 1 }])).toEqual({
-      ok: true,
-      payload: sceneValue,
-    });
+  it('accept an edit command, keeping only contract fields', () => {
+    const padded = { ...edit, extra: 1, edit: { ...edit.edit, scene: {} } };
+    expect(checkInvoke('scenes:edit', 'control', [padded])).toEqual({ ok: true, payload: edit });
   });
 
   it('accept a name to create, keeping only contract fields', () => {
@@ -250,14 +240,21 @@ describe('Scene channels', () => {
   it.each([
     ['a Campaign id that is a path', 'scenes:list', [{ campaignId: '../..' }]],
     ['no name', 'scenes:create', [{ campaignId }]],
-    ['a Scene with no Campaign', 'scenes:update', [{ ...sceneValue, campaignId: undefined }]],
-    [
-      'a malformed Background',
-      'scenes:update',
-      [{ ...sceneValue, backgrounds: [{ id: 'b1', mediaId: 'm1' }] }],
-    ],
+    ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
+    ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],
+    ['an unknown edit', 'scenes:edit', [{ ...edit, edit: { kind: 'replace-scene' } }]],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
+  });
+});
+
+describe('Broadcast window channels', () => {
+  it('are for the Control window only, with no payload', () => {
+    for (const channel of ['broadcast:open', 'broadcast:toggle-fullscreen'] as const) {
+      expect(checkInvoke(channel, 'control', [])).toMatchObject({ ok: true });
+      expect(checkInvoke(channel, 'broadcast', [])).toMatchObject({ ok: false });
+      expect(checkInvoke(channel, 'control', [true])).toMatchObject({ ok: false });
+    }
   });
 });
 

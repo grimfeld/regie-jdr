@@ -12,12 +12,28 @@ import type {
   ImageCategory,
   Media,
   MediaId,
+  NormalizedPoint,
   OnAirState,
   Scene,
   SceneId,
   Settings,
   ThemeId,
 } from './domain.js';
+
+/**
+ * One edit command on a Scene's composition, applied by the app core (core/sceneEdits.ts).
+ * Plain data, so the core can keep an undo history of them.
+ */
+export type SceneEdit =
+  /** Places an image as a new Background, on top of the stack, Hidden, covering the canvas. */
+  | { kind: 'place-background'; mediaId: MediaId }
+  /**
+   * Places an image as a new Overlay, in front of the others, Hidden, half the canvas high,
+   * centred on `position` (the canvas centre when absent).
+   */
+  | { kind: 'place-overlay'; mediaId: MediaId; position?: NormalizedPoint }
+  /** Shows or hides a Background or Overlay. */
+  | { kind: 'set-visible'; placementId: string; visible: boolean };
 
 /** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
 export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
@@ -63,12 +79,20 @@ export interface InvokeChannels {
   /** Create an empty Scene; fails with a French message for an empty name. */
   'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
   /**
-   * Save a whole Scene (the "update the Active Scene" command). The Active Scene goes on air
-   * at once; any other Scene stays private.
+   * Apply one edit command to a Scene (core/sceneEdits.ts) and get the Scene as saved. On the
+   * Active Scene the edit goes on air at once; any other Scene stays private.
    */
-  'scenes:update': { payload: Scene; result: Scene };
+  'scenes:edit': {
+    payload: { campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit };
+    result: Scene;
+  };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
+  /**
+   * Put the Broadcast window in fullscreen, or take it out. Returns whether it is now
+   * fullscreen (false when it is not open).
+   */
+  'broadcast:toggle-fullscreen': { payload: void; result: boolean };
   /** The Media library of a Campaign, in import order. */
   'media:list': { payload: { campaignId: CampaignId }; result: Media[] };
   /**
@@ -160,8 +184,9 @@ export interface ControlBridge extends BroadcastBridge {
   activateScene(sceneId: SceneId): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
-  updateScene(scene: Scene): Promise<Scene>;
+  editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   openBroadcast(): Promise<void>;
+  toggleBroadcastFullscreen(): Promise<boolean>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;
   importMedia(campaignId: CampaignId, kind: MediaImportKind): Promise<MediaImportResult>;
   setImageCategory(

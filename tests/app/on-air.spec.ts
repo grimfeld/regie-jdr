@@ -81,6 +81,7 @@ test('opening the Broadcast window shows the current on-air state', async ({ reg
     campaignId: starWars.id,
     activeSceneId: starWars.scenes.Cantina,
     scene: { backgrounds: [], overlays: [] },
+    blackout: false,
     version: 2,
   });
 
@@ -163,6 +164,7 @@ test('the Broadcast window ignores a snapshot older than the one it shows', asyn
         campaignId,
         activeSceneId: null,
         scene: null,
+        blackout: false,
         version: 1,
       });
   }, id);

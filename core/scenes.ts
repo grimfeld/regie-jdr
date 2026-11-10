@@ -11,6 +11,7 @@ import type {
   Background,
   BackgroundFit,
   CampaignId,
+  Label,
   MediaId,
   NormalizedPoint,
   Overlay,
@@ -43,7 +44,7 @@ export interface SceneLibrary {
 
 export const MAX_SCENE_NAME_LENGTH = 100;
 const SCENES_FILE = 'scenes.json';
-const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain', 'stretch'];
+const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain'];
 
 // Parsing ------------------------------------------------------------------
 
@@ -60,26 +61,38 @@ function parsePoint(value: unknown): NormalizedPoint | undefined {
   return { x: value.x, y: value.y };
 }
 
+function isPositive(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 function parseBackground(value: unknown): Background | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, mediaId, fit, visible } = value;
-  const position = parsePoint(value.position);
-  if (!isId(id) || !isId(mediaId) || !position || typeof visible !== 'boolean') return undefined;
+  const { id, mediaId, fit, zoom, visible } = value;
+  const focus = parsePoint(value.focus);
+  if (!isId(id) || !isId(mediaId) || !focus || typeof visible !== 'boolean') return undefined;
   if (typeof fit !== 'string' || !(BACKGROUND_FITS as readonly string[]).includes(fit)) {
     return undefined;
   }
-  return { id, mediaId, fit: fit as BackgroundFit, position, visible };
+  if (!isPositive(zoom)) return undefined;
+  return { id, mediaId, fit: fit as BackgroundFit, zoom, focus, visible };
+}
+
+function parseLabel(value: unknown): Label | undefined {
+  if (!isRecord(value)) return undefined;
+  const { text, visible } = value;
+  if (typeof text !== 'string' || typeof visible !== 'boolean') return undefined;
+  return { text, visible };
 }
 
 function parseOverlay(value: unknown): Overlay | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, mediaId, scale, zIndex, visible, label } = value;
+  const { id, mediaId, height, visible } = value;
   const position = parsePoint(value.position);
   if (!isId(id) || !isId(mediaId) || !position || typeof visible !== 'boolean') return undefined;
-  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return undefined;
-  if (typeof zIndex !== 'number' || !Number.isFinite(zIndex)) return undefined;
-  if (label !== undefined && typeof label !== 'string') return undefined;
-  return { id, mediaId, position, scale, zIndex, visible, ...(label !== undefined && { label }) };
+  if (!isPositive(height)) return undefined;
+  const label = value.label === undefined ? undefined : parseLabel(value.label);
+  if (value.label !== undefined && !label) return undefined;
+  return { id, mediaId, position, height, visible, ...(label && { label }) };
 }
 
 function parseAmbience(value: unknown): SceneAmbience | undefined {
@@ -101,8 +114,9 @@ function parseList<T>(value: unknown, parse: (item: unknown) => T | undefined): 
  */
 export function parseScene(value: unknown, campaignId: CampaignId): Scene | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, name, notes, volumes } = value;
+  const { id, name, title, notes, volumes } = value;
   if (!isId(id) || typeof name !== 'string' || typeof notes !== 'string') return undefined;
+  if (typeof title !== 'string') return undefined;
   if (!isRecord(volumes) || !isUnit(volumes.music) || !isUnit(volumes.ambience)) return undefined;
   const backgrounds = parseList(value.backgrounds, parseBackground);
   const overlays = parseList(value.overlays, parseOverlay);
@@ -113,6 +127,7 @@ export function parseScene(value: unknown, campaignId: CampaignId): Scene | unde
     id,
     campaignId,
     name,
+    title,
     backgrounds,
     overlays,
     music,
@@ -152,10 +167,49 @@ function stored({ campaignId: _campaignId, ...scene }: Scene): StoredScene {
   return scene;
 }
 
+/**
+ * Version 1 (Milestone 0) to 2 (Milestone 1): Scenes gain an empty Scene title; Backgrounds
+ * gain a zoom of 1, their position becomes the focal point, and Stretch becomes Cover;
+ * Overlays are stacked by array order instead of `zIndex`, `scale` becomes `height`, and a
+ * Label becomes a Hidden Label (none was ever shown to players).
+ */
+function migrateScenesV1(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.scenes)) return fields;
+  const scenes = fields.scenes.map((scene: unknown) => {
+    if (!isRecord(scene)) return scene;
+    const backgrounds = Array.isArray(scene.backgrounds)
+      ? scene.backgrounds.map((item: unknown) => {
+          if (!isRecord(item)) return item;
+          const { position, fit, ...rest } = item;
+          return { ...rest, fit: fit === 'stretch' ? 'cover' : fit, zoom: 1, focus: position };
+        })
+      : scene.backgrounds;
+    const overlays = Array.isArray(scene.overlays)
+      ? [...scene.overlays]
+          .sort((a: unknown, b: unknown) => zIndexOf(a) - zIndexOf(b))
+          .map((item: unknown) => {
+            if (!isRecord(item)) return item;
+            const { scale, zIndex: _zIndex, label, ...rest } = item;
+            return {
+              ...rest,
+              height: scale,
+              ...(typeof label === 'string' && { label: { text: label, visible: false } }),
+            };
+          })
+      : scene.overlays;
+    return { ...scene, title: '', backgrounds, overlays };
+  });
+  return { ...fields, scenes };
+}
+
+function zIndexOf(item: unknown): number {
+  return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
+}
+
 const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
   name: 'scenes',
-  version: 1,
-  migrations: {},
+  version: 2,
+  migrations: { 1: migrateScenesV1 },
   parse({ scenes }) {
     const parsed = parseList(scenes, (item) => parseScene(item, ''));
     return parsed && { scenes: parsed.map(stored) };
@@ -210,6 +264,7 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
           id: randomUUID(),
           campaignId,
           name: cleanName(name),
+          title: '',
           backgrounds: [],
           overlays: [],
           music: [],

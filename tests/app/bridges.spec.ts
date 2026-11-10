@@ -24,6 +24,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'createCampaign',
     'createScene',
     'deleteMedia',
+    'editScene',
     'getOnAir',
     'getSettings',
     'importMedia',
@@ -37,8 +38,8 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'setHomeTheme',
     'setImageCategory',
     'takeNotices',
+    'toggleBroadcastFullscreen',
     'updateCampaign',
-    'updateScene',
   ]);
   expect(await broadcastWindow.evaluate(keysOf)).toEqual([
     'getOnAir',
@@ -70,7 +71,7 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
   expect(outcome).toContain('rejected');
   expect(
     await controlWindow.evaluate(() => (window as unknown as Bridge).regie.getOnAir()),
-  ).toEqual({ campaignId: null, activeSceneId: null, scene: null, version: 0 });
+  ).toEqual({ campaignId: null, activeSceneId: null, scene: null, blackout: false, version: 0 });
   await expect
     .poll(() =>
       mainLog.filter(
@@ -131,7 +132,7 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
   await gm('openCampaign', campaignId);
   await expect
     .poll(calls)
-    .toEqual([[{ campaignId, activeSceneId: null, scene: null, version: 1 }]]);
+    .toEqual([[{ campaignId, activeSceneId: null, scene: null, blackout: false, version: 1 }]]);
 
   await broadcastWindow.evaluate(() =>
     (window as unknown as { recorder: Recorder }).recorder.unsubscribe(),
@@ -142,17 +143,4 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
     '2',
   );
   expect(await calls()).toHaveLength(1);
-});
-
-test('the Broadcast window fullscreen button toggles fullscreen without its bridge', async ({
-  regie,
-}) => {
-  const { app, controlWindow } = regie;
-  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  const isFullscreen = () => broadcastWindow.evaluate(() => document.fullscreenElement !== null);
-
-  await broadcastWindow.getByTitle('Plein écran').click();
-  await expect.poll(isFullscreen).toBe(true);
-  await broadcastWindow.getByTitle('Plein écran').click();
-  await expect.poll(isFullscreen).toBe(false);
 });

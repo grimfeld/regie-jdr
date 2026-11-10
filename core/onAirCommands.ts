@@ -1,16 +1,19 @@
 /**
  * The on-air commands the Control window gives: open or close a Campaign, Activate a Scene,
- * update a Scene, delete Media (which can change Scenes, so the Active Scene's picture). They check that Campaigns and Scenes exist, save Scene edits, and keep the
- * on-air state (core/onAir.ts) in step. No Electron dependency.
+ * edit a Scene, delete Media (which can change Scenes, so the Active Scene's picture). They
+ * check that Campaigns, Scenes and Media exist, save Scene edits, and keep the on-air state
+ * (core/onAir.ts) in step. No Electron dependency.
  *
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
 import type { MediaDeletion } from '../shared/contract.js';
+import { randomUUID } from 'node:crypto';
 import type { CampaignId, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
 import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
+import { applySceneEdit, placedMedia, type SceneEdit } from './sceneEdits.js';
 import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import { createSerialQueue } from './serialQueue.js';
 import type { CampaignRepository } from './storage/index.js';
@@ -28,10 +31,12 @@ export interface OnAirCommands {
   /** Puts a Scene of the open Campaign on air, as the Active Scene. */
   activateScene(sceneId: SceneId): Promise<OnAirState>;
   /**
-   * Saves a Scene. When it is the Active Scene, the Broadcast window shows the edit at once;
-   * any other Scene stays private.
+   * Applies one edit command to a Scene of a Campaign and saves it; returns the Scene as saved.
+   * When it is the Active Scene, the Broadcast window shows the edit at once; any other Scene
+   * stays private. Every Scene composition edit goes through here, one at a time: this is
+   * where the Scene before and after each edit is known, for an undo history.
    */
-  updateScene(scene: Scene): Promise<Scene>;
+  editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   /**
    * Deletes a Media. Unused Media goes at once. Media that Scenes use is only listed with
    * those Scenes unless `confirmed`; then the Media, its file and its placements in those
@@ -46,8 +51,10 @@ export function createOnAirCommands(deps: {
   scenes: SceneLibrary;
   onAir: OnAir;
   audio: AudioOutput;
+  /** Names new placements; random UUIDs unless a test gives its own. */
+  newId?: () => string;
 }): OnAirCommands {
-  const { campaigns, library, scenes, onAir, audio } = deps;
+  const { campaigns, library, scenes, onAir, audio, newId = randomUUID } = deps;
 
   const serialized = createSerialQueue();
 
@@ -82,11 +89,18 @@ export function createOnAirCommands(deps: {
         return onAir.activateScene(scene.id, await picture(scene));
       }),
 
-    updateScene: (scene) =>
+    editScene: (campaignId, sceneId, edit) =>
       serialized(async () => {
-        const saved = await scenes.save(scene);
-        const { campaignId, activeSceneId } = onAir.current();
-        if (saved.campaignId === campaignId && saved.id === activeSceneId) {
+        const scene = await scenes.get(campaignId, sceneId);
+        if (!scene) throw new SceneError('Cette scène n’existe plus.');
+        const mediaId = placedMedia(edit);
+        if (mediaId !== undefined) {
+          const media = (await library.list(campaignId)).find((item) => item.id === mediaId);
+          if (media?.kind !== 'image') throw new MediaError('Ce média n’existe plus.');
+        }
+        const saved = await scenes.save(applySceneEdit(scene, edit, newId));
+        const current = onAir.current();
+        if (saved.campaignId === current.campaignId && saved.id === current.activeSceneId) {
           onAir.showActiveScene(saved.id, await picture(saved));
         }
         return saved;

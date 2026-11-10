@@ -62,7 +62,7 @@ function backgroundToggle(page: Page) {
 
 /** Background images the Broadcast window shows (loaded, so not hidden). */
 function shownBackgrounds(broadcastWindow: Page) {
-  return broadcastWindow.locator('main.broadcast-screen .broadcast-layer img:not([hidden])');
+  return broadcastWindow.locator('main.broadcast-screen .canvas-background img:not([hidden])');
 }
 
 function broadcastScreen(broadcastWindow: Page) {
@@ -83,7 +83,7 @@ test('Activate puts the Scene on air, and editing it updates the Broadcast windo
   await expect(editor(controlWindow)).toContainText('Scène active');
   await expect(broadcastScreen(broadcastWindow)).not.toHaveAttribute('data-active-scene-id', '');
   // The new Background is Hidden: it never reaches the Broadcast window.
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
 
   await backgroundToggle(controlWindow).check();
   await expect(shownBackgrounds(broadcastWindow)).toHaveCount(1);
@@ -92,7 +92,7 @@ test('Activate puts the Scene on air, and editing it updates the Broadcast windo
   ).toBe(16);
 
   await backgroundToggle(controlWindow).uncheck();
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
   await backgroundToggle(controlWindow).check();
   await expect(shownBackgrounds(broadcastWindow)).toHaveCount(1);
 
@@ -125,7 +125,7 @@ test('a Scene with a Background, edited while active, is kept after a restart', 
     await expect(editor(page)).not.toContainText('Scène active');
     const broadcastWindow = await openBroadcastWindow(restarted.app, page);
     await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
-    await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+    await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
   } finally {
     await restarted.app.close();
   }
@@ -173,7 +173,7 @@ test('editing a Scene that is not active never changes the Broadcast window', as
     for (let i = 0; i < 2; i++) await new Promise((done) => requestAnimationFrame(done));
   });
   await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-version', version ?? '');
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
 });
 
 test('opening a Campaign puts nothing on air; switching Campaign clears the Broadcast window', async ({
@@ -200,7 +200,7 @@ test('opening a Campaign puts nothing on air; switching Campaign clears the Broa
 
   await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
   await createCampaign(controlWindow, 'Warhammer');
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
   await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
   await expect.poll(audioHalts).toBe(2); // back to the list, then into Warhammer
 
@@ -213,7 +213,7 @@ test('opening a Campaign puts nothing on air; switching Campaign clears the Broa
   await selectScene(controlWindow, 'Cantina');
   await expect(editor(controlWindow)).not.toContainText('Scène active');
   await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
 });
 
 test('a Background whose file was deleted shows nothing broken in the Broadcast window', async ({
@@ -234,8 +234,8 @@ test('a Background whose file was deleted shows nothing broken in the Broadcast 
 
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await expect(broadcastScreen(broadcastWindow)).not.toHaveAttribute('data-active-scene-id', '');
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(1);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(1);
   // The 404 leaves no <img> to show a broken-image icon.
-  await expect(broadcastWindow.locator('.broadcast-layer img')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background img')).toHaveCount(0);
   expect(cspViolations).toEqual([]);
 });

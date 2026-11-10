@@ -64,15 +64,30 @@ export interface NormalizedPoint {
   y: number;
 }
 
-export type BackgroundFit = 'cover' | 'contain' | 'stretch';
+/** Cover fills the canvas, cropping the image; Contain shows the whole image. */
+export type BackgroundFit = 'cover' | 'contain';
 
-/** A full-canvas placement of an image Media, below every Overlay. */
+/**
+ * A full-canvas placement of an image Media, below every Overlay. Placements are stored as
+ * fractions of the canvas, never pixels (core/canvas.ts lays them out).
+ */
 export interface Background {
   id: string;
   mediaId: MediaId;
   fit: BackgroundFit;
-  /** Focal point of the image inside the canvas. */
-  position: NormalizedPoint;
+  /** 1 = the fitted size; above 1 zooms in. */
+  zoom: number;
+  /**
+   * Focal point, for panning: which part of the image shows where it is larger than the canvas.
+   * 0 aligns its left (top) edge with the canvas's, 1 its right (bottom) edge, 0.5 centres it.
+   */
+  focus: NormalizedPoint;
+  visible: boolean;
+}
+
+/** A player-facing name plate on an Overlay, shown or hidden independently of it. */
+export interface Label {
+  text: string;
   visible: boolean;
 }
 
@@ -82,12 +97,10 @@ export interface Overlay {
   mediaId: MediaId;
   /** Centre of the Overlay on the canvas. */
   position: NormalizedPoint;
-  /** 1 = natural size relative to the canvas height. */
-  scale: number;
-  /** Stacking order among Overlays: higher is in front. */
-  zIndex: number;
+  /** Height as a fraction of the canvas height; the width follows the image's proportions. */
+  height: number;
   visible: boolean;
-  label?: string;
+  label?: Label;
 }
 
 /** An Ambience listed on a Scene, switched on or off independently of the others. */
@@ -109,9 +122,13 @@ export interface SceneVolumes {
 export interface Scene {
   id: SceneId;
   campaignId: CampaignId;
+  /** Private to the Game Master, like the notes. */
   name: string;
+  /** Player-facing Scene title, shown discreetly on the broadcast; '' for none. */
+  title: string;
   /** Stacked bottom to top. */
   backgrounds: Background[];
+  /** Stacked bottom to top, all above every Background. */
   overlays: Overlay[];
   /** Music Media, in order. One plays at a time, looping; the first starts on Activate. */
   music: MediaId[];
@@ -161,7 +178,8 @@ export interface OnAirBackground {
   /** Media address (`regie-media:`). */
   src: string;
   fit: BackgroundFit;
-  position: NormalizedPoint;
+  zoom: number;
+  focus: NormalizedPoint;
 }
 
 /** A visible Overlay as the Broadcast window draws it. */
@@ -170,24 +188,34 @@ export interface OnAirOverlay {
   /** Media address (`regie-media:`). */
   src: string;
   position: NormalizedPoint;
-  scale: number;
-  zIndex: number;
+  height: number;
+  /** The Label's text, only when the Label is shown. */
+  label?: string;
 }
 
 /**
- * What players see of the Active Scene: its visible placements only, bottom to top. Hidden
- * placements, the Scene's name and its notes never reach the Broadcast window.
+ * The broadcast projection of the Active Scene: what players see of it, and nothing else. Its
+ * visible Backgrounds and Overlays (bottom to top) with their Media addresses, visible Labels,
+ * and the Scene title when set. Hidden placements and Labels, the Scene's name, its notes and
+ * Media names never reach the Broadcast window.
  */
 export interface OnAirScene {
   backgrounds: OnAirBackground[];
   overlays: OnAirOverlay[];
+  /** Absent when the Scene has no Scene title. */
+  title?: string;
 }
 
 /** What is on air, owned by the main process. `version` increases on every change. */
 export interface OnAirState {
   campaignId: CampaignId | null;
   activeSceneId: SceneId | null;
-  /** The Active Scene's picture; null when no Scene is active. */
+  /** The Active Scene's broadcast projection; null when no Scene is active. */
   scene: OnAirScene | null;
+  /**
+   * Blackout: the broadcast is faded to black, leaving the Active Scene unchanged. Not part of
+   * any Scene, never saved; cleared when a Campaign is opened, switched or closed.
+   */
+  blackout: boolean;
   version: number;
 }

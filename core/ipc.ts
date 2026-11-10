@@ -17,10 +17,11 @@ import type {
   InvokeChannels,
   MediaImportKind,
   Payload,
+  SceneEdit,
 } from '../shared/contract.js';
-import type { CampaignId, ImageCategory, MediaId, Scene, ThemeId } from '../shared/domain.js';
+import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
-import { parseScene } from './scenes.js';
+import { parseSceneEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 import { isRecord } from './guards.js';
@@ -145,9 +146,15 @@ function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string
   return { ...campaign, name: value.name };
 }
 
-function sceneOf(value: unknown): Parsed<Scene> {
-  if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
-  return parseScene(value, value.campaignId) ?? INVALID;
+function sceneEdit(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { sceneId } = value;
+  const edit = parseSceneEdit(value.edit);
+  if (typeof sceneId !== 'string' || sceneId === '' || !edit) return INVALID;
+  return { ...campaign, sceneId, edit };
 }
 
 // Rules --------------------------------------------------------------------
@@ -159,8 +166,9 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
-  'scenes:update': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
+  'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },

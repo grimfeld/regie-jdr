@@ -160,7 +160,7 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
       'data-active-scene-id',
       '',
     );
-    await expect(reopened.locator('.broadcast-layer')).toHaveCount(0);
+    await expect(reopened.locator('.canvas-background')).toHaveCount(0);
   } finally {
     await restarted.app.close();
   }

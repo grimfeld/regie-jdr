@@ -181,12 +181,15 @@ async function createBroadcastWindow() {
     height: 720,
     ...placement,
     title: 'Régie JDR — Diffusion',
-    backgroundColor: '#08090c',
+    // Black like the letterbox bars, whatever the theme. No minimum size: it may take a third
+    // of the screen.
+    backgroundColor: '#000000',
     autoHideMenuBar: true,
     webPreferences: secureWebPreferences('broadcast'),
   });
   rememberBounds(broadcastWindow, 'broadcast');
   broadcastWindow.setMenuBarVisibility(false);
+  leaveFullscreenOnEscape(broadcastWindow);
   // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
   loadPage(
     'broadcast',
@@ -196,6 +199,27 @@ async function createBroadcastWindow() {
   );
   broadcastWindow.on('closed', () => {
     broadcastWindow = null;
+  });
+}
+
+/**
+ * The Broadcast window has no controls of its own: its fullscreen is toggled from the Control
+ * window. Returns whether it is now fullscreen (false when it is not open).
+ */
+function toggleBroadcastFullscreen(): boolean {
+  if (!broadcastWindow || broadcastWindow.isDestroyed()) return false;
+  const fullscreen = !broadcastWindow.isFullScreen();
+  broadcastWindow.setFullScreen(fullscreen);
+  return fullscreen;
+}
+
+/** Esc in a fullscreen window leaves fullscreen, so it can never trap the Game Master's screen. */
+function leaveFullscreenOnEscape(window: BrowserWindow) {
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape' && window.isFullScreen()) {
+      event.preventDefault();
+      window.setFullScreen(false);
+    }
   });
 }
 
@@ -268,8 +292,10 @@ function startApp() {
       },
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
-      'scenes:update': (scene) => commands.updateScene(scene),
+      'scenes:edit': ({ campaignId, sceneId, edit }) =>
+        commands.editScene(campaignId, sceneId, edit),
       'broadcast:open': () => createBroadcastWindow(),
+      'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
       'media:list': ({ campaignId }) => library.list(campaignId),
       'media:import': async ({ campaignId, ...kind }) => {
         const files = await pickMediaFiles(kind);

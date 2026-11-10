@@ -477,55 +477,86 @@ button {
   color: #e08a7a;
   font-size: 12px;
 }
+/* The Broadcast window: only the canvas. No theme, no minimum width, no cursor. */
+:root[data-view='broadcast'],
+:root[data-view='broadcast'] body {
+  min-width: 0;
+  background: #000;
+}
+:root[data-view='broadcast'],
+:root[data-view='broadcast'] * {
+  cursor: none;
+}
 .broadcast-screen {
   position: fixed;
   inset: 0;
-  background: #08090c;
+  background: #000;
   overflow: hidden;
 }
-/* Active Scene placements: the wrapper carries position (custom properties), the image fills it. */
-.broadcast-layer {
-  position: absolute;
-  inset: 0;
+
+/*
+ * The shared renderer (src/SceneCanvas.tsx): black around the letterboxed 16:9 stage, whatever
+ * the theme. Boxes are laid out in pixels by core/canvas.ts; sizes of text follow
+ * --canvas-scale (pixels per canvas unit), so they keep their place on the canvas.
+ */
+.scene-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
 }
-.broadcast-layer img {
+.scene-canvas-stage {
+  position: absolute;
+  overflow: hidden;
+  background: #000;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.canvas-background,
+.canvas-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.canvas-background img,
+.canvas-overlay img {
   display: block;
   width: 100%;
   height: 100%;
-  object-position: var(--x) var(--y);
 }
-.broadcast-layer.fit-cover img {
-  object-fit: cover;
-}
-.broadcast-layer.fit-contain img {
-  object-fit: contain;
-}
-.broadcast-layer.fit-stretch img {
-  object-fit: fill;
-}
-.broadcast-overlay {
+.canvas-label {
   position: absolute;
-  left: var(--x);
-  top: var(--y);
-  height: var(--height);
-  transform: translate(-50%, -50%);
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: calc(8px * var(--canvas-scale));
+  padding: calc(4px * var(--canvas-scale)) calc(14px * var(--canvas-scale));
+  white-space: nowrap;
+  font-size: calc(30px * var(--canvas-scale));
+  color: #fff;
+  background: rgb(0 0 0 / 0.6);
+  border-radius: calc(4px * var(--canvas-scale));
 }
-.broadcast-overlay img {
-  display: block;
-  height: 100%;
-  width: auto;
-}
-.broadcast-fullscreen {
+.canvas-title {
   position: absolute;
-  right: 20px;
-  top: 20px;
-  width: 38px;
-  height: 38px;
-  background: #0007;
-  color: white;
-  border: 1px solid #ffffff55;
-  border-radius: 5px;
-  font-size: 22px;
+  left: calc(36px * var(--canvas-scale));
+  bottom: calc(28px * var(--canvas-scale));
+  font-size: calc(26px * var(--canvas-scale));
+  letter-spacing: 0.04em;
+  color: rgb(255 255 255 / 0.72);
+  text-shadow: 0 0 calc(6px * var(--canvas-scale)) rgb(0 0 0 / 0.8);
+}
+.canvas-blackout {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+/* Hidden placements and Labels, in the editor only: the Game Master sees them, faded. */
+.canvas-background.is-hidden,
+.canvas-overlay.is-hidden,
+.canvas-label.is-hidden {
+  opacity: 0.4;
+  outline: 2px dashed rgb(255 255 255 / 0.6);
 }
 :root[data-theme='imperium'] {
   --bg: #111013;

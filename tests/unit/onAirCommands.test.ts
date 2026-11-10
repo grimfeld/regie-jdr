@@ -5,9 +5,9 @@ import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
-import { addBackground, setBackgroundVisible } from '../../core/sceneEdits';
 import { createSceneLibrary } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
+import type { SceneEdit } from '../../shared/contract';
 import type { OnAirState } from '../../shared/domain';
 import { useTempDir } from './tempDir';
 
@@ -25,6 +25,7 @@ describe('on-air commands', () => {
     const broadcast: OnAirState[] = [];
     onAir.subscribe((snapshot) => broadcast.push(snapshot));
     let audioHalts = 0;
+    let placements = 0;
     const commands = createOnAirCommands({
       campaigns: storage.campaigns,
       library,
@@ -35,6 +36,7 @@ describe('on-air commands', () => {
           audioHalts++;
         },
       },
+      newId: () => `p${++placements}`,
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const picked = path.join(dir.path, 'Cantina.png');
@@ -52,11 +54,22 @@ describe('on-air commands', () => {
     };
   }
 
-  /** A Scene with the imported image as a visible Background. */
+  /** A Scene with the imported image as a visible Background `bg-<name>`. */
   async function sceneShowing(ctx: Awaited<ReturnType<typeof setup>>, name: string) {
     const created = await ctx.scenes.create(ctx.campaign.id, name);
-    const withBackground = addBackground(created, ctx.image.id, `bg-${name}`);
-    return ctx.scenes.save(setBackgroundVisible(withBackground, `bg-${name}`, true));
+    return ctx.scenes.save({
+      ...created,
+      backgrounds: [
+        {
+          id: `bg-${name}`,
+          mediaId: ctx.image.id,
+          fit: 'cover',
+          zoom: 1,
+          focus: { x: 0.5, y: 0.5 },
+          visible: true,
+        },
+      ],
+    });
   }
 
   const cantinaPicture = {
@@ -65,7 +78,8 @@ describe('on-air commands', () => {
         id: 'bg-Cantina',
         src: expect.stringContaining(`${ABC_SHA256}.png`),
         fit: 'cover',
-        position: { x: 0.5, y: 0.5 },
+        zoom: 1,
+        focus: { x: 0.5, y: 0.5 },
       },
     ],
     overlays: [],
@@ -82,6 +96,7 @@ describe('on-air commands', () => {
       campaignId: ctx.campaign.id,
       activeSceneId: scene.id,
       scene: cantinaPicture,
+      blackout: false,
       version: 2,
     });
     expect(ctx.broadcast.at(-1)).toEqual(state);
@@ -93,20 +108,43 @@ describe('on-air commands', () => {
     await ctx.commands.openCampaign(ctx.campaign.id);
     await ctx.commands.activateScene(scene.id);
     expect(ctx.broadcast.at(-1)?.scene).toEqual({ backgrounds: [], overlays: [] });
+    const edit = (command: SceneEdit) => ctx.commands.editScene(ctx.campaign.id, scene.id, command);
 
-    const hidden = await ctx.commands.updateScene(addBackground(scene, ctx.image.id, 'bg-Cantina'));
+    const placed = await edit({ kind: 'place-background', mediaId: ctx.image.id });
     // A new Background starts Hidden: nothing new reaches the broadcast.
+    expect(placed.backgrounds).toEqual([expect.objectContaining({ id: 'p1', visible: false })]);
     expect(ctx.broadcast.at(-1)?.scene).toEqual({ backgrounds: [], overlays: [] });
-    await ctx.commands.updateScene(setBackgroundVisible(hidden, 'bg-Cantina', true));
+    const shown = await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
 
     expect(ctx.broadcast.at(-1)).toEqual({
       campaignId: ctx.campaign.id,
       activeSceneId: scene.id,
-      scene: cantinaPicture,
+      scene: {
+        ...cantinaPicture,
+        backgrounds: [{ ...cantinaPicture.backgrounds[0], id: 'p1' }],
+      },
+      blackout: false,
       version: 4,
     });
-    expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.backgrounds).toEqual([
-      expect.objectContaining({ id: 'bg-Cantina', visible: true }),
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(shown);
+  });
+
+  it('places Overlays above every Background', async () => {
+    const ctx = await setup();
+    const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+    const edit = (command: SceneEdit) => ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+    await edit({ kind: 'place-overlay', mediaId: ctx.image.id, position: { x: 0.25, y: 0.5 } });
+    await edit({ kind: 'place-background', mediaId: ctx.image.id });
+    for (const placementId of ['p1', 'p2']) {
+      await edit({ kind: 'set-visible', placementId, visible: true });
+    }
+    await ctx.commands.openCampaign(ctx.campaign.id);
+
+    const { scene: picture } = await ctx.commands.activateScene(scene.id);
+
+    expect(picture?.backgrounds.map((item) => item.id)).toEqual(['p2']);
+    expect(picture?.overlays).toEqual([
+      { id: 'p1', src: expect.any(String), position: { x: 0.25, y: 0.5 }, height: 0.5 },
     ]);
   });
 
@@ -118,11 +156,32 @@ describe('on-air commands', () => {
     await ctx.commands.activateScene(active.id);
     const sent = ctx.broadcast.length;
 
-    const edited = setBackgroundVisible(addBackground(other, ctx.image.id, 'b'), 'b', true);
-    await ctx.commands.updateScene(edited);
+    await ctx.commands.editScene(ctx.campaign.id, other.id, {
+      kind: 'place-background',
+      mediaId: ctx.image.id,
+    });
+    const edited = await ctx.commands.editScene(ctx.campaign.id, other.id, {
+      kind: 'set-visible',
+      placementId: 'p1',
+      visible: true,
+    });
 
     expect(ctx.broadcast.length).toBe(sent);
     expect(await ctx.scenes.get(ctx.campaign.id, other.id)).toEqual(edited);
+  });
+
+  it('refuses to edit a Scene that does not exist, or to place unknown Media', async () => {
+    const ctx = await setup();
+    const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+    const place = { kind: 'place-overlay', mediaId: ctx.image.id } as const;
+
+    await expect(ctx.commands.editScene(ctx.campaign.id, 'inconnue', place)).rejects.toThrow(
+      'Cette scène n’existe plus.',
+    );
+    await expect(
+      ctx.commands.editScene(ctx.campaign.id, scene.id, { ...place, mediaId: 'inconnu' }),
+    ).rejects.toThrow('Ce média n’existe plus.');
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
   });
 
   it('opening a Campaign puts nothing on air and stops audio; switching clears the broadcast', async () => {
@@ -227,6 +286,7 @@ describe('on-air commands', () => {
         campaignId: ctx.campaign.id,
         activeSceneId: cantina.id,
         scene: { backgrounds: [], overlays: [] },
+        blackout: false,
         version: 3,
       });
     });

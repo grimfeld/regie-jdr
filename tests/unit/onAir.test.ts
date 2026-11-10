@@ -4,12 +4,18 @@ import type { Media, OnAirScene, Scene } from '../../shared/domain';
 
 const cantina: OnAirScene = {
   backgrounds: [
-    { id: 'b1', src: 'regie-media://media/c/x.png', fit: 'cover', position: { x: 0.5, y: 0.5 } },
+    {
+      id: 'b1',
+      src: 'regie-media://media/c/x.png',
+      fit: 'cover',
+      zoom: 1,
+      focus: { x: 0.5, y: 0.5 },
+    },
   ],
   overlays: [],
 };
 const blank: OnAirScene = { backgrounds: [], overlays: [] };
-const nothing = { campaignId: null, activeSceneId: null, scene: null };
+const nothing = { campaignId: null, activeSceneId: null, scene: null, blackout: false };
 
 describe('on-air state', () => {
   it('starts with nothing on air', () => {
@@ -23,18 +29,21 @@ describe('on-air state', () => {
       campaignId: 'star-wars',
       activeSceneId: null,
       scene: null,
+      blackout: false,
       version: 1,
     });
     expect(onAir.activateScene('cantina', cantina)).toEqual({
       campaignId: 'star-wars',
       activeSceneId: 'cantina',
       scene: cantina,
+      blackout: false,
       version: 2,
     });
     expect(onAir.current()).toEqual({
       campaignId: 'star-wars',
       activeSceneId: 'cantina',
       scene: cantina,
+      blackout: false,
       version: 2,
     });
   });
@@ -47,6 +56,7 @@ describe('on-air state', () => {
       campaignId: 'star-wars',
       activeSceneId: 'cantina',
       scene: cantina,
+      blackout: false,
       version: 3,
     });
   });
@@ -60,6 +70,7 @@ describe('on-air state', () => {
       campaignId: 'star-wars',
       activeSceneId: 'cantina',
       scene: blank,
+      blackout: false,
       version: 2,
     });
   });
@@ -72,6 +83,7 @@ describe('on-air state', () => {
       campaignId: 'warhammer',
       activeSceneId: null,
       scene: null,
+      blackout: false,
       version: 3,
     });
   });
@@ -92,6 +104,31 @@ describe('on-air state', () => {
     expect(onAir.current()).toEqual({ ...nothing, version: 2 });
   });
 
+  it('Blackout leaves the Active Scene as it is and stays on when another Scene is Activated', () => {
+    const onAir = createOnAir();
+    onAir.openCampaign('star-wars');
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.setBlackout(true)).toEqual({
+      campaignId: 'star-wars',
+      activeSceneId: 'cantina',
+      scene: cantina,
+      blackout: true,
+      version: 3,
+    });
+    expect(onAir.activateScene('hangar', blank)).toMatchObject({ scene: blank, blackout: true });
+    expect(onAir.showActiveScene('hangar', cantina)).toMatchObject({ blackout: true });
+    expect(onAir.setBlackout(false)).toMatchObject({ activeSceneId: 'hangar', blackout: false });
+  });
+
+  it('opening, switching or closing a Campaign clears Blackout', () => {
+    const onAir = createOnAir();
+    onAir.openCampaign('star-wars');
+    onAir.setBlackout(true);
+    expect(onAir.openCampaign('warhammer').blackout).toBe(false);
+    onAir.setBlackout(true);
+    expect(onAir.closeCampaign().blackout).toBe(false);
+  });
+
   it('tells subscribers every new snapshot until they unsubscribe', () => {
     const onAir = createOnAir();
     const seen: unknown[] = [];
@@ -101,8 +138,14 @@ describe('on-air state', () => {
     unsubscribe();
     onAir.closeCampaign();
     expect(seen).toEqual([
-      { campaignId: 'star-wars', activeSceneId: null, scene: null, version: 1 },
-      { campaignId: 'star-wars', activeSceneId: 'cantina', scene: cantina, version: 2 },
+      { campaignId: 'star-wars', activeSceneId: null, scene: null, blackout: false, version: 1 },
+      {
+        campaignId: 'star-wars',
+        activeSceneId: 'cantina',
+        scene: cantina,
+        blackout: false,
+        version: 2,
+      },
     ]);
   });
 
@@ -121,6 +164,7 @@ describe('on-air state', () => {
       campaignId: 'star-wars',
       activeSceneId: 'cantina',
       scene: cantina,
+      blackout: false,
       version: 2,
     });
   });
@@ -139,27 +183,44 @@ describe('what of a Scene goes on air', () => {
   });
   const hashA = 'a'.repeat(64);
   const hashB = 'b'.repeat(64);
+  const library = [image('m1', hashA), image('m2', hashB)];
+  const centre = { x: 0.5, y: 0.5 };
   const scene: Scene = {
     id: 's1',
     campaignId: 'c1',
-    name: 'Nom privé',
+    name: 'Embuscade des cultistes',
+    title: 'Le vieux moulin',
     backgrounds: [
-      { id: 'b1', mediaId: 'm1', fit: 'cover', position: { x: 0.5, y: 0.5 }, visible: true },
-      { id: 'b2', mediaId: 'm2', fit: 'contain', position: { x: 0, y: 1 }, visible: false },
-      { id: 'b3', mediaId: 'gone', fit: 'cover', position: { x: 0.5, y: 0.5 }, visible: true },
-      { id: 'b4', mediaId: 'm2', fit: 'stretch', position: { x: 1, y: 0 }, visible: true },
+      { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1.5, focus: centre, visible: true },
+      { id: 'b2', mediaId: 'm2', fit: 'contain', zoom: 1, focus: { x: 0, y: 1 }, visible: false },
+      { id: 'b3', mediaId: 'gone', fit: 'cover', zoom: 1, focus: centre, visible: true },
+      { id: 'b4', mediaId: 'm2', fit: 'contain', zoom: 1, focus: { x: 1, y: 0 }, visible: true },
     ],
     overlays: [
       {
         id: 'o1',
         mediaId: 'm2',
         position: { x: 0.2, y: 0.8 },
-        scale: 0.5,
-        zIndex: 3,
+        height: 0.5,
         visible: true,
-        label: 'Garde',
+        label: { text: 'Garde', visible: true },
       },
-      { id: 'o2', mediaId: 'm1', position: { x: 0, y: 0 }, scale: 1, zIndex: 1, visible: false },
+      {
+        id: 'o2',
+        mediaId: 'm1',
+        position: { x: 0, y: 0 },
+        height: 1,
+        visible: false,
+        label: { text: 'Assassin', visible: true },
+      },
+      {
+        id: 'o3',
+        mediaId: 'm1',
+        position: centre,
+        height: 0.3,
+        visible: true,
+        label: { text: 'Traître', visible: false },
+      },
     ],
     music: [],
     ambiences: [],
@@ -167,20 +228,22 @@ describe('what of a Scene goes on air', () => {
     notes: 'Notes privées',
   };
 
-  it('keeps only visible placements of known Media, in order, with their addresses', () => {
-    expect(onAirSceneOf(scene, [image('m1', hashA), image('m2', hashB)])).toEqual({
+  it('keeps only visible placements of known images, bottom to top, with their addresses', () => {
+    expect(onAirSceneOf(scene, library)).toEqual({
       backgrounds: [
         {
           id: 'b1',
           src: `regie-media://media/c1/${hashA}.png`,
           fit: 'cover',
-          position: { x: 0.5, y: 0.5 },
+          zoom: 1.5,
+          focus: centre,
         },
         {
           id: 'b4',
           src: `regie-media://media/c1/${hashB}.png`,
-          fit: 'stretch',
-          position: { x: 1, y: 0 },
+          fit: 'contain',
+          zoom: 1,
+          focus: { x: 1, y: 0 },
         },
       ],
       overlays: [
@@ -188,23 +251,53 @@ describe('what of a Scene goes on air', () => {
           id: 'o1',
           src: `regie-media://media/c1/${hashB}.png`,
           position: { x: 0.2, y: 0.8 },
-          scale: 0.5,
-          zIndex: 3,
+          height: 0.5,
+          label: 'Garde',
         },
+        { id: 'o3', src: `regie-media://media/c1/${hashA}.png`, position: centre, height: 0.3 },
       ],
+      title: 'Le vieux moulin',
     });
   });
 
-  it('never carries the private name or notes', () => {
-    const json = JSON.stringify(onAirSceneOf(scene, [image('m1', hashA), image('m2', hashB)]));
-    expect(json).not.toContain('privé');
-    expect(json).not.toContain('Garde');
+  it('never carries Hidden placements or Labels, the Scene name, notes or Media names', () => {
+    const named = library.map((media) => ({ ...media, name: 'Nom du média' }));
+    const json = JSON.stringify(onAirSceneOf(scene, named));
+    for (const secret of [
+      'Embuscade',
+      'privées',
+      'Nom du média',
+      'Assassin',
+      'Traître',
+      'b2',
+      'o2',
+    ]) {
+      expect(json).not.toContain(secret);
+    }
+  });
+
+  it('carries no Scene title when it is empty', () => {
+    expect(onAirSceneOf({ ...scene, title: '  ' }, library)).not.toHaveProperty('title');
+  });
+
+  it('carries no Label when its text is empty', () => {
+    const blankLabel = {
+      ...scene,
+      overlays: [{ ...scene.overlays[0], label: { text: '', visible: true } }],
+    };
+    expect(onAirSceneOf(blankLabel, library).overlays[0]).not.toHaveProperty('label');
   });
 });
 
 describe('the snapshot a window shows', () => {
-  const v1 = { campaignId: 'star-wars', activeSceneId: null, scene: null, version: 1 };
-  const v2 = { campaignId: 'star-wars', activeSceneId: 'cantina', scene: null, version: 2 };
+  const v1 = {
+    campaignId: 'star-wars',
+    activeSceneId: null,
+    scene: null,
+    blackout: false,
+    version: 1,
+  };
+  const v2 = { ...v1, activeSceneId: 'cantina', version: 2 };
 
   it('takes the first snapshot it receives', () => {
     expect(latestOnAir(null, v1)).toBe(v1);

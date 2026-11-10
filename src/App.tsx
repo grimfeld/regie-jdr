@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Aperture, ArrowLeft, MonitorPlay, Palette, Settings2 } from 'lucide-react';
+import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
@@ -164,6 +164,14 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           )}
           <button className="primary-button" onClick={() => void control?.openBroadcast()}>
             <MonitorPlay size={16} /> Ouvrir la diffusion
+          </button>
+          {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
+          <button
+            className="secondary-button"
+            onClick={() => control?.toggleBroadcastFullscreen()}
+            title="Mettre la diffusion en plein écran, ou l’en sortir"
+          >
+            <Maximize size={14} /> Plein écran
           </button>
         </div>
       </header>

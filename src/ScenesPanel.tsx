@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Clapperboard, History, Plus, Radio } from 'lucide-react';
 import type { CampaignId, ImageMedia, OnAirState, Scene, SceneId } from '../shared/domain';
-import type { ControlBridge } from '../shared/contract';
+import type { ControlBridge, SceneEdit } from '../shared/contract';
 import { latestOnAir } from '../core/onAir';
-import { addBackground, setBackgroundVisible } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
 
@@ -16,8 +15,8 @@ interface Props {
 
 /**
  * The open Campaign's Scenes (minimal, Milestone 0): create a Scene, open it as the Selected
- * Scene, place a library image as a Background, show or hide it, Activate it. Edits are saved
- * at once; the main process puts them on air only when the Scene is the Active Scene.
+ * Scene, place a library image as a Background, show or hide it, Activate it. Each edit is a
+ * command the main process applies and saves; it goes on air only on the Active Scene.
  */
 export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -100,12 +99,25 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
     }
   }
 
-  /** Shows the edit at once and saves it; on failure, reloads the Scenes as stored. */
-  async function edit(next: Scene) {
-    setScenes((current) => current.map((scene) => (scene.id === next.id ? next : scene)));
+  /**
+   * Sends an edit command and shows the Scene as saved; on failure, reloads the Scenes. Showing
+   * or hiding shows at once (a checkbox must follow the click), then the saved Scene replaces it.
+   */
+  async function edit(scene: Scene, command: SceneEdit) {
+    if (command.kind === 'set-visible') {
+      const { placementId, visible } = command;
+      const preview = {
+        ...scene,
+        backgrounds: scene.backgrounds.map((item) =>
+          item.id === placementId ? { ...item, visible } : item,
+        ),
+      };
+      setScenes((current) => current.map((item) => (item.id === scene.id ? preview : item)));
+    }
     if (!control) return;
     try {
-      await control.updateScene(next);
+      const saved = await control.editScene(campaignId, scene.id, command);
+      setScenes((current) => current.map((item) => (item.id === saved.id ? saved : item)));
     } catch (error) {
       showNotice(errorMessage(error));
       setScenes(await control.listScenes(campaignId));
@@ -194,7 +206,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
           <BackgroundPicker
             images={images}
             onFocus={refreshImages}
-            onAdd={(image) => void edit(addBackground(selected, image.id, crypto.randomUUID()))}
+            onAdd={(image) => void edit(selected, { kind: 'place-background', mediaId: image.id })}
           />
 
           <ul className="background-list" aria-label="Arrière-plans">
@@ -209,7 +221,11 @@ export function ScenesPanel({ campaignId, control, mediaRevision }: Props) {
                       aria-label={`Afficher ${name}`}
                       checked={background.visible}
                       onChange={(e) =>
-                        void edit(setBackgroundVisible(selected, background.id, e.target.checked))
+                        void edit(selected, {
+                          kind: 'set-visible',
+                          placementId: background.id,
+                          visible: e.target.checked,
+                        })
                       }
                     />
                     {name}
