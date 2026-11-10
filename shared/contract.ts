@@ -220,12 +220,17 @@ export interface InvokeChannels {
    */
   'notices:take': { payload: void; result: string[] };
   /**
-   * The global Settings: home page theme, window bounds, and each Campaign's last Active Scene
-   * (for highlighting only: nothing goes on air after a restart).
+   * The global Settings: home page theme, window bounds, each Campaign's last Active Scene
+   * (for highlighting only: nothing goes on air after a restart) and the fade duration.
    */
   'settings:get': { payload: void; result: Settings };
   /** Change the theme of the Campaign list home page. */
   'settings:set-theme': { payload: { theme: ThemeId }; result: Settings };
+  /**
+   * Change the fade duration (milliseconds, bounds in core/fades.ts); every renderer gets it
+   * through the on-air state.
+   */
+  'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -306,4 +311,5 @@ export interface ControlBridge extends BroadcastBridge {
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;
+  setFadeDuration(fadeDurationMs: number): Promise<Settings>;
 }

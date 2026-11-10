@@ -39,6 +39,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'openCampaign',
     'renameMedia',
     'setBlackout',
+    'setFadeDuration',
     'setHomeTheme',
     'setImageCategory',
     'showTransientEdit',
@@ -76,7 +77,14 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
   expect(outcome).toContain('rejected');
   expect(
     await controlWindow.evaluate(() => (window as unknown as Bridge).regie.getOnAir()),
-  ).toEqual({ campaignId: null, activeSceneId: null, scene: null, blackout: false, version: 0 });
+  ).toEqual({
+    campaignId: null,
+    activeSceneId: null,
+    scene: null,
+    blackout: false,
+    fadeDurationMs: 600,
+    version: 0,
+  });
   await expect
     .poll(() =>
       mainLog.filter(
@@ -135,9 +143,18 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
   const { id: campaignId } = (await gm('createCampaign', 'Star Wars')) as { id: string };
   const { id: sceneId } = (await gm('createScene', campaignId, 'Cantina')) as { id: string };
   await gm('openCampaign', campaignId);
-  await expect
-    .poll(calls)
-    .toEqual([[{ campaignId, activeSceneId: null, scene: null, blackout: false, version: 1 }]]);
+  await expect.poll(calls).toEqual([
+    [
+      {
+        campaignId,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        fadeDurationMs: 600,
+        version: 1,
+      },
+    ],
+  ]);
 
   await broadcastWindow.evaluate(() =>
     (window as unknown as { recorder: Recorder }).recorder.unsubscribe(),

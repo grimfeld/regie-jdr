@@ -273,6 +273,13 @@ function startApp() {
       },
     },
   });
+  // The renderers fade with the saved duration, carried by the on-air state.
+  settingsStore
+    .get()
+    .then(({ fadeDurationMs }) => onAir.setFadeDuration(fadeDurationMs))
+    .catch((error: unknown) => {
+      log.error('Reading the fade duration failed', error);
+    });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
     sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
@@ -324,6 +331,11 @@ function startApp() {
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
       'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),
+      'settings:set-fade-duration': async ({ fadeDurationMs }) => {
+        const saved = await settingsStore.setFadeDuration(fadeDurationMs);
+        onAir.setFadeDuration(saved.fadeDurationMs);
+        return saved;
+      },
     },
     roleOf,
     log,

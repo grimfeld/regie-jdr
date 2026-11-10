@@ -17,6 +17,7 @@ import type {
   Scene,
   SceneId,
 } from '../shared/domain.js';
+import { FADE_DURATION_MS } from './fades.js';
 import { mediaAddress } from './mediaAddress.js';
 
 export interface OnAir {
@@ -44,6 +45,11 @@ export interface OnAir {
    * Activating a Scene leaves it as it is; opening, switching or closing a Campaign clears it.
    */
   setBlackout(on: boolean): OnAirState;
+  /**
+   * Sets the fade duration every renderer uses (the Settings value, already checked). The same
+   * duration changes nothing, so reading it from Settings at start-up starts no new version.
+   */
+  setFadeDuration(fadeDurationMs: number): OnAirState;
   /** Calls `listener` with each new snapshot. Returns the unsubscribe function. */
   subscribe(listener: (snapshot: OnAirState) => void): () => void;
 }
@@ -59,6 +65,7 @@ export function createOnAir(): OnAir {
     activeSceneId: null,
     scene: null,
     blackout: false,
+    fadeDurationMs: FADE_DURATION_MS.default,
     version: 0,
   };
   const listeners = new Set<(snapshot: OnAirState) => void>();
@@ -72,13 +79,13 @@ export function createOnAir(): OnAir {
   return {
     current: () => copy(state),
     openCampaign: (campaignId) =>
-      change({ campaignId, activeSceneId: null, scene: null, blackout: false }),
+      change({ ...state, campaignId, activeSceneId: null, scene: null, blackout: false }),
     closeCampaign: () =>
-      change({ campaignId: null, activeSceneId: null, scene: null, blackout: false }),
+      change({ ...state, campaignId: null, activeSceneId: null, scene: null, blackout: false }),
     activateScene: (sceneId, scene) => {
-      const { campaignId, blackout } = state;
+      const { campaignId } = state;
       if (campaignId === null) throw new Error('Cannot Activate a Scene: no Campaign is open');
-      return change({ campaignId, activeSceneId: sceneId, scene, blackout });
+      return change({ ...state, campaignId, activeSceneId: sceneId, scene });
     },
     showActiveScene: (sceneId, scene) => {
       if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
@@ -89,6 +96,8 @@ export function createOnAir(): OnAir {
       return change({ ...state, activeSceneId: null, scene: null });
     },
     setBlackout: (on) => change({ ...state, blackout: on }),
+    setFadeDuration: (fadeDurationMs) =>
+      fadeDurationMs === state.fadeDurationMs ? copy(state) : change({ ...state, fadeDurationMs }),
     subscribe: (listener) => {
       const own = (snapshot: OnAirState) => listener(snapshot);
       listeners.add(own);

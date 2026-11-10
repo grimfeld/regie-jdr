@@ -77,6 +77,7 @@ const bridge: ControlBridge = {
   takeNotices: () => invoke('notices:take'),
   getSettings: () => invoke('settings:get'),
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
+  setFadeDuration: (fadeDurationMs) => invoke('settings:set-fade-duration', { fadeDurationMs }),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);

@@ -17,7 +17,13 @@ const cantina: OnAirScene = {
   overlays: [],
 };
 const blank: OnAirScene = { backgrounds: [], overlays: [] };
-const nothing = { campaignId: null, activeSceneId: null, scene: null, blackout: false };
+const nothing = {
+  campaignId: null,
+  activeSceneId: null,
+  scene: null,
+  blackout: false,
+  fadeDurationMs: 600,
+};
 
 describe('on-air state', () => {
   it('starts with nothing on air', () => {
@@ -32,6 +38,7 @@ describe('on-air state', () => {
       activeSceneId: null,
       scene: null,
       blackout: false,
+      fadeDurationMs: 600,
       version: 1,
     });
     expect(onAir.activateScene('cantina', cantina)).toEqual({
@@ -39,6 +46,7 @@ describe('on-air state', () => {
       activeSceneId: 'cantina',
       scene: cantina,
       blackout: false,
+      fadeDurationMs: 600,
       version: 2,
     });
     expect(onAir.current()).toEqual({
@@ -46,6 +54,7 @@ describe('on-air state', () => {
       activeSceneId: 'cantina',
       scene: cantina,
       blackout: false,
+      fadeDurationMs: 600,
       version: 2,
     });
   });
@@ -60,6 +69,7 @@ describe('on-air state', () => {
       activeSceneId: null,
       scene: null,
       blackout: true,
+      fadeDurationMs: 600,
       version: 4,
     });
   });
@@ -81,6 +91,7 @@ describe('on-air state', () => {
       activeSceneId: 'cantina',
       scene: cantina,
       blackout: false,
+      fadeDurationMs: 600,
       version: 3,
     });
   });
@@ -95,6 +106,7 @@ describe('on-air state', () => {
       activeSceneId: 'cantina',
       scene: blank,
       blackout: false,
+      fadeDurationMs: 600,
       version: 2,
     });
   });
@@ -108,6 +120,7 @@ describe('on-air state', () => {
       activeSceneId: null,
       scene: null,
       blackout: false,
+      fadeDurationMs: 600,
       version: 3,
     });
   });
@@ -117,6 +130,27 @@ describe('on-air state', () => {
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     expect(onAir.closeCampaign()).toEqual({ ...nothing, version: 3 });
+  });
+
+  it('carries the fade duration setting, kept when the Campaign changes', () => {
+    const onAir = createOnAir();
+    onAir.openCampaign('star-wars');
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.setFadeDuration(1500)).toEqual({
+      campaignId: 'star-wars',
+      activeSceneId: 'cantina',
+      scene: cantina,
+      blackout: false,
+      fadeDurationMs: 1500,
+      version: 3,
+    });
+    expect(onAir.openCampaign('warhammer')).toMatchObject({ fadeDurationMs: 1500 });
+    expect(onAir.closeCampaign()).toMatchObject({ fadeDurationMs: 1500 });
+  });
+
+  it('changes nothing when the fade duration is the one it has', () => {
+    const onAir = createOnAir();
+    expect(onAir.setFadeDuration(600)).toEqual({ ...nothing, version: 0 });
   });
 
   it('refuses to Activate a Scene when no Campaign is open, leaving the state unchanged', () => {
@@ -137,6 +171,7 @@ describe('on-air state', () => {
       activeSceneId: 'cantina',
       scene: cantina,
       blackout: true,
+      fadeDurationMs: 600,
       version: 3,
     });
     expect(onAir.activateScene('hangar', blank)).toMatchObject({ scene: blank, blackout: true });
@@ -162,12 +197,20 @@ describe('on-air state', () => {
     unsubscribe();
     onAir.closeCampaign();
     expect(seen).toEqual([
-      { campaignId: 'star-wars', activeSceneId: null, scene: null, blackout: false, version: 1 },
+      {
+        campaignId: 'star-wars',
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        fadeDurationMs: 600,
+        version: 1,
+      },
       {
         campaignId: 'star-wars',
         activeSceneId: 'cantina',
         scene: cantina,
         blackout: false,
+        fadeDurationMs: 600,
         version: 2,
       },
     ]);
@@ -189,6 +232,7 @@ describe('on-air state', () => {
       activeSceneId: 'cantina',
       scene: cantina,
       blackout: false,
+      fadeDurationMs: 600,
       version: 2,
     });
   });
@@ -439,6 +483,7 @@ describe('the snapshot a window shows', () => {
     activeSceneId: null,
     scene: null,
     blackout: false,
+    fadeDurationMs: 600,
     version: 1,
   };
   const v2 = { ...v1, activeSceneId: 'cantina', version: 2 };

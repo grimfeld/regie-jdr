@@ -26,6 +26,7 @@ import { isAudioRole, isImageCategory } from './media.js';
 import { parseOverlayTransform, parseSceneEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
+import { parseFadeDuration } from './fades.js';
 import { isRecord } from './guards.js';
 
 /** The windows that can send messages. */
@@ -103,6 +104,11 @@ function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: Campa
 function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
   if (!isRecord(value) || !isThemeId(value.theme)) return INVALID;
   return { theme: value.theme };
+}
+
+function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
+  const fadeDurationMs = isRecord(value) ? parseFadeDuration(value.fadeDurationMs) : undefined;
+  return fadeDurationMs === undefined ? INVALID : { fadeDurationMs };
 }
 
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
@@ -246,6 +252,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
+  'settings:set-fade-duration': { from: controlOnly, parse: onePayload(fadeDurationOf) },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

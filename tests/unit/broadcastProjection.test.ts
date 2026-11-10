@@ -62,6 +62,7 @@ const onAirStateFields = {
   activeSceneId: true,
   scene: true,
   blackout: true,
+  fadeDurationMs: true, // A setting, not Scene data: every renderer fades alike.
   version: true,
 } as const satisfies Record<keyof OnAirState, true>;
 

@@ -170,6 +170,11 @@ export interface Settings {
   };
   /** For highlighting only: nothing goes on air on restart. */
   lastActiveSceneByCampaign: Record<CampaignId, SceneId>;
+  /**
+   * How long showing, hiding and changing a placement, a Label or the Scene title takes, and
+   * Blackout, in milliseconds (bounds in core/fades.ts). One setting for the whole app.
+   */
+  fadeDurationMs: number;
 }
 
 /** A visible Background as the Broadcast window draws it. */
@@ -217,5 +222,10 @@ export interface OnAirState {
    * any Scene, never saved; cleared when a Campaign is opened, switched or closed.
    */
   blackout: boolean;
+  /**
+   * The fade duration setting (Settings.fadeDurationMs), so every renderer fades alike: the
+   * Broadcast window reads no Settings.
+   */
+  fadeDurationMs: number;
   version: number;
 }

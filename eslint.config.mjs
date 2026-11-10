@@ -12,6 +12,7 @@ const RENDERER_SAFE_CORE = [
   'canvas',
   'guards',
   'librarySearch',
+  'fades',
 ];
 
 /**
@@ -190,6 +191,7 @@ export default tseslint.config(
                 '!./canvas*',
                 '!./guards*',
                 '!./librarySearch*',
+                '!./fades*',
               ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',

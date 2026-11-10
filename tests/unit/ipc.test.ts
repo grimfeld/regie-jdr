@@ -387,6 +387,7 @@ describe('Settings channels', () => {
     for (const [channel, args] of [
       ['settings:get', []],
       ['settings:set-theme', [{ theme: 'retro' }]],
+      ['settings:set-fade-duration', [{ fadeDurationMs: 600 }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
@@ -406,5 +407,23 @@ describe('Settings channels', () => {
     ['a bare string', ['retro']],
   ] as const)('reject %s', (_label, args) => {
     expect(checkInvoke('settings:set-theme', 'control', [...args])).toMatchObject({ ok: false });
+  });
+
+  it('accept a fade duration in bounds, keeping only contract fields', () => {
+    expect(
+      checkInvoke('settings:set-fade-duration', 'control', [{ fadeDurationMs: 0, x: 1 }]),
+    ).toEqual({ ok: true, payload: { fadeDurationMs: 0 } });
+  });
+
+  it.each([
+    ['a negative fade duration', [{ fadeDurationMs: -100 }]],
+    ['a fade duration above the maximum', [{ fadeDurationMs: 3001 }]],
+    ['a fade duration in seconds as text', [{ fadeDurationMs: '0.6' }]],
+    ['no fade duration', [{}]],
+    ['a bare number', [600]],
+  ] as const)('reject %s', (_label, args) => {
+    expect(checkInvoke('settings:set-fade-duration', 'control', [...args])).toMatchObject({
+      ok: false,
+    });
   });
 });

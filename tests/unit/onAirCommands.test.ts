@@ -98,6 +98,7 @@ describe('on-air commands', () => {
       activeSceneId: scene.id,
       scene: cantinaPicture,
       blackout: false,
+      fadeDurationMs: 600,
       version: 2,
     });
     expect(ctx.broadcast.at(-1)).toEqual(state);
@@ -125,6 +126,7 @@ describe('on-air commands', () => {
         backgrounds: [{ ...cantinaPicture.backgrounds[0], id: 'p1' }],
       },
       blackout: false,
+      fadeDurationMs: 600,
       version: 4,
     });
     expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(shown);
@@ -367,6 +369,7 @@ describe('on-air commands', () => {
         activeSceneId: null,
         scene: null,
         blackout: false,
+        fadeDurationMs: 600,
         version: 3,
       });
     });
@@ -442,6 +445,7 @@ describe('on-air commands', () => {
         activeSceneId: cantina.id,
         scene: { backgrounds: [], overlays: [] },
         blackout: false,
+        fadeDurationMs: 600,
         version: 3,
       });
     });
@@ -482,6 +486,7 @@ describe('on-air commands', () => {
         activeSceneId: scene.id,
         scene: cantinaPicture,
         blackout: true,
+        fadeDurationMs: 600,
         version: 3,
       });
       expect(ctx.broadcast.at(-1)).toEqual(state);
@@ -489,6 +494,7 @@ describe('on-air commands', () => {
         activeSceneId: scene.id,
         scene: cantinaPicture,
         blackout: false,
+        fadeDurationMs: 600,
       });
     });
 
@@ -523,6 +529,7 @@ describe('on-air commands', () => {
       expect(await ctx.commands.activateScene(hangar.id)).toMatchObject({
         activeSceneId: hangar.id,
         blackout: true,
+        fadeDurationMs: 600,
       });
     });
 
