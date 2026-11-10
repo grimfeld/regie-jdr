@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Aperture, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
 import type { ThemeId } from '../shared/domain';
-import type { BroadcastBridge, BroadcastDisplay, ControlBridge, ImportedImage } from '../shared/contract';
+import type { BroadcastBridge, ControlBridge, ImportedImage } from '../shared/contract';
+import BroadcastView from './BroadcastView';
+
+/** Control window preview (prototype): local only, the Broadcast window shows what is on air. */
+interface PreviewScene {
+  title: string;
+  /** `regie-asset:` address, or '' for none. */
+  background: string;
+  description: string;
+}
 
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
@@ -9,25 +18,22 @@ const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' }
 ];
 
-const initialDisplay: BroadcastDisplay = {
+const initialPreview: PreviewScene = {
   title: 'Le sanctuaire oublié',
   background: '',
   description: 'Choisissez un décor pour commencer la scène.'
 };
 
-/** The Broadcast window's fullscreen button: the page's own fullscreen, no IPC needed. */
-function toggleFullscreen() {
-  if (document.fullscreenElement) void document.exitFullscreen();
-  else void document.documentElement.requestFullscreen();
-}
-
 export default function App() {
   const isStage = new URLSearchParams(window.location.search).get('view') === 'stage';
   // Each window's preload exposes its own bridge (see shared/contract.ts).
-  const control = isStage ? undefined : (window.regie as ControlBridge | undefined);
-  const broadcast = isStage ? (window.regie as BroadcastBridge | undefined) : undefined;
+  if (isStage) return <BroadcastView bridge={window.regie as BroadcastBridge | undefined} />;
+  return <ControlView control={window.regie as ControlBridge | undefined} />;
+}
+
+function ControlView({ control }: { control: ControlBridge | undefined }) {
   const [theme, setTheme] = useState<ThemeId>('imperium');
-  const [scene, setScene] = useState<BroadcastDisplay>(initialDisplay);
+  const [scene, setScene] = useState<PreviewScene>(initialPreview);
   const [musicVolume, setMusicVolume] = useState(35);
   const [sfxVolume, setSfxVolume] = useState(75);
   const [localVolume, setLocalVolume] = useState(80);
@@ -38,20 +44,10 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  // Broadcast window: subscribe, then read the current display (also after a reload).
-  // The cleanup unsubscribes, so StrictMode's double effects leave a single listener.
-  useEffect(() => {
-    if (!broadcast) return;
-    const unsubscribe = broadcast.onDisplayChanged(setScene);
-    broadcast.getDisplay().then(setScene);
-    return unsubscribe;
-  }, [broadcast]);
-
   const themeLabel = useMemo(() => themes.find(t => t.id === theme)?.label ?? 'Imperium', [theme]);
 
-  function updateScene(next: BroadcastDisplay) {
+  function updateScene(next: PreviewScene) {
     setScene(next);
-    control?.setDisplay(next);
   }
 
   async function addImages() {
@@ -61,21 +57,6 @@ export default function App() {
     setAssets(current => [...current, ...imported]);
     const first = imported[0];
     updateScene({ ...scene, background: first.url, title: first.name || 'Nouvelle scène' });
-  }
-
-  if (isStage) {
-    return (
-      <main className="stage-screen">
-        {scene.background ? <img className="stage-background" src={scene.background} alt="" /> : null}
-        <div className="stage-vignette" />
-        <div className="stage-caption">
-          <span className="eyebrow">SCÈNE EN COURS</span>
-          <h1>{scene.title}</h1>
-          <p>{scene.description}</p>
-        </div>
-        <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">⛶</button>
-      </main>
-    );
   }
 
   return (

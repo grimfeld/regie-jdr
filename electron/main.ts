@@ -6,11 +6,13 @@ import { randomUUID } from 'node:crypto';
 import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import type { WindowRole } from '../core/ipc.js';
-import type { BroadcastDisplay, ImportedImage } from '../shared/contract.js';
+import { createOnAir } from '../core/onAir.js';
+import type { ImportedImage } from '../shared/contract.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
-let currentDisplay: BroadcastDisplay = { title: 'Le sanctuaire oublié', background: '', description: 'Choisissez un décor pour commencer la scène.' };
+// What is on air: in memory only, so nothing is on air after a restart.
+const onAir = createOnAir();
 
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
@@ -88,7 +90,7 @@ function createBroadcastWindow() {
     webPreferences: secureWebPreferences('broadcast')
   });
   broadcastWindow.setMenuBarVisibility(false);
-  // The page reads the current display itself (display:get) once subscribed, on every load.
+  // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
   if (process.env.VITE_DEV_SERVER_URL) broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage`);
   else broadcastWindow.loadFile(appIndexFile, { query: { view: 'stage' } });
   broadcastWindow.on('closed', () => { broadcastWindow = null; });
@@ -125,14 +127,18 @@ function focusControlWindow() {
 
 function startApp() {
   registerAssetProtocol();
+  // Every new on-air snapshot goes to both windows, whole and with its version.
+  onAir.subscribe((snapshot) => {
+    sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
+    sendEvent(controlWindow?.webContents, 'onAir:changed', snapshot);
+  });
   // One handler per channel of shared/contract.ts; payloads arrive validated (core/ipc.ts).
   registerHandlers(
     {
-      'display:get': () => currentDisplay,
-      'display:set': (display) => {
-        currentDisplay = display;
-        sendEvent(broadcastWindow?.webContents, 'display:changed', display);
-      },
+      'onAir:get': () => onAir.current(),
+      'onAir:open-campaign': ({ campaignId }) => onAir.openCampaign(campaignId),
+      'onAir:close-campaign': () => onAir.closeCampaign(),
+      'onAir:activate-scene': ({ sceneId }) => onAir.activateScene(sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'media:import-images': importImages
     },

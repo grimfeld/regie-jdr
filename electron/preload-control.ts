@@ -32,9 +32,11 @@ function subscribe<E extends EventChannel>(
 }
 
 const bridge: ControlBridge = {
-  getDisplay: () => invoke('display:get'),
-  onDisplayChanged: (listener) => subscribe('display:changed', listener),
-  setDisplay: (display) => invoke('display:set', display),
+  getOnAir: () => invoke('onAir:get'),
+  onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
+  openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
+  closeCampaign: () => invoke('onAir:close-campaign'),
+  activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
   importImages: () => invoke('media:import-images'),
 };

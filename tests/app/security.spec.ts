@@ -74,7 +74,7 @@ test('the app can still navigate within its own pages', async ({ regie }) => {
   await controlWindow.evaluate(() => {
     window.location.href = `${window.location.href.split('?')[0]}?view=stage`;
   });
-  await expect(controlWindow.getByText('SCÈNE EN COURS')).toBeVisible();
+  await expect(controlWindow.locator('main.stage-screen')).toBeVisible();
 });
 
 test('the content security policy blocks inline scripts and remote content in both windows', async ({
