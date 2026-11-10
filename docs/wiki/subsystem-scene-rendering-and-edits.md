@@ -26,3 +26,4 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - `canvas` and `guards` joined `RENDERER_SAFE_CORE` in `eslint.config.mjs`.
 - "broadcast projection" is not in `GLOSSARY.md` yet; needs `/domain-modeling`. Raise in the M1 PR.
 - As of `caf0d4b`, windows subscribe to on-air state through `src/useOnAir.ts` (subscribe then read). Reuse it; do not copy the logic.
+- As of `8198f81`, `tests/unit/broadcastProjection.test.ts` holds an allow-list for every field of Scene, Background, Overlay, Label and OnAirState. Adding a field fails typecheck until the slice states whether it goes on air. Expect to touch this list when adding Scene data.
