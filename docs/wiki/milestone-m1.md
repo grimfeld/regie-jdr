@@ -28,3 +28,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - `GLOSSARY.md` lacks "broadcast projection". Source: #22 report.
 - 2026-11-11: #26 placing Media merged at `b8a3580` (325 unit, 77 app tests). Kept the image picker for keyboard users.
 - Follow-up (from #26): `GLOSSARY.md` has no French UI term for Overlay; "Superpositions" / "Ajouter en superposition" are working labels. User decision.
+  - 2026-11-11: user decided "Superposition" is the French UI term for Overlay. Closeout adds it to `GLOSSARY.md`.
