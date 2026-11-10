@@ -280,6 +280,46 @@ describe('media library', () => {
     ]);
   });
 
+  it('deletes a Media and its file, also after a restart', async () => {
+    const { storage, campaign, library } = await setup();
+    const [cantina] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+    const theme = (
+      await library.import(campaign.id, [await sourceFile('Theme.mp3', 'other')], {
+        accept: 'audio',
+        role: 'music',
+      })
+    ).imported[0];
+
+    await library.delete(campaign.id, cantina.id);
+
+    expect(await library.list(campaign.id)).toEqual([theme]);
+    const reopened = createMediaLibrary(openStorage(path.join(dir.path, 'data')));
+    expect(await reopened.list(campaign.id)).toEqual([theme]);
+    const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+    expect(await fs.readdir(mediaFolder)).toEqual([`${theme.contentHash}.mp3`]);
+    expect(await library.listOrphanFiles(campaign.id)).toEqual([]);
+  });
+
+  it('deletes a Media whose file is already missing', async () => {
+    const { storage, campaign, library } = await setup();
+    const [cantina] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+    await fs.rm(path.join(storage.campaignFolder(campaign.id), 'media', `${ABC_SHA256}.png`));
+
+    await library.delete(campaign.id, cantina.id);
+
+    expect(await library.list(campaign.id)).toEqual([]);
+  });
+
+  it('refuses to delete a Media that no longer exists', async () => {
+    const { campaign, library } = await setup();
+
+    await expect(library.delete(campaign.id, 'gone')).rejects.toThrow('Ce média n’existe plus.');
+  });
+
   it('lists no orphan files before anything is imported', async () => {
     const { campaign, library } = await setup();
     expect(await library.listOrphanFiles(campaign.id)).toEqual([]);

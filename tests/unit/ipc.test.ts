@@ -146,6 +146,7 @@ describe('Media channels', () => {
       ['media:list', [{ campaignId }]],
       ['media:import', [{ campaignId, accept: 'image' }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
+      ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
@@ -171,7 +172,23 @@ describe('Media channels', () => {
     ).toEqual({ ok: true, payload: { campaignId, mediaId, category: 'scenery' } });
   });
 
+  it('accept a delete, confirmed or not, keeping only contract fields', () => {
+    for (const confirmed of [true, false]) {
+      expect(
+        checkInvoke('media:delete', 'control', [{ campaignId, mediaId, confirmed, x: 1 }]),
+      ).toEqual({ ok: true, payload: { campaignId, mediaId, confirmed } });
+    }
+  });
+
   it.each([
+    ['a delete with no Media id', 'media:delete', [{ campaignId, confirmed: true }]],
+    ['a delete with no confirmation flag', 'media:delete', [{ campaignId, mediaId }]],
+    ['a delete confirmed by a string', 'media:delete', [{ campaignId, mediaId, confirmed: 'yes' }]],
+    [
+      'a delete with a Campaign id that is a path',
+      'media:delete',
+      [{ campaignId: '..', mediaId, confirmed: true }],
+    ],
     ['a Campaign id that is a path', 'media:list', [{ campaignId: '../..' }]],
     ['no Campaign id', 'media:list', [{}]],
     ['an unknown kind', 'media:import', [{ campaignId, accept: 'video' }]],

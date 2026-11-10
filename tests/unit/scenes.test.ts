@@ -52,6 +52,51 @@ describe('scene library', () => {
     expect(await reopened.get(campaign.id, created.id)).toEqual(edited);
   });
 
+  it('removes every placement of a Media from the Scenes using it, and only from those', async () => {
+    const { campaign, scenes } = await setup();
+    const placed = (mediaId: string, id: string) => ({
+      id,
+      mediaId,
+      position: { x: 0.5, y: 0.5 },
+      visible: true,
+    });
+    const cantina = await scenes.save({
+      ...(await scenes.create(campaign.id, 'La cantina')),
+      backgrounds: [
+        { ...placed('gone', 'b1'), fit: 'cover' },
+        { ...placed('kept', 'b2'), fit: 'cover' },
+      ],
+      overlays: [{ ...placed('gone', 'o1'), scale: 1, zIndex: 0 }],
+      music: ['gone', 'kept'],
+      ambiences: [{ mediaId: 'gone', on: true, volume: 1 }],
+    });
+    const bridge = await scenes.save({
+      ...(await scenes.create(campaign.id, 'La passerelle')),
+      backgrounds: [{ ...placed('kept', 'b3'), fit: 'cover' }],
+    });
+
+    const affected = await scenes.removeMediaPlacements(campaign.id, 'gone');
+
+    const cleaned: Scene = {
+      ...cantina,
+      backgrounds: [{ ...placed('kept', 'b2'), fit: 'cover' }],
+      overlays: [],
+      music: ['kept'],
+      ambiences: [],
+    };
+    expect(affected).toEqual([cleaned]);
+    const reopened = createSceneLibrary(openStorage(root()));
+    expect(await reopened.list(campaign.id)).toEqual([cleaned, bridge]);
+  });
+
+  it('changes nothing when no Scene uses the Media', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'La cantina');
+
+    expect(await scenes.removeMediaPlacements(campaign.id, 'unused')).toEqual([]);
+    expect(await scenes.list(campaign.id)).toEqual([scene]);
+  });
+
   it('lists Scenes in creation order, each Campaign its own', async () => {
     const { storage, campaign, scenes } = await setup();
     const other = await createCampaign(storage.campaigns, 'Warhammer');

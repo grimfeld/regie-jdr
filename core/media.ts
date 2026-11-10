@@ -39,6 +39,11 @@ export interface MediaLibrary {
     mediaId: MediaId,
     category: ImageCategory,
   ): Promise<Media>;
+  /**
+   * Removes a Media from the library and deletes its file. Scenes are not touched: removing
+   * their placements first is the caller's job (core/onAirCommands.ts).
+   */
+  delete(campaignId: CampaignId, mediaId: MediaId): Promise<void>;
   /** Files in the Campaign's media folder that no Media refers to (file names). */
   listOrphanFiles(campaignId: CampaignId): Promise<string[]>;
   /**
@@ -234,6 +239,22 @@ export function createMediaLibrary(storage: Storage): MediaLibrary {
         library[index] = updated;
         await writeIndex(folder, library);
         return updated;
+      });
+    },
+
+    delete(campaignId, mediaId) {
+      return serialized(campaignId, async () => {
+        const folder = await campaignFolder(campaignId);
+        const library = await readIndex(folder, campaignId);
+        const media = library.find((item) => item.id === mediaId);
+        if (!media) throw new MediaError('Ce média n’existe plus.');
+        // Index first: a crash before the file goes leaves an orphan file, never a Media
+        // without its file.
+        await writeIndex(
+          folder,
+          library.filter((item) => item.id !== mediaId),
+        );
+        await fsp.rm(path.join(folder, MEDIA_FOLDER, mediaFileName(media)), { force: true });
       });
     },
 

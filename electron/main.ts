@@ -183,6 +183,8 @@ function startApp() {
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
+      'media:delete': ({ campaignId, mediaId, confirmed }) =>
+        commands.deleteMedia(campaignId, mediaId, confirmed),
       'campaigns:list': () => storage.campaigns.list(),
       'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),

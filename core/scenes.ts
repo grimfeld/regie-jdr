@@ -11,6 +11,7 @@ import type {
   Background,
   BackgroundFit,
   CampaignId,
+  MediaId,
   NormalizedPoint,
   Overlay,
   Scene,
@@ -26,6 +27,11 @@ export interface SceneLibrary {
   list(campaignId: CampaignId): Promise<Scene[]>;
   /** The Scene, or undefined if it does not exist. */
   get(campaignId: CampaignId, sceneId: SceneId): Promise<Scene | undefined>;
+  /**
+   * Removes every placement of a Media (Backgrounds, Overlays, music, Ambiences) from the
+   * Campaign's Scenes and returns the Scenes that changed, as saved.
+   */
+  removeMediaPlacements(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
   /** A new, empty Scene. */
   create(campaignId: CampaignId, name: string): Promise<Scene>;
   /** Replaces a stored Scene (found by Campaign and id) and returns what was saved. */
@@ -117,6 +123,28 @@ export function parseScene(value: unknown, campaignId: CampaignId): Scene | unde
   };
 }
 
+// Media placements -----------------------------------------------------------
+
+/** Whether a Scene places a Media anywhere (Background, Overlay, music, Ambience). */
+export function sceneUsesMedia(scene: Scene, mediaId: MediaId): boolean {
+  return (
+    scene.backgrounds.some((item) => item.mediaId === mediaId) ||
+    scene.overlays.some((item) => item.mediaId === mediaId) ||
+    scene.music.includes(mediaId) ||
+    scene.ambiences.some((item) => item.mediaId === mediaId)
+  );
+}
+
+function withoutMedia(scene: Scene, mediaId: MediaId): Scene {
+  return {
+    ...scene,
+    backgrounds: scene.backgrounds.filter((item) => item.mediaId !== mediaId),
+    overlays: scene.overlays.filter((item) => item.mediaId !== mediaId),
+    music: scene.music.filter((item) => item !== mediaId),
+    ambiences: scene.ambiences.filter((item) => item.mediaId !== mediaId),
+  };
+}
+
 // Storage ------------------------------------------------------------------
 
 type StoredScene = Omit<Scene, 'campaignId'>;
@@ -201,6 +229,22 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
         };
         await write(file, [...scenes, scene]);
         return scene;
+      });
+    },
+
+    removeMediaPlacements(campaignId, mediaId) {
+      return serialized(campaignId, async () => {
+        const file = await fileOf(campaignId);
+        const scenes = await read(file, campaignId);
+        const affected: Scene[] = [];
+        const updated = scenes.map((scene) => {
+          if (!sceneUsesMedia(scene, mediaId)) return scene;
+          const cleaned = withoutMedia(scene, mediaId);
+          affected.push(cleaned);
+          return cleaned;
+        });
+        if (affected.length > 0) await write(file, updated);
+        return affected;
       });
     },
 

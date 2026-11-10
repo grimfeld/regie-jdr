@@ -125,6 +125,18 @@ function categoryChange(
   return { ...campaign, mediaId, category };
 }
 
+function mediaDelete(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; mediaId: MediaId; confirmed: boolean }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { mediaId, confirmed } = value;
+  if (typeof mediaId !== 'string' || mediaId === '' || typeof confirmed !== 'boolean') {
+    return INVALID;
+  }
+  return { ...campaign, mediaId, confirmed };
+}
+
 function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string }> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value) || !isName(value.name)) return INVALID;
@@ -150,6 +162,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
+  'media:delete': { from: controlOnly, parse: onePayload(mediaDelete) },
   'campaigns:list': { from: controlOnly, parse: noPayload },
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
   'campaigns:update': { from: controlOnly, parse: onePayload(campaignUpdate) },

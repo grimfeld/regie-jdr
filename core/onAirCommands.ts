@@ -1,15 +1,16 @@
 /**
  * The on-air commands the Control window gives: open or close a Campaign, Activate a Scene,
- * update a Scene. They check that Campaigns and Scenes exist, save Scene edits, and keep the
+ * update a Scene, delete Media (which can change Scenes, so the Active Scene's picture). They check that Campaigns and Scenes exist, save Scene edits, and keep the
  * on-air state (core/onAir.ts) in step. No Electron dependency.
  *
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
-import type { CampaignId, OnAirState, Scene, SceneId } from '../shared/domain.js';
-import type { MediaLibrary } from './media.js';
+import type { MediaDeletion } from '../shared/contract.js';
+import type { CampaignId, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
+import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
-import { SceneError, type SceneLibrary } from './scenes.js';
+import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import type { CampaignRepository } from './storage/index.js';
 
 /** Where audio plays. No audio engine yet: stopping is announced to the windows. */
@@ -29,6 +30,12 @@ export interface OnAirCommands {
    * any other Scene stays private.
    */
   updateScene(scene: Scene): Promise<Scene>;
+  /**
+   * Deletes a Media. Unused Media goes at once. Media that Scenes use is only listed with
+   * those Scenes unless `confirmed`; then the Media, its file and its placements in those
+   * Scenes are removed, and the broadcast drops it if the Active Scene showed it.
+   */
+  deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
 }
 
 export function createOnAirCommands(deps: {
@@ -86,6 +93,29 @@ export function createOnAirCommands(deps: {
           onAir.showActiveScene(saved.id, await picture(saved));
         }
         return saved;
+      }),
+
+    deleteMedia: (campaignId, mediaId, confirmed) =>
+      serialized(async () => {
+        if (!(await library.list(campaignId)).some((media) => media.id === mediaId)) {
+          throw new MediaError('Ce média n’existe plus.');
+        }
+        const summary = ({ id, name }: Scene) => ({ id, name });
+        const using = (await scenes.list(campaignId)).filter((scene) =>
+          sceneUsesMedia(scene, mediaId),
+        );
+        if (using.length > 0 && !confirmed) {
+          return { deleted: false, affectedScenes: using.map(summary) };
+        }
+        // Placements first: if the Media delete then fails, no Scene points at a missing Media.
+        const cleaned = await scenes.removeMediaPlacements(campaignId, mediaId);
+        await library.delete(campaignId, mediaId);
+        const current = onAir.current();
+        const active = cleaned.find((scene) => scene.id === current.activeSceneId);
+        if (active && current.campaignId === campaignId) {
+          onAir.showActiveScene(active.id, await picture(active));
+        }
+        return { deleted: true, affectedScenes: cleaned.map(summary) };
       }),
   };
 }
