@@ -7,13 +7,15 @@ describe('serial queue', () => {
   it('runs tasks one at a time, in arrival order, even when an earlier one fails', async () => {
     const queue = createSerialQueue();
     const log: string[] = [];
-    const task = (name: string, fail = false) => async () => {
-      log.push(`start ${name}`);
-      await tick();
-      log.push(`end ${name}`);
-      if (fail) throw new Error(name);
-      return name;
-    };
+    const task =
+      (name: string, fail = false) =>
+      async () => {
+        log.push(`start ${name}`);
+        await tick();
+        log.push(`end ${name}`);
+        if (fail) throw new Error(name);
+        return name;
+      };
 
     const results = await Promise.allSettled([
       queue(task('a')),

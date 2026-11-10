@@ -130,7 +130,10 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
     (window as unknown as { recorder: Recorder }).recorder.unsubscribe(),
   );
   await gm('activateScene', sceneId);
-  await expect(broadcastWindow.locator('main.broadcast-screen')).toHaveAttribute('data-version', '2');
+  await expect(broadcastWindow.locator('main.broadcast-screen')).toHaveAttribute(
+    'data-version',
+    '2',
+  );
   expect(await calls()).toHaveLength(1);
 });
 

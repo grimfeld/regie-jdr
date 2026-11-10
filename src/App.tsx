@@ -11,7 +11,7 @@ import { showNotice } from './notices';
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
   { id: 'imperium', label: 'Imperium', subtitle: 'Gothique impérial, rouge, or et parchemin' },
-  { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' }
+  { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' },
 ];
 
 /** Theme of the Campaign list home page until the global Settings are read. */
@@ -44,15 +44,22 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
-    control.listCampaigns()
-      .then(list => {
+    control
+      .listCampaigns()
+      .then((list) => {
         if (cancelled) return;
         setCampaigns(list);
         if (list.length === 1) void enter(list[0].id);
       })
-      .catch(error => { if (!cancelled) showNotice(errorMessage(error)); })
-      .finally(() => { if (!cancelled) void collectNotices(); });
-    return () => { cancelled = true; };
+      .catch((error) => {
+        if (!cancelled) showNotice(errorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) void collectNotices();
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [control, collectNotices]);
 
   /**
@@ -83,10 +90,17 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
-    control.getSettings()
-      .then(settings => { if (!cancelled) setHomeTheme(settings.theme); })
-      .catch(error => { if (!cancelled) showNotice(errorMessage(error)); });
-    return () => { cancelled = true; };
+    control
+      .getSettings()
+      .then((settings) => {
+        if (!cancelled) setHomeTheme(settings.theme);
+      })
+      .catch((error) => {
+        if (!cancelled) showNotice(errorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [control]);
 
   async function changeHomeTheme(next: ThemeId) {
@@ -99,7 +113,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     }
   }
 
-  const openCampaign = campaigns?.find(c => c.id === openId);
+  const openCampaign = campaigns?.find((c) => c.id === openId);
   const theme = openCampaign?.theme ?? homeTheme;
 
   useEffect(() => {
@@ -109,7 +123,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
   async function create(name: string) {
     if (!control) return;
     const created = await control.createCampaign(name);
-    setCampaigns(current => [...(current ?? []), created].sort(byName));
+    setCampaigns((current) => [...(current ?? []), created].sort(byName));
     await enter(created.id);
   }
 
@@ -117,7 +131,9 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     if (!control) return;
     try {
       const updated = await control.updateCampaign(id, changes);
-      setCampaigns(current => (current ?? []).map(c => (c.id === updated.id ? updated : c)).sort(byName));
+      setCampaigns((current) =>
+        (current ?? []).map((c) => (c.id === updated.id ? updated : c)).sort(byName),
+      );
     } finally {
       void collectNotices();
     }
@@ -126,18 +142,55 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="brand"><div className="brand-mark"><Aperture size={19} /></div><div><strong>RÉGIE JDR</strong><small>POSTE DU MAÎTRE DU JEU</small></div></div>
+        <div className="brand">
+          <div className="brand-mark">
+            <Aperture size={19} />
+          </div>
+          <div>
+            <strong>RÉGIE JDR</strong>
+            <small>POSTE DU MAÎTRE DU JEU</small>
+          </div>
+        </div>
         <div className="topbar-right">
-          {openCampaign
-            ? <button className="secondary-button" onClick={() => void enter(null)}><ArrowLeft size={14} /> Campagnes</button>
-            : <HomeThemePicker theme={homeTheme} onChange={next => void changeHomeTheme(next)} />}
-          <button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button>
+          {openCampaign ? (
+            <button className="secondary-button" onClick={() => void enter(null)}>
+              <ArrowLeft size={14} /> Campagnes
+            </button>
+          ) : (
+            <HomeThemePicker theme={homeTheme} onChange={(next) => void changeHomeTheme(next)} />
+          )}
+          <button className="primary-button" onClick={() => control?.openBroadcast()}>
+            <MonitorPlay size={16} /> Ouvrir la diffusion
+          </button>
         </div>
       </header>
-      {openCampaign
-        ? <CampaignScreen key={openCampaign.id} campaign={openCampaign} control={control} onThemeChange={next => update(openCampaign.id, { theme: next }).catch(error => showNotice(errorMessage(error)))} />
-        : campaigns && <CampaignList campaigns={campaigns} onOpen={id => void enter(id)} onCreate={create} onRename={(id, name) => update(id, { name })} />}
-      <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
+      {openCampaign ? (
+        <CampaignScreen
+          key={openCampaign.id}
+          campaign={openCampaign}
+          control={control}
+          onThemeChange={(next) =>
+            update(openCampaign.id, { theme: next }).catch((error) =>
+              showNotice(errorMessage(error)),
+            )
+          }
+        />
+      ) : (
+        campaigns && (
+          <CampaignList
+            campaigns={campaigns}
+            onOpen={(id) => void enter(id)}
+            onCreate={create}
+            onRename={(id, name) => update(id, { name })}
+          />
+        )
+      )}
+      <footer className="footer">
+        <span>
+          RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span>
+        </span>
+        <span>Fonctionnement local · Aucun compte requis</span>
+      </footer>
     </main>
   );
 }
@@ -147,8 +200,16 @@ function HomeThemePicker({ theme, onChange }: { theme: ThemeId; onChange(theme: 
   return (
     <label className="home-theme">
       <Palette size={14} />
-      <select aria-label="Thème de l’accueil" value={theme} onChange={e => onChange(e.target.value as ThemeId)}>
-        {themes.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+      <select
+        aria-label="Thème de l’accueil"
+        value={theme}
+        onChange={(e) => onChange(e.target.value as ThemeId)}
+      >
+        {themes.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.label}
+          </option>
+        ))}
       </select>
     </label>
   );
@@ -166,29 +227,65 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   /** Bumped when a Media is deleted: the Scenes panel reloads (placements may be gone). */
   const [mediaRevision, setMediaRevision] = useState(0);
 
-  const themeLabel = themes.find(t => t.id === theme)?.label ?? 'Imperium';
+  const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
 
   return (
     <>
       <div className="campaign-bar">
-        <div><span className="eyebrow">CAMPAGNE</span><h1>{campaign.name}</h1></div>
-        <div className="topbar-right"><span className="status-dot" /> SESSION LOCALE <span className="top-separator">|</span><span className="theme-name">{themeLabel}</span></div>
+        <div>
+          <span className="eyebrow">CAMPAGNE</span>
+          <h1>{campaign.name}</h1>
+        </div>
+        <div className="topbar-right">
+          <span className="status-dot" /> SESSION LOCALE <span className="top-separator">|</span>
+          <span className="theme-name">{themeLabel}</span>
+        </div>
       </div>
 
       <div className="workspace">
         <section className="main-column">
           <ScenesPanel campaignId={campaign.id} control={control} mediaRevision={mediaRevision} />
 
-          <MediaLibrary campaignId={campaign.id} control={control} onMediaDeleted={() => setMediaRevision((revision) => revision + 1)} />
+          <MediaLibrary
+            campaignId={campaign.id}
+            control={control}
+            onMediaDeleted={() => setMediaRevision((revision) => revision + 1)}
+          />
         </section>
 
         <aside className="control-column">
           <div className="panel">
-            <div className="panel-heading"><div><span className="eyebrow">APPARENCE</span><h2><Palette size={18}/> Thème de la campagne</h2></div><Settings2 size={17}/></div>
-            <div className="theme-options">
-              {themes.map(item => <button key={item.id} className={`theme-option ${theme === item.id ? 'selected' : ''}`} onClick={() => onThemeChange(item.id)}><span className={`theme-swatch ${item.id}`}></span><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><span className="radio-indicator"/></button>)}
+            <div className="panel-heading">
+              <div>
+                <span className="eyebrow">APPARENCE</span>
+                <h2>
+                  <Palette size={18} /> Thème de la campagne
+                </h2>
+              </div>
+              <Settings2 size={17} />
             </div>
-            {theme === 'imperium' && <p className="theme-footnote">Esthétique impériale uniquement : gothique monumental, héraldique, rouge et or. Aucun élément Mechanicus ou démoniaque.</p>}
+            <div className="theme-options">
+              {themes.map((item) => (
+                <button
+                  key={item.id}
+                  className={`theme-option ${theme === item.id ? 'selected' : ''}`}
+                  onClick={() => onThemeChange(item.id)}
+                >
+                  <span className={`theme-swatch ${item.id}`}></span>
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.subtitle}</small>
+                  </span>
+                  <span className="radio-indicator" />
+                </button>
+              ))}
+            </div>
+            {theme === 'imperium' && (
+              <p className="theme-footnote">
+                Esthétique impériale uniquement : gothique monumental, héraldique, rouge et or.
+                Aucun élément Mechanicus ou démoniaque.
+              </p>
+            )}
           </div>
         </aside>
       </div>

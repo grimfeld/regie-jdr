@@ -148,7 +148,10 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
     await expect(cantina).not.toContainText('Dernière active');
 
     const reopened = await openBroadcastWindow(restarted.app, page);
-    await expect(reopened.locator('main.broadcast-screen')).toHaveAttribute('data-active-scene-id', '');
+    await expect(reopened.locator('main.broadcast-screen')).toHaveAttribute(
+      'data-active-scene-id',
+      '',
+    );
     await expect(reopened.locator('.broadcast-layer')).toHaveCount(0);
   } finally {
     await restarted.app.close();

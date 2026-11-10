@@ -36,7 +36,7 @@ installErrorLogging();
 // Media are served via a custom scheme (core/mediaAddress.ts): file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
 protocol.registerSchemesAsPrivileged([
-  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
 // The page every window loads: the dev server, or the built index.html on disk.
@@ -51,15 +51,19 @@ function secureWebPreferences(role: WindowRole): Electron.WebPreferences {
     sandbox: true,
     contextIsolation: true,
     nodeIntegration: false,
-    webviewTag: false
+    webviewTag: false,
   };
 }
 
 // Every window: no pop-ups, no webviews, no navigation away from the app's own pages.
 app.on('web-contents-created', (_event, contents) => {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  contents.on('will-frame-navigate', (event) => { if (!isAppPage(event.url, appEntry)) event.preventDefault(); });
-  contents.on('will-redirect', (event) => { if (!isAppPage(event.url, appEntry)) event.preventDefault(); });
+  contents.on('will-frame-navigate', (event) => {
+    if (!isAppPage(event.url, appEntry)) event.preventDefault();
+  });
+  contents.on('will-redirect', (event) => {
+    if (!isAppPage(event.url, appEntry)) event.preventDefault();
+  });
   contents.on('will-attach-webview', (event) => event.preventDefault());
 });
 
@@ -88,8 +92,10 @@ function registerMediaProtocol(library: MediaLibrary) {
 
 /** Which of the app's windows sent a message; undefined for anything else. */
 function roleOf(sender: WebContents): WindowRole | undefined {
-  if (controlWindow && !controlWindow.isDestroyed() && sender === controlWindow.webContents) return 'control';
-  if (broadcastWindow && !broadcastWindow.isDestroyed() && sender === broadcastWindow.webContents) return 'broadcast';
+  if (controlWindow && !controlWindow.isDestroyed() && sender === controlWindow.webContents)
+    return 'control';
+  if (broadcastWindow && !broadcastWindow.isDestroyed() && sender === broadcastWindow.webContents)
+    return 'broadcast';
   return undefined;
 }
 
@@ -111,7 +117,10 @@ async function savedPlacement(window: SettingsWindow): Promise<Electron.Rectangl
     const saved = (await settings.get()).windowBounds[window];
     const primary = screen.getPrimaryDisplay();
     const others = screen.getAllDisplays().filter((display) => display.id !== primary.id);
-    return placeWindow(saved, [primary, ...others].map((display) => display.workArea));
+    return placeWindow(
+      saved,
+      [primary, ...others].map((display) => display.workArea),
+    );
   } catch (error) {
     log.warn('Reading the saved window bounds failed', error);
     return undefined;
@@ -129,10 +138,14 @@ function rememberBounds(window: BrowserWindow, name: SettingsWindow) {
 async function createControlWindow() {
   const placement = await savedPlacement('control');
   controlWindow = new BrowserWindow({
-    width: 1440, height: 920, minWidth: 1080, minHeight: 700,
+    width: 1440,
+    height: 920,
+    minWidth: 1080,
+    minHeight: 700,
     ...placement,
-    title: 'Régie JDR — Poste du MJ', backgroundColor: '#101217',
-    webPreferences: secureWebPreferences('control')
+    title: 'Régie JDR — Poste du MJ',
+    backgroundColor: '#101217',
+    webPreferences: secureWebPreferences('control'),
   });
   rememberBounds(controlWindow, 'control');
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -144,29 +157,43 @@ async function createControlWindow() {
 }
 
 async function createBroadcastWindow() {
-  if (broadcastWindow && !broadcastWindow.isDestroyed()) { broadcastWindow.focus(); return; }
+  if (broadcastWindow && !broadcastWindow.isDestroyed()) {
+    broadcastWindow.focus();
+    return;
+  }
   const placement = await savedPlacement('broadcast');
   // A second click while the bounds were being read: the first one opened it.
-  if (broadcastWindow && !broadcastWindow.isDestroyed()) { broadcastWindow.focus(); return; }
+  if (broadcastWindow && !broadcastWindow.isDestroyed()) {
+    broadcastWindow.focus();
+    return;
+  }
   broadcastWindow = new BrowserWindow({
-    width: 1280, height: 720, ...placement, title: 'Régie JDR — Diffusion',
-    backgroundColor: '#08090c', autoHideMenuBar: true,
-    webPreferences: secureWebPreferences('broadcast')
+    width: 1280,
+    height: 720,
+    ...placement,
+    title: 'Régie JDR — Diffusion',
+    backgroundColor: '#08090c',
+    autoHideMenuBar: true,
+    webPreferences: secureWebPreferences('broadcast'),
   });
   rememberBounds(broadcastWindow, 'broadcast');
   broadcastWindow.setMenuBarVisibility(false);
   // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
-  if (process.env.VITE_DEV_SERVER_URL) broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`);
+  if (process.env.VITE_DEV_SERVER_URL)
+    broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`);
   else broadcastWindow.loadFile(appIndexFile, { query: { view: 'broadcast' } });
-  broadcastWindow.on('closed', () => { broadcastWindow = null; });
+  broadcastWindow.on('closed', () => {
+    broadcastWindow = null;
+  });
 }
 
 /** Files the Game Master picks for an import, from the native file picker; [] if cancelled. */
 async function pickMediaFiles(kind: MediaImportKind): Promise<string[]> {
   const { picker, extensions } = MEDIA_KINDS[kind.accept];
   const options: Electron.OpenDialogOptions = {
-    title: picker.title, properties: ['openFile', 'multiSelections'],
-    filters: [{ name: picker.filterName, extensions }]
+    title: picker.title,
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: picker.filterName, extensions }],
   };
   const result = controlWindow
     ? await dialog.showOpenDialog(controlWindow, options)
@@ -186,7 +213,10 @@ function startApp() {
   // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
   const notices: string[] = [];
   const storage = openStorage(app.getPath('userData'), {
-    notify: (message) => { notices.push(message); log.warn(message); }
+    notify: (message) => {
+      notices.push(message);
+      log.warn(message);
+    },
   });
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
@@ -195,13 +225,16 @@ function startApp() {
   registerMediaProtocol(library);
   // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
   const commands = createOnAirCommands({
-    campaigns: storage.campaigns, library, scenes, onAir,
+    campaigns: storage.campaigns,
+    library,
+    scenes,
+    onAir,
     audio: {
       halt: () => {
         sendEvent(broadcastWindow?.webContents, 'audio:halt', null);
         sendEvent(controlWindow?.webContents, 'audio:halt', null);
-      }
-    }
+      },
+    },
   });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
@@ -241,13 +274,15 @@ function startApp() {
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
-      'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme)
+      'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),
     },
     roleOf,
-    log
+    log,
   );
   void createControlWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createControlWindow(); });
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) void createControlWindow();
+  });
 }
 
 // Window bounds are saved as the windows close: finish those writes before quitting.
@@ -265,4 +300,6 @@ if (app.requestSingleInstanceLock()) {
   app.quit();
 }
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
