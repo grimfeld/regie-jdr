@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createOnAir, editorPictureOf, latestOnAir, onAirSceneOf } from '../../core/onAir';
+import { applySceneEdit } from '../../core/sceneEdits';
+import type { SceneEdit } from '../../shared/contract';
 import type { Media, OnAirScene, Scene } from '../../shared/domain';
 
 const cantina: OnAirScene = {
@@ -308,6 +310,34 @@ describe('what of a Scene goes on air', () => {
       overlays: [{ ...scene.overlays[0], label: { text: '', visible: true } }],
     };
     expect(onAirSceneOf(blankLabel, library).overlays[0]).not.toHaveProperty('label');
+  });
+
+  it('carries a Label only once both its Overlay and the Label are shown', () => {
+    const bare: Scene = { ...scene, title: '', backgrounds: [], overlays: [] };
+    const after = (...edits: SceneEdit[]) =>
+      onAirSceneOf(
+        edits.reduce((current, edit) => applySceneEdit(current, edit, () => 'o9'), bare),
+        library,
+      );
+    const placed: SceneEdit = { kind: 'place-overlay', mediaId: 'm1' };
+    const named: SceneEdit = { kind: 'set-label-text', overlayId: 'o9', text: 'Garde' };
+    const shown: SceneEdit = { kind: 'set-visible', placementId: 'o9', visible: true };
+    const labelShown: SceneEdit = { kind: 'set-label-visible', overlayId: 'o9', visible: true };
+    expect(after(placed, named, labelShown).overlays).toEqual([]);
+    expect(after(placed, named, shown).overlays).toEqual([
+      expect.not.objectContaining({ label: expect.anything() }),
+    ]);
+    expect(after(placed, named, shown, labelShown).overlays).toEqual([
+      expect.objectContaining({ id: 'o9', label: 'Garde' }),
+    ]);
+  });
+
+  it('carries the Scene title once set, never the Scene name', () => {
+    const untitled = { ...scene, title: '' };
+    expect(onAirSceneOf(untitled, library)).not.toHaveProperty('title');
+    const titled = applySceneEdit(untitled, { kind: 'set-title', title: 'Le moulin' }, () => '');
+    expect(onAirSceneOf(titled, library)).toHaveProperty('title', 'Le moulin');
+    expect(JSON.stringify(onAirSceneOf(titled, library))).not.toContain(scene.name);
   });
 });
 

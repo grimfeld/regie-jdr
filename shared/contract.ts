@@ -37,7 +37,18 @@ export type SceneEdit =
   /** Removes a Background or Overlay from the Scene. */
   | { kind: 'remove-placement'; placementId: string }
   /** Renames the Scene (its private name; never shown to players). */
-  | { kind: 'rename'; name: string };
+  | { kind: 'rename'; name: string }
+  /**
+   * Sets the player-facing Scene title, shown discreetly on the broadcast; '' clears it.
+   */
+  | { kind: 'set-title'; title: string }
+  /**
+   * Sets the text of an Overlay's Label. A new Label starts Hidden; empty text removes the
+   * Label.
+   */
+  | { kind: 'set-label-text'; overlayId: string; text: string }
+  /** Shows or hides an Overlay's Label, independently of the Overlay. */
+  | { kind: 'set-label-visible'; overlayId: string; visible: boolean };
 
 /** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
 export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };

@@ -109,6 +109,85 @@ describe('Scene edit commands', () => {
       'Cet élément n’est plus sur la scène.',
     );
   });
+
+  it('give an Overlay a Label that starts Hidden, its text trimmed', () => {
+    const scene = applyAll(
+      empty,
+      { kind: 'place-overlay', mediaId: 'm1' },
+      { kind: 'place-overlay', mediaId: 'm1' },
+      { kind: 'set-label-text', overlayId: 'p2', text: '  Garde du moulin ' },
+    );
+    expect(scene.overlays.map((item) => item.label)).toEqual([
+      undefined,
+      { text: 'Garde du moulin', visible: false },
+    ]);
+  });
+
+  it('show and hide a Label independently of its Overlay, keeping it when its text changes', () => {
+    const labelled = applyAll(
+      empty,
+      { kind: 'place-overlay', mediaId: 'm1' },
+      { kind: 'set-label-text', overlayId: 'p1', text: 'Garde' },
+      { kind: 'set-label-visible', overlayId: 'p1', visible: true },
+    );
+    expect(labelled.overlays[0]).toMatchObject({
+      visible: false,
+      label: { text: 'Garde', visible: true },
+    });
+    const renamed = applyAll(labelled, { kind: 'set-label-text', overlayId: 'p1', text: 'Vador' });
+    expect(renamed.overlays[0].label).toEqual({ text: 'Vador', visible: true });
+    const hidden = applyAll(renamed, {
+      kind: 'set-label-visible',
+      overlayId: 'p1',
+      visible: false,
+    });
+    expect(hidden.overlays[0].label).toEqual({ text: 'Vador', visible: false });
+  });
+
+  it('remove a Label whose text is cleared, so a new one starts Hidden again', () => {
+    const shown = applyAll(
+      empty,
+      { kind: 'place-overlay', mediaId: 'm1' },
+      { kind: 'set-label-text', overlayId: 'p1', text: 'Garde' },
+      { kind: 'set-label-visible', overlayId: 'p1', visible: true },
+      { kind: 'set-label-text', overlayId: 'p1', text: '   ' },
+    );
+    expect(shown.overlays[0]).not.toHaveProperty('label');
+    const again = applyAll(shown, { kind: 'set-label-text', overlayId: 'p1', text: 'Vador' });
+    expect(again.overlays[0].label).toEqual({ text: 'Vador', visible: false });
+  });
+
+  it('refuse a Label on a placement that is not an Overlay of the Scene, in French', () => {
+    const scene = applyAll(empty, { kind: 'place-background', mediaId: 'm1' });
+    expect(() => applyAll(scene, { kind: 'set-label-text', overlayId: 'p1', text: 'x' })).toThrow(
+      'Cet élément n’est plus sur la scène.',
+    );
+    expect(() =>
+      applyAll(scene, { kind: 'set-label-visible', overlayId: 'absent', visible: true }),
+    ).toThrow('Cet élément n’est plus sur la scène.');
+  });
+
+  it('refuse to show a Label that has no text, or a too long Label, in French', () => {
+    const scene = applyAll(empty, { kind: 'place-overlay', mediaId: 'm1' });
+    expect(() =>
+      applyAll(scene, { kind: 'set-label-visible', overlayId: 'p1', visible: true }),
+    ).toThrow('Donnez d’abord un texte à l’étiquette.');
+    expect(() =>
+      applyAll(scene, { kind: 'set-label-text', overlayId: 'p1', text: 'x'.repeat(61) }),
+    ).toThrow('L’étiquette est trop longue (60 caractères au plus).');
+  });
+
+  it('set the Scene title, trimmed, apart from the Scene name; clear it with empty text', () => {
+    const titled = applyAll(empty, { kind: 'set-title', title: '  Le vieux moulin ' });
+    expect(titled).toEqual({ ...empty, title: 'Le vieux moulin' });
+    expect(applyAll(titled, { kind: 'set-title', title: ' ' })).toEqual(empty);
+  });
+
+  it('refuse a too long Scene title, in French', () => {
+    expect(() => applyAll(empty, { kind: 'set-title', title: 'x'.repeat(101) })).toThrow(
+      'Le titre affiché est trop long (100 caractères au plus).',
+    );
+  });
 });
 
 function image(category: ImageCategory): ImageMedia {
@@ -203,6 +282,18 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'rename', name: 'Le hangar', id: 's2' },
       { kind: 'rename', name: 'Le hangar' },
     ],
+    [
+      { kind: 'set-label-text', overlayId: 'p1', text: 'Garde', visible: true },
+      { kind: 'set-label-text', overlayId: 'p1', text: 'Garde' },
+    ],
+    [
+      { kind: 'set-label-visible', overlayId: 'p1', visible: true, text: 'Garde' },
+      { kind: 'set-label-visible', overlayId: 'p1', visible: true },
+    ],
+    [
+      { kind: 'set-title', title: 'Le vieux moulin', name: 'x' },
+      { kind: 'set-title', title: 'Le vieux moulin' },
+    ],
   ])('accept %o, keeping only its fields', (value, expected) => {
     expect(parseSceneEdit(value)).toEqual(expected);
   });
@@ -218,6 +309,18 @@ describe('Scene edit commands from a window message', () => {
     ['a removal naming no placement', { kind: 'remove-placement', placementId: '' }],
     ['a name that is not a string', { kind: 'rename', name: 42 }],
     ['a name far too long for a message', { kind: 'rename', name: 'x'.repeat(1001) }],
+    ['a Label naming no Overlay', { kind: 'set-label-text', overlayId: '', text: 'Garde' }],
+    ['a Label text that is not a string', { kind: 'set-label-text', overlayId: 'p1', text: 1 }],
+    [
+      'a Label text far too long for a message',
+      { kind: 'set-label-text', overlayId: 'p1', text: 'x'.repeat(1001) },
+    ],
+    [
+      'a Label visibility that is not a boolean',
+      { kind: 'set-label-visible', overlayId: 'p1', visible: 'yes' },
+    ],
+    ['a title that is not a string', { kind: 'set-title', title: null }],
+    ['a title far too long for a message', { kind: 'set-title', title: 'x'.repeat(1001) }],
     ['not an object', 'place-background'],
   ])('reject %s', (_case, value) => {
     expect(parseSceneEdit(value)).toBeUndefined();

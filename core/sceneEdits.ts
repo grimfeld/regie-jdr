@@ -18,8 +18,8 @@ export type { SceneEdit };
 
 export const MAX_SCENE_NAME_LENGTH = 100;
 
-/** Names longer than this are malformed messages; MAX_SCENE_NAME_LENGTH is the real limit. */
-const MAX_NAME_PAYLOAD = 1000;
+/** Texts longer than this are malformed messages; the MAX_*_LENGTH constants are the real limits. */
+const MAX_TEXT_PAYLOAD = 1000;
 
 /** A Scene name as saved: trimmed. Throws a SceneError (French) when empty or too long. */
 export function cleanSceneName(name: string): string {
@@ -29,6 +29,30 @@ export function cleanSceneName(name: string): string {
     throw new SceneError(
       `Le nom de la scène est trop long (${MAX_SCENE_NAME_LENGTH} caractères au plus).`,
     );
+  }
+  return trimmed;
+}
+
+export const MAX_SCENE_TITLE_LENGTH = 100;
+
+/** A Scene title as saved: trimmed, '' for none. Throws a SceneError (French) when too long. */
+export function cleanSceneTitle(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length > MAX_SCENE_TITLE_LENGTH) {
+    throw new SceneError(
+      `Le titre affiché est trop long (${MAX_SCENE_TITLE_LENGTH} caractères au plus).`,
+    );
+  }
+  return trimmed;
+}
+
+export const MAX_LABEL_LENGTH = 60;
+
+/** A Label text as saved: trimmed, '' for none. Throws a SceneError (French) when too long. */
+export function cleanLabelText(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length > MAX_LABEL_LENGTH) {
+    throw new SceneError(`L’étiquette est trop longue (${MAX_LABEL_LENGTH} caractères au plus).`);
   }
   return trimmed;
 }
@@ -92,6 +116,21 @@ function isOnScene(scene: Scene, placementId: string): boolean {
   );
 }
 
+/** The Scene with Overlay `overlayId` changed by `change`; a SceneError when it is not there. */
+function withOverlay(
+  scene: Scene,
+  overlayId: string,
+  change: (overlay: Overlay) => Overlay,
+): Scene {
+  if (!scene.overlays.some((item) => item.id === overlayId)) {
+    throw new SceneError('Cet élément n’est plus sur la scène.');
+  }
+  return {
+    ...scene,
+    overlays: scene.overlays.map((item) => (item.id === overlayId ? change(item) : item)),
+  };
+}
+
 /**
  * The Scene after `edit`. `newId` names new placements. Throws a SceneError when the edit
  * names a placement that is not on the Scene.
@@ -151,11 +190,31 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
     }
     case 'rename':
       return { ...scene, name: cleanSceneName(edit.name) };
+    case 'set-title':
+      return { ...scene, title: cleanSceneTitle(edit.title) };
+    case 'set-label-text': {
+      const text = cleanLabelText(edit.text);
+      return withOverlay(scene, edit.overlayId, ({ label, ...overlay }) =>
+        text ? { ...overlay, label: { text, visible: label?.visible ?? false } } : overlay,
+      );
+    }
+    case 'set-label-visible': {
+      const { visible } = edit;
+      return withOverlay(scene, edit.overlayId, (overlay) => {
+        if (!overlay.label) throw new SceneError('Donnez d’abord un texte à l’étiquette.');
+        return { ...overlay, label: { ...overlay.label, visible } };
+      });
+    }
   }
 }
 
 function isId(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
+}
+
+/** Text of a sane size for a message; the clean* functions apply the real limits. */
+function isText(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= MAX_TEXT_PAYLOAD;
 }
 
 function isUnit(value: unknown): value is number {
@@ -187,8 +246,17 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
         ? { kind: 'remove-placement', placementId: value.placementId }
         : undefined;
     case 'rename':
-      if (typeof value.name !== 'string' || value.name.length > MAX_NAME_PAYLOAD) return undefined;
+      if (!isText(value.name)) return undefined;
       return { kind: 'rename', name: value.name };
+    case 'set-title':
+      if (!isText(value.title)) return undefined;
+      return { kind: 'set-title', title: value.title };
+    case 'set-label-text':
+      if (!isId(value.overlayId) || !isText(value.text)) return undefined;
+      return { kind: 'set-label-text', overlayId: value.overlayId, text: value.text };
+    case 'set-label-visible':
+      if (!isId(value.overlayId) || typeof value.visible !== 'boolean') return undefined;
+      return { kind: 'set-label-visible', overlayId: value.overlayId, visible: value.visible };
     default:
       return undefined;
   }
