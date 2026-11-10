@@ -181,7 +181,7 @@ test('Media addresses serve only the Campaign media files, with their content ty
   await importImages(controlWindow);
   const thumbnail = mediaItem(controlWindow, 'red-16x9').getByRole('img');
   const address = await thumbnail.getAttribute('src');
-  expect(address).toMatch(/^regie-asset:\/\/media\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/);
+  expect(address).toMatch(/^regie-media:\/\/media\/[0-9a-f-]+\/[0-9a-f]{64}\.png$/);
 
   // Requested from the main process, as a window would (the page itself is a file:// origin).
   const responses = await app.evaluate(async ({ net }, url) => {

@@ -2,12 +2,12 @@
  * Media file types and Media addresses. Pure (no Node or Electron import): the interface
  * imports `mediaAddress` from here too.
  *
- * A Media address is `regie-asset://media/<campaignId>/<contentHash><extension>`. The Campaign
+ * A Media address is `regie-media://media/<campaignId>/<contentHash><extension>`. The Campaign
  * id is in the path, not the host, because a standard scheme lower-cases the host.
  */
 import type { CampaignId, Media } from '../shared/domain.js';
 
-export const MEDIA_SCHEME = 'regie-asset';
+export const MEDIA_SCHEME = 'regie-media';
 const ADDRESS_HOST = 'media';
 
 /** The allowlist: every file type a Media can have, by lower-case extension. */

@@ -5,7 +5,7 @@ const devServer = { host: '127.0.0.1', port: 5173 };
 
 /**
  * Content security policy of the app's pages: only the app's own scripts and
- * styles, and Media served through the `regie-asset:` scheme.
+ * styles, and Media served through the `regie-media:` scheme.
  * The dev server additionally needs inline scripts and styles (React refresh
  * preamble, CSS injected by Vite) and its hot-reload WebSocket.
  */
@@ -15,12 +15,12 @@ function contentSecurityPolicy(mode: 'build' | 'serve'): string {
     'default-src': ["'none'"],
     'script-src': ["'self'", ...(dev ? ["'unsafe-inline'"] : [])],
     'style-src': ["'self'", ...(dev ? ["'unsafe-inline'"] : [])],
-    'img-src': ["'self'", 'regie-asset:'],
-    'media-src': ["'self'", 'regie-asset:'],
+    'img-src': ["'self'", 'regie-media:'],
+    'media-src': ["'self'", 'regie-media:'],
     'font-src': ["'self'"],
     'connect-src': [
       "'self'",
-      'regie-asset:',
+      'regie-media:',
       ...(dev ? [`ws://${devServer.host}:${devServer.port}`] : []),
     ],
     'base-uri': ["'none'"],

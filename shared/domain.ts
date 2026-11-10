@@ -158,7 +158,7 @@ export interface Settings {
 /** A visible Background as the Broadcast window draws it. */
 export interface OnAirBackground {
   id: string;
-  /** Media address (`regie-asset:`). */
+  /** Media address (`regie-media:`). */
   src: string;
   fit: BackgroundFit;
   position: NormalizedPoint;
@@ -167,7 +167,7 @@ export interface OnAirBackground {
 /** A visible Overlay as the Broadcast window draws it. */
 export interface OnAirOverlay {
   id: string;
-  /** Media address (`regie-asset:`). */
+  /** Media address (`regie-media:`). */
   src: string;
   position: NormalizedPoint;
   scale: number;

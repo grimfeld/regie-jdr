@@ -19,7 +19,7 @@ describe('isAppPage, built app loaded from disk', () => {
 
   it('refuses web pages and other schemes', () => {
     expect(isAppPage('https://example.com/', entry)).toBe(false);
-    expect(isAppPage('regie-asset://assets/a.png', entry)).toBe(false);
+    expect(isAppPage('regie-media://media/c/a.png', entry)).toBe(false);
     expect(isAppPage('javascript:alert(1)', entry)).toBe(false);
     expect(isAppPage('not a url', entry)).toBe(false);
   });

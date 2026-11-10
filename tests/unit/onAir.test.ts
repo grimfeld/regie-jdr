@@ -4,7 +4,7 @@ import type { Media, OnAirScene, Scene } from '../../shared/domain';
 
 const cantina: OnAirScene = {
   backgrounds: [
-    { id: 'b1', src: 'regie-asset://media/c/x.png', fit: 'cover', position: { x: 0.5, y: 0.5 } },
+    { id: 'b1', src: 'regie-media://media/c/x.png', fit: 'cover', position: { x: 0.5, y: 0.5 } },
   ],
   overlays: [],
 };
@@ -172,13 +172,13 @@ describe('what of a Scene goes on air', () => {
       backgrounds: [
         {
           id: 'b1',
-          src: `regie-asset://media/c1/${hashA}.png`,
+          src: `regie-media://media/c1/${hashA}.png`,
           fit: 'cover',
           position: { x: 0.5, y: 0.5 },
         },
         {
           id: 'b4',
-          src: `regie-asset://media/c1/${hashB}.png`,
+          src: `regie-media://media/c1/${hashB}.png`,
           fit: 'stretch',
           position: { x: 1, y: 0 },
         },
@@ -186,7 +186,7 @@ describe('what of a Scene goes on air', () => {
       overlays: [
         {
           id: 'o1',
-          src: `regie-asset://media/c1/${hashB}.png`,
+          src: `regie-media://media/c1/${hashB}.png`,
           position: { x: 0.2, y: 0.8 },
           scale: 0.5,
           zIndex: 3,

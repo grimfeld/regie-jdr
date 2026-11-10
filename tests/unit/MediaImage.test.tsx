@@ -8,8 +8,8 @@ import { MediaImage } from '../../src/MediaImage';
 // browser does when the Media address answers 200 or 404.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const ADDRESS = `regie-asset://media/campagne/${'a'.repeat(64)}.png`;
-const OTHER_ADDRESS = `regie-asset://media/campagne/${'b'.repeat(64)}.png`;
+const ADDRESS = `regie-media://media/campagne/${'a'.repeat(64)}.png`;
+const OTHER_ADDRESS = `regie-media://media/campagne/${'b'.repeat(64)}.png`;
 
 let container: HTMLElement;
 let root: Root;

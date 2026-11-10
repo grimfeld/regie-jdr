@@ -342,7 +342,7 @@ describe('media addresses', () => {
   it('serve an existing Media file with its content type', async () => {
     const { storage, campaign, library, media } = await importedImage();
 
-    expect(mediaAddress(media)).toBe(`regie-asset://media/${campaign.id}/${ABC_SHA256}.jpeg`);
+    expect(mediaAddress(media)).toBe(`regie-media://media/${campaign.id}/${ABC_SHA256}.jpeg`);
     expect(await library.resolveAddress(mediaAddress(media), campaign.id)).toEqual({
       file: path.join(storage.campaignFolder(campaign.id), 'media', `${ABC_SHA256}.jpeg`),
       mimeType: 'image/jpeg',
@@ -372,15 +372,15 @@ describe('media addresses', () => {
     await fs.writeFile(path.join(dir.path, 'data', `${ABC_SHA256}.png`), 'x');
 
     for (const url of [
-      `regie-asset://media/${campaign.id}/${ABC_SHA256}.exe`,
-      `regie-asset://media/${campaign.id}/campaign.json`,
-      `regie-asset://media/${campaign.id}/..%2F..%2F..%2F${ABC_SHA256}.png`,
-      `regie-asset://media/${campaign.id}/../../../${ABC_SHA256}.png`,
-      `regie-asset://media/..%2F..%2F${campaign.id}/${ABC_SHA256}.jpeg`,
-      `regie-asset://media/${campaign.id}/media/${ABC_SHA256}.jpeg`,
-      `regie-asset://media/${campaign.id}%2Fmedia/${ABC_SHA256}.jpeg`,
-      `regie-asset://other/${campaign.id}/${ABC_SHA256}.jpeg`,
-      `regie-asset://media/inconnue/${ABC_SHA256}.jpeg`,
+      `regie-media://media/${campaign.id}/${ABC_SHA256}.exe`,
+      `regie-media://media/${campaign.id}/campaign.json`,
+      `regie-media://media/${campaign.id}/..%2F..%2F..%2F${ABC_SHA256}.png`,
+      `regie-media://media/${campaign.id}/../../../${ABC_SHA256}.png`,
+      `regie-media://media/..%2F..%2F${campaign.id}/${ABC_SHA256}.jpeg`,
+      `regie-media://media/${campaign.id}/media/${ABC_SHA256}.jpeg`,
+      `regie-media://media/${campaign.id}%2Fmedia/${ABC_SHA256}.jpeg`,
+      `regie-media://other/${campaign.id}/${ABC_SHA256}.jpeg`,
+      `regie-media://media/inconnue/${ABC_SHA256}.jpeg`,
       `file:///${folder}/media/${ABC_SHA256}.jpeg`,
       'not a url',
     ]) {
@@ -408,11 +408,11 @@ describe('media addresses', () => {
     }
 
     for (const [extension, mimeType] of Object.entries(served)) {
-      const url = `regie-asset://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
+      const url = `regie-media://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
       expect(await library.resolveAddress(url, campaign.id), url).toMatchObject({ mimeType });
     }
     for (const extension of refused) {
-      const url = `regie-asset://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
+      const url = `regie-media://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
       expect(await library.resolveAddress(url, campaign.id), url).toBeUndefined();
     }
   });
@@ -424,12 +424,12 @@ describe('media addresses', () => {
     const absolute = encodeURIComponent(path.join(data, `${ABC_SHA256}.png`));
 
     for (const url of [
-      `regie-asset://media/${campaign.id}/..%5C..%5C..%5C${ABC_SHA256}.png`,
-      `regie-asset://media/${campaign.id}/..\\..\\..\\${ABC_SHA256}.png`,
-      `regie-asset://media/..%5C..%5C${campaign.id}/${ABC_SHA256}.jpeg`,
-      `regie-asset://media/${campaign.id}/${absolute}`,
-      `regie-asset://media/${encodeURIComponent(storage.campaignFolder(campaign.id))}/${ABC_SHA256}.jpeg`,
-      `regie-asset://media/${campaign.id}/${ABC_SHA256}.jpeg%00.png`,
+      `regie-media://media/${campaign.id}/..%5C..%5C..%5C${ABC_SHA256}.png`,
+      `regie-media://media/${campaign.id}/..\\..\\..\\${ABC_SHA256}.png`,
+      `regie-media://media/..%5C..%5C${campaign.id}/${ABC_SHA256}.jpeg`,
+      `regie-media://media/${campaign.id}/${absolute}`,
+      `regie-media://media/${encodeURIComponent(storage.campaignFolder(campaign.id))}/${ABC_SHA256}.jpeg`,
+      `regie-media://media/${campaign.id}/${ABC_SHA256}.jpeg%00.png`,
     ]) {
       expect(await library.resolveAddress(url, campaign.id), url).toBeUndefined();
     }
