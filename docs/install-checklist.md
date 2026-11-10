@@ -4,7 +4,7 @@ Run on a Windows 11 PC before calling a build good. The installer is unsigned on
 
 ## Get the installer
 
-- From CI: Actions → CI → a run on `main` (or **Run workflow** for any branch) → artifact `windows-installer` → `Regie-JDR-Setup-<version>.exe`.
+- From a release: the GitHub Release created by pushing a `vX.Y.Z` tag (`release.yml`) → asset `Regie-JDR-Setup-<version>.exe`.
 - Or locally: `npm ci` then `npm run package:win` → `release/Regie-JDR-Setup-<version>.exe`.
 
 ## Checklist
