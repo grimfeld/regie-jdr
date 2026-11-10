@@ -84,6 +84,11 @@ A reusable, saved audiovisual setup in a Campaign: stacked Backgrounds, Overlays
 UI: Scène
 _Avoid_: Setup, preset, layout
 
+**Chapter**:
+A named, collapsible group of Scenes in a Campaign's running order. One level only; a Scene may sit outside any Chapter. Deleting a Chapter keeps its Scenes.
+UI: Chapitre
+_Avoid_: Folder, act, session, group
+
 **Notes**:
 The Game Master's private rich text on a Scene, which may include images. Never shown to players.
 UI: Notes
