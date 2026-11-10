@@ -1,6 +1,6 @@
 /**
  * The on-air commands the Control window gives: open or close a Campaign, Activate a Scene,
- * edit a Scene, delete Media (which can change Scenes, so the Active Scene's picture). They
+ * start or end Blackout, edit a Scene, delete Media (which can change Scenes, so the Active Scene's picture). They
  * check that Campaigns, Scenes and Media exist, save Scene edits, and keep the on-air state
  * (core/onAir.ts) in step. No Electron dependency.
  *
@@ -30,6 +30,12 @@ export interface OnAirCommands {
   closeCampaign(): Promise<OnAirState>;
   /** Puts a Scene of the open Campaign on air, as the Active Scene. */
   activateScene(sceneId: SceneId): Promise<OnAirState>;
+  /**
+   * Starts or ends Blackout in the open Campaign: the broadcast fades to black, the Active
+   * Scene and its edits stay as they are. Never saved: opening, switching or closing a
+   * Campaign, and a restart, clear it.
+   */
+  setBlackout(on: boolean): Promise<OnAirState>;
   /**
    * Applies one edit command to a Scene of a Campaign and saves it; returns the Scene as saved.
    * When it is the Active Scene, the Broadcast window shows the edit at once; any other Scene
@@ -87,6 +93,14 @@ export function createOnAirCommands(deps: {
         const scene = await scenes.get(campaignId, sceneId);
         if (!scene) throw new SceneError('Cette scène n’existe plus.');
         return onAir.activateScene(scene.id, await picture(scene));
+      }),
+
+    setBlackout: (on) =>
+      serialized(() => {
+        if (onAir.current().campaignId === null) {
+          throw new CampaignError('Ouvrez une campagne avant de passer au noir.');
+        }
+        return onAir.setBlackout(on);
       }),
 
     editScene: (campaignId, sceneId, edit) =>

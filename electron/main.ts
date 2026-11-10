@@ -290,6 +290,7 @@ function startApp() {
         if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));
         return state;
       },
+      'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>

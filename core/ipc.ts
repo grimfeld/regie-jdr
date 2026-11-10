@@ -140,6 +140,11 @@ function mediaDelete(
   return { ...campaign, mediaId, confirmed };
 }
 
+function blackoutOf(value: unknown): Parsed<{ on: boolean }> {
+  if (!isRecord(value) || typeof value.on !== 'boolean') return INVALID;
+  return { on: value.on };
+}
+
 function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string }> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value) || !isName(value.name)) return INVALID;
@@ -164,6 +169,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
   'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
+  'onAir:set-blackout': { from: controlOnly, parse: onePayload(blackoutOf) },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
   'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },

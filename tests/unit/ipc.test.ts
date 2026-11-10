@@ -248,6 +248,34 @@ describe('Scene channels', () => {
   });
 });
 
+describe('Blackout channel', () => {
+  it('is for the Control window only', () => {
+    expect(checkInvoke('onAir:set-blackout', 'control', [{ on: true }])).toEqual({
+      ok: true,
+      payload: { on: true },
+    });
+    expect(checkInvoke('onAir:set-blackout', 'broadcast', [{ on: true }])).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it('keeps only the contract fields', () => {
+    expect(checkInvoke('onAir:set-blackout', 'control', [{ on: false, scene: 'x' }])).toEqual({
+      ok: true,
+      payload: { on: false },
+    });
+  });
+
+  it.each([
+    ['nothing', []],
+    ['a bare boolean', [true]],
+    ['a missing flag', [{}]],
+    ['a flag of the wrong type', [{ on: 'true' }]],
+  ])('rejects a Blackout given as %s', (_label, args) => {
+    expect(checkInvoke('onAir:set-blackout', 'control', args)).toMatchObject({ ok: false });
+  });
+});
+
 describe('Broadcast window channels', () => {
   it('are for the Control window only, with no payload', () => {
     for (const channel of ['broadcast:open', 'broadcast:toggle-fullscreen'] as const) {

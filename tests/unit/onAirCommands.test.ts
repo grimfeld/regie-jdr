@@ -313,6 +313,82 @@ describe('on-air commands', () => {
     });
   });
 
+  describe('Blackout', () => {
+    it('blacks out the broadcast and leaves the Active Scene as it is', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      const state = await ctx.commands.setBlackout(true);
+
+      expect(state).toEqual({
+        campaignId: ctx.campaign.id,
+        activeSceneId: scene.id,
+        scene: cantinaPicture,
+        blackout: true,
+        version: 3,
+      });
+      expect(ctx.broadcast.at(-1)).toEqual(state);
+      expect(await ctx.commands.setBlackout(false)).toMatchObject({
+        activeSceneId: scene.id,
+        scene: cantinaPicture,
+        blackout: false,
+      });
+    });
+
+    it('keeps edits made during Blackout, shown once it ends', async () => {
+      const ctx = await setup();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      await ctx.commands.setBlackout(true);
+      const edit = (command: SceneEdit) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+
+      await edit({ kind: 'place-background', mediaId: ctx.image.id });
+      await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+
+      expect(ctx.broadcast.at(-1)).toMatchObject({ blackout: true });
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.backgrounds).toEqual([
+        expect.objectContaining({ id: 'p1', visible: true }),
+      ]);
+      const ended = await ctx.commands.setBlackout(false);
+      expect(ended.scene?.backgrounds).toEqual([expect.objectContaining({ id: 'p1' })]);
+    });
+
+    it('stays on when another Scene is Activated', async () => {
+      const ctx = await setup();
+      const cantina = await sceneShowing(ctx, 'Cantina');
+      const hangar = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(cantina.id);
+      await ctx.commands.setBlackout(true);
+
+      expect(await ctx.commands.activateScene(hangar.id)).toMatchObject({
+        activeSceneId: hangar.id,
+        blackout: true,
+      });
+    });
+
+    it('is cleared when a Campaign is opened, switched or closed', async () => {
+      const ctx = await setup();
+      const other = await createCampaign(ctx.storage.campaigns, 'Warhammer');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.setBlackout(true);
+      expect((await ctx.commands.openCampaign(other.id)).blackout).toBe(false);
+      await ctx.commands.setBlackout(true);
+      expect((await ctx.commands.closeCampaign()).blackout).toBe(false);
+    });
+
+    it('is refused when no Campaign is open', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.setBlackout(true)).rejects.toThrow(CampaignError);
+      expect(ctx.broadcast).toEqual([]);
+    });
+  });
+
   it('does not put a Scene of another Campaign on air', async () => {
     const ctx = await setup();
     const scene = await sceneShowing(ctx, 'Cantina');

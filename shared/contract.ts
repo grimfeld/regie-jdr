@@ -74,6 +74,11 @@ export interface InvokeChannels {
   'onAir:close-campaign': { payload: void; result: OnAirState };
   /** Activate a Scene of the open Campaign: it goes on air. Fails if no Campaign is open. */
   'onAir:activate-scene': { payload: { sceneId: SceneId }; result: OnAirState };
+  /**
+   * Start (`on`) or end Blackout: the broadcast fades to black, the Active Scene is unchanged.
+   * Fails if no Campaign is open.
+   */
+  'onAir:set-blackout': { payload: { on: boolean }; result: OnAirState };
   /** The Scenes of a Campaign, in creation order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
   /** Create an empty Scene; fails with a French message for an empty name. */
@@ -182,6 +187,7 @@ export interface ControlBridge extends BroadcastBridge {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   closeCampaign(): Promise<OnAirState>;
   activateScene(sceneId: SceneId): Promise<OnAirState>;
+  setBlackout(on: boolean): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
