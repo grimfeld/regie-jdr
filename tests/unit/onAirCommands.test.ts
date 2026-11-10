@@ -149,6 +149,29 @@ describe('on-air commands', () => {
     ]);
   });
 
+  it('showing, hiding and removing an Overlay of the Active Scene updates the broadcast', async () => {
+    const ctx = await setup();
+    const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+    const edit = (command: SceneEdit) => ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+    const onAirOverlays = () => ctx.broadcast.at(-1)?.scene?.overlays.map((item) => item.id);
+
+    await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+    await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+    expect(onAirOverlays()).toEqual([]);
+    await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+    await edit({ kind: 'set-visible', placementId: 'p2', visible: true });
+    expect(onAirOverlays()).toEqual(['p1', 'p2']);
+    await edit({ kind: 'set-visible', placementId: 'p1', visible: false });
+    expect(onAirOverlays()).toEqual(['p2']);
+    const removed = await edit({ kind: 'remove-placement', placementId: 'p2' });
+
+    expect(onAirOverlays()).toEqual([]);
+    expect(removed.overlays.map((item) => item.id)).toEqual(['p1']);
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(removed);
+  });
+
   it('editing another Scene saves it and never changes the broadcast', async () => {
     const ctx = await setup();
     const active = await sceneShowing(ctx, 'Cantina');

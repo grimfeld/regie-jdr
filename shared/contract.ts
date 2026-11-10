@@ -34,6 +34,8 @@ export type SceneEdit =
   | { kind: 'place-overlay'; mediaId: MediaId; position?: NormalizedPoint }
   /** Shows or hides a Background or Overlay. */
   | { kind: 'set-visible'; placementId: string; visible: boolean }
+  /** Removes a Background or Overlay from the Scene. */
+  | { kind: 'remove-placement'; placementId: string }
   /** Renames the Scene (its private name; never shown to players). */
   | { kind: 'rename'; name: string };
 

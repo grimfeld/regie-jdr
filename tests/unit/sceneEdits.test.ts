@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applySceneEdit, parseSceneEdit } from '../../core/sceneEdits';
+import { applySceneEdit, parseSceneEdit, placementEdit } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
-import type { Scene } from '../../shared/domain';
+import type { ImageCategory, ImageMedia, Scene } from '../../shared/domain';
 
 const empty: Scene = {
   id: 's1',
@@ -87,6 +87,94 @@ describe('Scene edit commands', () => {
       applyAll(empty, { kind: 'set-visible', placementId: 'absent', visible: true }),
     ).toThrow('Cet élément n’est plus sur la scène.');
   });
+
+  it('remove one Background or Overlay, leaving the others in order', () => {
+    const scene = applyAll(
+      empty,
+      { kind: 'place-background', mediaId: 'm1' },
+      { kind: 'place-background', mediaId: 'm2' },
+      { kind: 'place-overlay', mediaId: 'm3' },
+      { kind: 'place-overlay', mediaId: 'm3' },
+    );
+    const withoutBackground = applyAll(scene, { kind: 'remove-placement', placementId: 'p1' });
+    expect(withoutBackground.backgrounds.map((item) => item.id)).toEqual(['p2']);
+    expect(withoutBackground.overlays.map((item) => item.id)).toEqual(['p3', 'p4']);
+    const withoutOverlay = applyAll(scene, { kind: 'remove-placement', placementId: 'p3' });
+    expect(withoutOverlay.backgrounds.map((item) => item.id)).toEqual(['p1', 'p2']);
+    expect(withoutOverlay.overlays.map((item) => item.id)).toEqual(['p4']);
+  });
+
+  it('refuse to remove a placement that is not on the Scene, in French', () => {
+    expect(() => applyAll(empty, { kind: 'remove-placement', placementId: 'absent' })).toThrow(
+      'Cet élément n’est plus sur la scène.',
+    );
+  });
+});
+
+function image(category: ImageCategory): ImageMedia {
+  return {
+    id: `m-${category}`,
+    campaignId: 'c1',
+    kind: 'image',
+    category,
+    contentHash: 'abc',
+    originalName: category,
+    name: category,
+    extension: '.png',
+  };
+}
+
+describe('Placing a dropped image', () => {
+  it('on the canvas, places Scenery as a Background', () => {
+    expect(placementEdit(image('scenery'), 'canvas', { x: 0.2, y: 0.3 })).toEqual({
+      kind: 'place-background',
+      mediaId: 'm-scenery',
+    });
+  });
+
+  it('on the canvas, places a Character as an Overlay centred on the drop point', () => {
+    expect(placementEdit(image('character'), 'canvas', { x: 0.2, y: 0.3 })).toEqual({
+      kind: 'place-overlay',
+      mediaId: 'm-character',
+      position: { x: 0.2, y: 0.3 },
+    });
+  });
+
+  it('on the canvas, keeps a drop point on the black bars inside the canvas', () => {
+    expect(placementEdit(image('character'), 'canvas', { x: -0.4, y: 1.3 })).toEqual({
+      kind: 'place-overlay',
+      mediaId: 'm-character',
+      position: { x: 0, y: 1 },
+    });
+  });
+
+  it('on the Background list, places any image as a Background', () => {
+    expect(placementEdit(image('character'), 'backgrounds')).toEqual({
+      kind: 'place-background',
+      mediaId: 'm-character',
+    });
+  });
+
+  it('on the Overlay list, places any image as an Overlay at the canvas centre', () => {
+    expect(placementEdit(image('scenery'), 'overlays')).toEqual({
+      kind: 'place-overlay',
+      mediaId: 'm-scenery',
+    });
+  });
+
+  it('gives new placements their default sizes: Background Cover centred, Overlay half high', () => {
+    const scene = applyAll(
+      empty,
+      placementEdit(image('scenery'), 'canvas', { x: 0.1, y: 0.1 }),
+      placementEdit(image('character'), 'canvas', { x: 0.1, y: 0.9 }),
+    );
+    expect(scene.backgrounds).toEqual([
+      expect.objectContaining({ fit: 'cover', zoom: 1, focus: { x: 0.5, y: 0.5 }, visible: false }),
+    ]);
+    expect(scene.overlays).toEqual([
+      expect.objectContaining({ position: { x: 0.1, y: 0.9 }, height: 0.5, visible: false }),
+    ]);
+  });
 });
 
 describe('Scene edit commands from a window message', () => {
@@ -108,6 +196,10 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'set-visible', placementId: 'p1', visible: false },
     ],
     [
+      { kind: 'remove-placement', placementId: 'p1', mediaId: 'm1' },
+      { kind: 'remove-placement', placementId: 'p1' },
+    ],
+    [
       { kind: 'rename', name: 'Le hangar', id: 's2' },
       { kind: 'rename', name: 'Le hangar' },
     ],
@@ -123,6 +215,7 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'place-overlay', mediaId: 'm1', position: { x: 2, y: 0 } },
     ],
     ['a visibility that is not a boolean', { kind: 'set-visible', placementId: 'p1', visible: 1 }],
+    ['a removal naming no placement', { kind: 'remove-placement', placementId: '' }],
     ['a name that is not a string', { kind: 'rename', name: 42 }],
     ['a name far too long for a message', { kind: 'rename', name: 'x'.repeat(1001) }],
     ['not an object', 'place-background'],

@@ -8,7 +8,7 @@
  * and in `parseSceneEdit`.
  */
 import type { SceneEdit } from '../shared/contract.js';
-import type { MediaId, Overlay, Scene } from '../shared/domain.js';
+import type { ImageMedia, MediaId, NormalizedPoint, Overlay, Scene } from '../shared/domain.js';
 import { isRecord } from './guards.js';
 
 /** A Scene error the Game Master can read (French message). */
@@ -44,6 +44,55 @@ export function placedMedia(edit: SceneEdit): MediaId | undefined {
 }
 
 /**
+ * Where an image is dropped in the editor: on the canvas (placed by its Image category), or on
+ * the Background list or the Overlay list (placed as that type, whatever its category).
+ */
+export type PlacementTarget = 'canvas' | 'backgrounds' | 'overlays';
+
+/**
+ * The edit that places `image` dropped on `target`. On the canvas, Scenery becomes a Background
+ * and a Character an Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
+ * is moved to the nearest canvas edge). On a list, it becomes that type; an Overlay then goes to
+ * the canvas centre. Every drag-and-drop placement (library or Explorer) goes through here.
+ */
+export function placementEdit(
+  image: ImageMedia,
+  target: PlacementTarget,
+  dropPoint?: NormalizedPoint,
+): SceneEdit {
+  switch (target) {
+    case 'backgrounds':
+      return { kind: 'place-background', mediaId: image.id };
+    case 'overlays':
+      return { kind: 'place-overlay', mediaId: image.id };
+    case 'canvas':
+      switch (image.category) {
+        case 'scenery':
+          return { kind: 'place-background', mediaId: image.id };
+        case 'character':
+          return dropPoint
+            ? {
+                kind: 'place-overlay',
+                mediaId: image.id,
+                position: { x: clampUnit(dropPoint.x), y: clampUnit(dropPoint.y) },
+              }
+            : { kind: 'place-overlay', mediaId: image.id };
+      }
+  }
+}
+
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function isOnScene(scene: Scene, placementId: string): boolean {
+  return (
+    scene.backgrounds.some((item) => item.id === placementId) ||
+    scene.overlays.some((item) => item.id === placementId)
+  );
+}
+
+/**
  * The Scene after `edit`. `newId` names new placements. Throws a SceneError when the edit
  * names a placement that is not on the Scene.
  */
@@ -76,10 +125,9 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
     }
     case 'set-visible': {
       const { placementId, visible } = edit;
-      const onScene =
-        scene.backgrounds.some((item) => item.id === placementId) ||
-        scene.overlays.some((item) => item.id === placementId);
-      if (!onScene) throw new SceneError('Cet élément n’est plus sur la scène.');
+      if (!isOnScene(scene, placementId)) {
+        throw new SceneError('Cet élément n’est plus sur la scène.');
+      }
       return {
         ...scene,
         backgrounds: scene.backgrounds.map((item) =>
@@ -88,6 +136,17 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         overlays: scene.overlays.map((item) =>
           item.id === placementId ? { ...item, visible } : item,
         ),
+      };
+    }
+    case 'remove-placement': {
+      const { placementId } = edit;
+      if (!isOnScene(scene, placementId)) {
+        throw new SceneError('Cet élément n’est plus sur la scène.');
+      }
+      return {
+        ...scene,
+        backgrounds: scene.backgrounds.filter((item) => item.id !== placementId),
+        overlays: scene.overlays.filter((item) => item.id !== placementId),
       };
     }
     case 'rename':
@@ -123,6 +182,10 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
     case 'set-visible':
       if (!isId(value.placementId) || typeof value.visible !== 'boolean') return undefined;
       return { kind: 'set-visible', placementId: value.placementId, visible: value.visible };
+    case 'remove-placement':
+      return isId(value.placementId)
+        ? { kind: 'remove-placement', placementId: value.placementId }
+        : undefined;
     case 'rename':
       if (typeof value.name !== 'string' || value.name.length > MAX_NAME_PAYLOAD) return undefined;
       return { kind: 'rename', name: value.name };
