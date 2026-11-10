@@ -188,3 +188,58 @@ describe('Media channels', () => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });
 });
+
+describe('Scene channels', () => {
+  const campaignId = 'star-wars';
+  const sceneValue = {
+    id: 'cantina',
+    campaignId,
+    name: 'La cantina',
+    backgrounds: [
+      { id: 'b1', mediaId: 'm1', fit: 'cover', position: { x: 0.5, y: 0.5 }, visible: true },
+    ],
+    overlays: [],
+    music: [],
+    ambiences: [],
+    volumes: { music: 1, ambience: 1 },
+    notes: '',
+  };
+
+  it('are for the Control window only', () => {
+    for (const [channel, args] of [
+      ['scenes:list', [{ campaignId }]],
+      ['scenes:create', [{ campaignId, name: 'X' }]],
+      ['scenes:update', [sceneValue]],
+    ] as const) {
+      expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
+      expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
+    }
+  });
+
+  it('accept a whole Scene to update, keeping only Scene fields', () => {
+    expect(checkInvoke('scenes:update', 'control', [{ ...sceneValue, extra: 1 }])).toEqual({
+      ok: true,
+      payload: sceneValue,
+    });
+  });
+
+  it('accept a name to create, keeping only contract fields', () => {
+    expect(checkInvoke('scenes:create', 'control', [{ campaignId, name: 'X', id: 'y' }])).toEqual({
+      ok: true,
+      payload: { campaignId, name: 'X' },
+    });
+  });
+
+  it.each([
+    ['a Campaign id that is a path', 'scenes:list', [{ campaignId: '../..' }]],
+    ['no name', 'scenes:create', [{ campaignId }]],
+    ['a Scene with no Campaign', 'scenes:update', [{ ...sceneValue, campaignId: undefined }]],
+    [
+      'a malformed Background',
+      'scenes:update',
+      [{ ...sceneValue, backgrounds: [{ id: 'b1', mediaId: 'm1' }] }],
+    ],
+  ] as const)('reject %s', (_label, channel, args) => {
+    expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
+  });
+});

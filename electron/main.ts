@@ -10,6 +10,8 @@ import { createCampaign, updateCampaign } from '../core/campaigns.js';
 import { createMediaLibrary, type MediaLibrary } from '../core/media.js';
 import { extensionsOf, MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { createOnAir } from '../core/onAir.js';
+import { createOnAirCommands } from '../core/onAirCommands.js';
+import { createSceneLibrary } from '../core/scenes.js';
 import { openStorage } from '../core/storage/index.js';
 import type { MediaImportKind } from '../shared/contract.js';
 
@@ -144,7 +146,18 @@ function startApp() {
     notify: (message) => { notices.push(message); log.warn(message); }
   });
   const library = createMediaLibrary(storage);
+  const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
+  // No audio engine yet: both windows are told to stop every sound (ADR-0002 decides where it lives).
+  const commands = createOnAirCommands({
+    campaigns: storage.campaigns, library, scenes, onAir,
+    audio: {
+      stopAll: () => {
+        sendEvent(broadcastWindow?.webContents, 'audio:stop-all', null);
+        sendEvent(controlWindow?.webContents, 'audio:stop-all', null);
+      }
+    }
+  });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
     sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
@@ -154,9 +167,12 @@ function startApp() {
   registerHandlers(
     {
       'onAir:get': () => onAir.current(),
-      'onAir:open-campaign': ({ campaignId }) => onAir.openCampaign(campaignId),
-      'onAir:close-campaign': () => onAir.closeCampaign(),
-      'onAir:activate-scene': ({ sceneId }) => onAir.activateScene(sceneId),
+      'onAir:open-campaign': ({ campaignId }) => commands.openCampaign(campaignId),
+      'onAir:close-campaign': () => commands.closeCampaign(),
+      'onAir:activate-scene': ({ sceneId }) => commands.activateScene(sceneId),
+      'scenes:list': ({ campaignId }) => scenes.list(campaignId),
+      'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
+      'scenes:update': (scene) => commands.updateScene(scene),
       'broadcast:open': () => createBroadcastWindow(),
       'media:list': ({ campaignId }) => library.list(campaignId),
       'media:import': async ({ campaignId, ...kind }) => {

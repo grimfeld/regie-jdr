@@ -155,9 +155,39 @@ export interface Settings {
   lastActiveSceneByCampaign: Record<CampaignId, SceneId>;
 }
 
+/** A visible Background as the Broadcast window draws it. */
+export interface OnAirBackground {
+  id: string;
+  /** Media address (`regie-asset:`). */
+  src: string;
+  fit: BackgroundFit;
+  position: NormalizedPoint;
+}
+
+/** A visible Overlay as the Broadcast window draws it. */
+export interface OnAirOverlay {
+  id: string;
+  /** Media address (`regie-asset:`). */
+  src: string;
+  position: NormalizedPoint;
+  scale: number;
+  zIndex: number;
+}
+
+/**
+ * What players see of the Active Scene: its visible placements only, bottom to top. Hidden
+ * placements, the Scene's name and its notes never reach the Broadcast window.
+ */
+export interface OnAirScene {
+  backgrounds: OnAirBackground[];
+  overlays: OnAirOverlay[];
+}
+
 /** What is on air, owned by the main process. `version` increases on every change. */
 export interface OnAirState {
   campaignId: CampaignId | null;
   activeSceneId: SceneId | null;
+  /** The Active Scene's picture; null when no Scene is active. */
+  scene: OnAirScene | null;
   version: number;
 }

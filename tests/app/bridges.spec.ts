@@ -15,18 +15,26 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'activateScene',
     'closeCampaign',
     'createCampaign',
+    'createScene',
     'getOnAir',
     'importMedia',
     'listCampaigns',
     'listMedia',
+    'listScenes',
     'onOnAirChanged',
+    'onStopAudio',
     'openBroadcast',
     'openCampaign',
     'setImageCategory',
     'takeNotices',
     'updateCampaign',
+    'updateScene',
   ]);
-  expect(await broadcastWindow.evaluate(keysOf)).toEqual(['getOnAir', 'onOnAirChanged']);
+  expect(await broadcastWindow.evaluate(keysOf)).toEqual([
+    'getOnAir',
+    'onOnAirChanged',
+    'onStopAudio',
+  ]);
 });
 
 test('a mutating message sent from the Broadcast window is rejected and logged', async ({
@@ -52,7 +60,7 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
   expect(outcome).toContain('rejected');
   expect(
     await controlWindow.evaluate(() => (window as unknown as Bridge).regie.getOnAir()),
-  ).toEqual({ campaignId: null, activeSceneId: null, version: 0 });
+  ).toEqual({ campaignId: null, activeSceneId: null, scene: null, version: 0 });
   await expect
     .poll(() =>
       mainLog.filter(
@@ -108,15 +116,17 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
       [method, args] as const,
     );
 
-  await gm('openCampaign', 'star-wars');
+  const { id: campaignId } = (await gm('createCampaign', 'Star Wars')) as { id: string };
+  const { id: sceneId } = (await gm('createScene', campaignId, 'Cantina')) as { id: string };
+  await gm('openCampaign', campaignId);
   await expect
     .poll(calls)
-    .toEqual([[{ campaignId: 'star-wars', activeSceneId: null, version: 1 }]]);
+    .toEqual([[{ campaignId, activeSceneId: null, scene: null, version: 1 }]]);
 
   await broadcastWindow.evaluate(() =>
     (window as unknown as { recorder: Recorder }).recorder.unsubscribe(),
   );
-  await gm('activateScene', 'cantina');
+  await gm('activateScene', sceneId);
   await expect(broadcastWindow.locator('main.stage-screen')).toHaveAttribute('data-version', '2');
   expect(await calls()).toHaveLength(1);
 });
