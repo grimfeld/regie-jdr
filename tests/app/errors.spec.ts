@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { expect, openBroadcastWindow, test } from './harness';
+import { createCampaign, expect, openBroadcastWindow, test } from './harness';
 
 /** The app's log file, as the Game Master would find it in the data folder. */
 async function logFile(dataDir: string): Promise<string> {
@@ -11,6 +11,7 @@ test('an uncaught exception in the main process is logged and the app keeps work
   regie,
 }) => {
   const { app, controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow);
 
   await app.evaluate(() => {
     setTimeout(() => {
@@ -29,6 +30,7 @@ test('a window message the main process fails to carry out shows a notice and is
   regie,
 }) => {
   const { app, controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow);
   await app.evaluate(({ dialog }) => {
     dialog.showOpenDialog = (async () => {
       throw new Error('sélecteur de fichiers indisponible');
@@ -83,6 +85,7 @@ test('an unhandled rejection in the main process is logged and the app keeps wor
   regie,
 }) => {
   const { app, controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow);
 
   await app.evaluate(() => {
     void Promise.reject(new Error('promesse oubliée'));

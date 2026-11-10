@@ -1,11 +1,17 @@
 import { useState, type FormEvent } from 'react';
 import { FolderOpen, Pencil, Plus } from 'lucide-react';
 import type { Campaign, CampaignId } from '../shared/domain';
+import { isIpcFailure, noticeFor } from './notices';
 
-/** Turns a failed bridge call into the French message the main process gave. */
+/**
+ * The Game Master's wording for a failed bridge call: the French message thrown by the app core
+ * (e.g. "Donnez un nom à la campagne."), or the generic notice for a rejected message.
+ */
 export function errorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  return raw.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '');
+  if (!isIpcFailure(error)) return error instanceof Error ? error.message : String(error);
+  if (error.code === 'rejected') return noticeFor(error);
+  const thrown = /IPC call failed: "[^"]*": (.*)$/s.exec(error.message);
+  return thrown ? thrown[1] : noticeFor(error);
 }
 
 interface Props {

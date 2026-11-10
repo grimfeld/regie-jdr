@@ -136,7 +136,7 @@ function startApp() {
   // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
   const notices: string[] = [];
   const storage = openStorage(app.getPath('userData'), {
-    notify: (message) => { notices.push(message); console.warn(message); }
+    notify: (message) => { notices.push(message); log.warn(message); }
   });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {

@@ -4,6 +4,7 @@ import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { BroadcastBridge, CampaignChanges, ControlBridge, ImportedImage } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
+import { showNotice } from './notices';
 
 /** Control window preview (prototype): local only, the Broadcast window shows what is on air. */
 interface PreviewScene {
@@ -46,15 +47,10 @@ function byName(a: Campaign, b: Campaign) {
 function ControlApp({ control }: { control: ControlBridge | undefined }) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [openId, setOpenId] = useState<CampaignId | null>(null);
-  const [notices, setNotices] = useState<string[]>([]);
-
-  const notify = useCallback((message: string) => setNotices(current => [...current, message]), []);
-
   // Messages from the main process, e.g. a corrupt file recovered from its backup.
   const collectNotices = useCallback(async () => {
     if (!control) return;
-    const fresh = await control.takeNotices();
-    if (fresh.length) setNotices(current => [...current, ...fresh]);
+    (await control.takeNotices()).forEach(showNotice);
   }, [control]);
 
   useEffect(() => {
@@ -66,10 +62,10 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         setCampaigns(list);
         if (list.length === 1) void enter(list[0].id);
       })
-      .catch(error => { if (!cancelled) notify(errorMessage(error)); })
+      .catch(error => { if (!cancelled) showNotice(errorMessage(error)); })
       .finally(() => { if (!cancelled) void collectNotices(); });
     return () => { cancelled = true; };
-  }, [control, collectNotices, notify]);
+  }, [control, collectNotices]);
 
   /**
    * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
@@ -82,7 +78,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       if (id) await control.openCampaign(id);
       else await control.closeCampaign();
     } catch (error) {
-      notify(errorMessage(error));
+      showNotice(errorMessage(error));
     }
   }
 
@@ -119,14 +115,8 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           <button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button>
         </div>
       </header>
-      {notices.length > 0 && (
-        <div className="notice-bar" role="status" aria-label="Avertissements">
-          <div>{notices.map((notice, i) => <p key={i}>{notice}</p>)}</div>
-          <button className="secondary-button" onClick={() => setNotices([])}>Fermer</button>
-        </div>
-      )}
       {openCampaign
-        ? <CampaignScreen key={openCampaign.id} campaign={openCampaign} control={control} onThemeChange={next => update(openCampaign.id, { theme: next }).catch(error => notify(errorMessage(error)))} />
+        ? <CampaignScreen key={openCampaign.id} campaign={openCampaign} control={control} onThemeChange={next => update(openCampaign.id, { theme: next }).catch(error => showNotice(errorMessage(error)))} />
         : campaigns && <CampaignList campaigns={campaigns} onOpen={id => void enter(id)} onCreate={create} onRename={(id, name) => update(id, { name })} />}
       <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
     </main>

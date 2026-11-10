@@ -505,21 +505,6 @@ button {
 .footer-muted {
   color: #666;
 }
-.notice-bar {
-  max-width: 1600px;
-  margin: 16px auto 0;
-  padding: 10px 34px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--accent2);
-  border-bottom: 1px solid var(--line);
-}
-.notice-bar p {
-  margin: 4px 0;
-}
 .campaign-bar {
   max-width: 1600px;
   margin: auto;

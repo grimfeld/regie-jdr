@@ -114,9 +114,7 @@ test('a corrupt Campaign is recovered from its backup and the Game Master is tol
   try {
     const page = restarted.controlWindow;
     await expect(page.getByRole('heading', { name: 'Star Wars', exact: true })).toBeVisible();
-    await expect(page.getByRole('status', { name: 'Avertissements' })).toContainText(
-      'restauré depuis sa dernière sauvegarde',
-    );
+    await expect(page.getByRole('alert')).toContainText('restauré depuis sa dernière sauvegarde');
   } finally {
     await restarted.app.close();
   }
