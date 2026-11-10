@@ -24,7 +24,7 @@ _Avoid_: Profile, project, game
 ## Media
 
 **Media**:
-A user-imported image or audio file kept in a Campaign's library.
+A user-imported image or audio file kept in a Campaign's library, shown under a name the Game Master can change (initially the original file name).
 UI: Médias
 _Avoid_: Asset, file, resource
 
@@ -59,19 +59,54 @@ A reusable, saved audiovisual setup in a Campaign: stacked Backgrounds, Overlays
 UI: Scène
 _Avoid_: Setup, preset, layout
 
+**Scene title**:
+An optional player-facing title of a Scene, shown discreetly on the broadcast. Separate from the Scene's name, which stays private.
+UI: Titre affiché
+_Avoid_: Caption, scene name (that is private), heading
+
 **Background**:
 A full-canvas placement of an image Media on a Scene, always below every Overlay. A Scene may stack several, each shown or hidden independently.
 UI: Arrière-plan
 _Avoid_: Backdrop, layer, Scenery (that is the category)
 
 **Overlay**:
-One freely positioned and sized placement of an image Media on a Scene, always above every Background, with its own visibility and optional label. The same Media can be placed as several Overlays.
+One freely positioned and sized placement of an image Media on a Scene, always above every Background, with its own visibility and optional Label. The same Media can be placed as several Overlays.
 _Avoid_: Token, layer, instance, figure
+
+**Label**:
+A player-facing name plate on an Overlay, shown or hidden independently of the Overlay itself.
+UI: Étiquette
+_Avoid_: Caption, name, note
+
+**Hidden**:
+Said of a Background, Overlay or Label that is placed on a Scene but not shown to players. New placements start Hidden. Hidden content never reaches the Broadcast window.
+UI: Masqué
+_Avoid_: Invisible, disabled, off
 
 **Active Scene**:
 The single Scene currently on air in the Broadcast window. Editing it changes the broadcast immediately and is saved into the Scene; every other Scene is private.
 UI: Scène active
 _Avoid_: Live scene, current scene, on-air state
+
+**Selected Scene**:
+The Scene open in the Control window's editor. It may or may not be the Active Scene; only when it is do its edits go on air.
+UI: Scène ouverte
+_Avoid_: Current scene, edited scene, draft
+
+**On-air monitor**:
+The small read-only view in the Control window showing exactly what the Broadcast window shows.
+UI: À l'antenne
+_Avoid_: Preview, program monitor
+
+**Blackout**:
+A temporary on-air fade to black that hides the Active Scene from players without changing it. Picture only: audio keeps playing. Not saved into any Scene.
+UI: Noir
+_Avoid_: Fade-to-black, pause, curtain
+
+**Silence**:
+A temporary on-air fade-out of all audio, leaving the Active Scene and the picture unchanged. Not saved into any Scene; the next sound started or Scene Activated ends it.
+UI: Silence
+_Avoid_: Stop all, mute, panic
 
 **Soundboard**:
 A Campaign's set of pads for triggering Sound effects during play, available whichever Scene is active.

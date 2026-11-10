@@ -32,8 +32,8 @@ function subscribe<E extends EventChannel>(
 }
 
 const bridge: BroadcastBridge = {
-  getDisplay: () => invoke('display:get'),
-  onDisplayChanged: (listener) => subscribe('display:changed', listener),
+  getOnAir: () => invoke('onAir:get'),
+  onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);

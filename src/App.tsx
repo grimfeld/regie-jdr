@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Aperture, ArrowLeft, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
-import type { BroadcastBridge, BroadcastDisplay, CampaignChanges, ControlBridge, ImportedImage } from '../shared/contract';
+import type { BroadcastBridge, CampaignChanges, ControlBridge, ImportedImage } from '../shared/contract';
+import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
+
+/** Control window preview (prototype): local only, the Broadcast window shows what is on air. */
+interface PreviewScene {
+  title: string;
+  /** `regie-asset:` address, or '' for none. */
+  background: string;
+  description: string;
+}
 
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
   { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
@@ -13,49 +22,17 @@ const themes: { id: ThemeId; label: string; subtitle: string }[] = [
 /** Theme of the Campaign list home page, until the global theme setting lands. */
 const HOME_THEME: ThemeId = 'imperium';
 
-const initialDisplay: BroadcastDisplay = {
+const initialPreview: PreviewScene = {
   title: 'Le sanctuaire oublié',
   background: '',
   description: 'Choisissez un décor pour commencer la scène.'
 };
 
-/** The Broadcast window's fullscreen button: the page's own fullscreen, no IPC needed. */
-function toggleFullscreen() {
-  if (document.fullscreenElement) void document.exitFullscreen();
-  else void document.documentElement.requestFullscreen();
-}
-
 export default function App() {
   const isStage = new URLSearchParams(window.location.search).get('view') === 'stage';
   // Each window's preload exposes its own bridge (see shared/contract.ts).
-  if (isStage) return <BroadcastView broadcast={window.regie as BroadcastBridge | undefined} />;
+  if (isStage) return <BroadcastView bridge={window.regie as BroadcastBridge | undefined} />;
   return <ControlApp control={window.regie as ControlBridge | undefined} />;
-}
-
-function BroadcastView({ broadcast }: { broadcast: BroadcastBridge | undefined }) {
-  const [scene, setScene] = useState<BroadcastDisplay>(initialDisplay);
-
-  // Subscribe, then read the current display (also after a reload).
-  // The cleanup unsubscribes, so StrictMode's double effects leave a single listener.
-  useEffect(() => {
-    if (!broadcast) return;
-    const unsubscribe = broadcast.onDisplayChanged(setScene);
-    broadcast.getDisplay().then(setScene);
-    return unsubscribe;
-  }, [broadcast]);
-
-  return (
-    <main className="stage-screen">
-      {scene.background ? <img className="stage-background" src={scene.background} alt="" /> : null}
-      <div className="stage-vignette" />
-      <div className="stage-caption">
-        <span className="eyebrow">SCÈNE EN COURS</span>
-        <h1>{scene.title}</h1>
-        <p>{scene.description}</p>
-      </div>
-      <button className="stage-fullscreen" onClick={toggleFullscreen} title="Plein écran">⛶</button>
-    </main>
-  );
 }
 
 function byName(a: Campaign, b: Campaign) {
@@ -87,12 +64,27 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       .then(list => {
         if (cancelled) return;
         setCampaigns(list);
-        if (list.length === 1) setOpenId(list[0].id);
+        if (list.length === 1) void enter(list[0].id);
       })
       .catch(error => { if (!cancelled) notify(errorMessage(error)); })
       .finally(() => { if (!cancelled) void collectNotices(); });
     return () => { cancelled = true; };
   }, [control, collectNotices, notify]);
+
+  /**
+   * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
+   * state, which clears the Active Scene on every switch.
+   */
+  async function enter(id: CampaignId | null) {
+    setOpenId(id);
+    if (!control) return;
+    try {
+      if (id) await control.openCampaign(id);
+      else await control.closeCampaign();
+    } catch (error) {
+      notify(errorMessage(error));
+    }
+  }
 
   const openCampaign = campaigns?.find(c => c.id === openId);
   const theme = openCampaign?.theme ?? HOME_THEME;
@@ -105,7 +97,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     if (!control) return;
     const created = await control.createCampaign(name);
     setCampaigns(current => [...(current ?? []), created].sort(byName));
-    setOpenId(created.id);
+    await enter(created.id);
   }
 
   async function update(id: CampaignId, changes: CampaignChanges) {
@@ -123,7 +115,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       <header className="topbar">
         <div className="brand"><div className="brand-mark"><Aperture size={19} /></div><div><strong>RÉGIE JDR</strong><small>POSTE DU MAÎTRE DU JEU</small></div></div>
         <div className="topbar-right">
-          {openCampaign && <button className="secondary-button" onClick={() => setOpenId(null)}><ArrowLeft size={14} /> Campagnes</button>}
+          {openCampaign && <button className="secondary-button" onClick={() => void enter(null)}><ArrowLeft size={14} /> Campagnes</button>}
           <button className="primary-button" onClick={() => control?.openBroadcast()}><MonitorPlay size={16} /> Ouvrir la diffusion</button>
         </div>
       </header>
@@ -135,7 +127,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       )}
       {openCampaign
         ? <CampaignScreen key={openCampaign.id} campaign={openCampaign} control={control} onThemeChange={next => update(openCampaign.id, { theme: next }).catch(error => notify(errorMessage(error)))} />
-        : campaigns && <CampaignList campaigns={campaigns} onOpen={setOpenId} onCreate={create} onRename={(id, name) => update(id, { name })} />}
+        : campaigns && <CampaignList campaigns={campaigns} onOpen={id => void enter(id)} onCreate={create} onRename={(id, name) => update(id, { name })} />}
       <footer className="footer"><span>RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span></span><span>Fonctionnement local · Aucun compte requis</span></footer>
     </main>
   );
@@ -150,7 +142,7 @@ interface CampaignScreenProps {
 /** The screen of the open Campaign (prototype scene and library, replaced by later M0 tickets). */
 function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProps) {
   const theme = campaign.theme;
-  const [scene, setScene] = useState<BroadcastDisplay>(initialDisplay);
+  const [scene, setScene] = useState<PreviewScene>(initialPreview);
   const [musicVolume, setMusicVolume] = useState(35);
   const [sfxVolume, setSfxVolume] = useState(75);
   const [localVolume, setLocalVolume] = useState(80);
@@ -159,9 +151,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
 
   const themeLabel = themes.find(t => t.id === theme)?.label ?? 'Imperium';
 
-  function updateScene(next: BroadcastDisplay) {
+  function updateScene(next: PreviewScene) {
     setScene(next);
-    control?.setDisplay(next);
   }
 
   async function addImages() {

@@ -12,10 +12,7 @@ test('built app renders the Control window and opens the Broadcast window with n
   const broadcastWindow = await broadcastOpened;
   await broadcastWindow.waitForLoadState('domcontentloaded');
 
-  await expect(broadcastWindow.getByText('SCÈNE EN COURS')).toBeVisible();
-  await expect(broadcastWindow.getByRole('heading', { level: 1 })).toHaveText(
-    'Le sanctuaire oublié',
-  );
+  await expect(broadcastWindow.locator('main.stage-screen')).toHaveAttribute('data-version', '0');
 
   expect(failedRequests).toEqual([]);
   expect(cspViolations).toEqual([]);

@@ -12,7 +12,6 @@
  *     subscription), plus the bridge interface in shared/contract.ts.
  */
 import type {
-  BroadcastDisplay,
   CampaignChanges,
   InvokeChannel,
   InvokeChannels,
@@ -54,12 +53,14 @@ function onePayload<T>(guard: (value: unknown) => Parsed<T>) {
   return (args: readonly unknown[]): Parsed<T> => (args.length === 1 ? guard(args[0]) : INVALID);
 }
 
-function broadcastDisplay(value: unknown): Parsed<BroadcastDisplay> {
-  if (!isRecord(value)) return INVALID;
-  const { title, background, description } = value;
-  if (typeof title !== 'string' || typeof background !== 'string') return INVALID;
-  if (typeof description !== 'string') return INVALID;
-  return { title, background, description };
+/** For a payload `{ [key]: non-empty string }`, e.g. `{ campaignId }`. */
+function idOf<K extends string>(key: K) {
+  return (value: unknown): Parsed<Record<K, string>> => {
+    if (!isRecord(value)) return INVALID;
+    const id = value[key];
+    if (typeof id !== 'string' || id === '') return INVALID;
+    return { [key]: id } as Record<K, string>;
+  };
 }
 
 /** Names longer than this are malformed messages; core/campaigns.ts has the real limit. */
@@ -99,8 +100,10 @@ function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: Campa
 // Rules --------------------------------------------------------------------
 
 const rules: { [C in InvokeChannel]: Rule<C> } = {
-  'display:get': { from: anyWindow, parse: noPayload },
-  'display:set': { from: controlOnly, parse: onePayload(broadcastDisplay) },
+  'onAir:get': { from: anyWindow, parse: noPayload },
+  'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
+  'onAir:close-campaign': { from: controlOnly, parse: noPayload },
+  'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'media:import-images': { from: controlOnly, parse: noPayload },
   'campaigns:list': { from: controlOnly, parse: noPayload },
