@@ -1,10 +1,23 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { Page } from '@playwright/test';
 import { createCampaign, expect, openBroadcastWindow, test } from './harness';
 
 /** The app's log file, as the Game Master would find it in the data folder. */
 async function logFile(dataDir: string): Promise<string> {
   return fs.readFile(path.join(dataDir, 'logs', 'regie.log'), 'utf8').catch(() => '');
+}
+
+/** The Control window still carries out a command end to end: a new Scene is created. */
+async function stillWorks(controlWindow: Page) {
+  const scenes = controlWindow.getByRole('region', { name: 'Scènes' });
+  await scenes.getByLabel('Nom de la scène').fill('Toujours là');
+  await scenes.getByRole('button', { name: 'Créer la scène' }).click();
+  await expect(
+    scenes
+      .getByRole('list', { name: 'Scènes de la campagne' })
+      .getByRole('button', { name: 'Toujours là' }),
+  ).toBeVisible();
 }
 
 test('an uncaught exception in the main process is logged and the app keeps working', async ({
@@ -22,8 +35,7 @@ test('an uncaught exception in the main process is logged and the app keeps work
   await expect
     .poll(() => logFile(dataDir))
     .toMatch(/ERROR Uncaught exception[^\n]*\n {2}Error: panne simulée du processus principal/);
-  await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('Toujours là');
-  await expect(controlWindow.getByRole('heading', { level: 2, name: 'Toujours là' })).toBeVisible();
+  await stillWorks(controlWindow);
 });
 
 test('a window message the main process fails to carry out shows a notice and is logged', async ({
@@ -94,8 +106,7 @@ test('an unhandled rejection in the main process is logged and the app keeps wor
   await expect
     .poll(() => logFile(dataDir))
     .toMatch(/ERROR Unhandled rejection[^\n]*\n {2}Error: promesse oubliée/);
-  await controlWindow.getByLabel('TITRE DE LA SCÈNE').fill('Toujours là');
-  await expect(controlWindow.getByRole('heading', { level: 2, name: 'Toujours là' })).toBeVisible();
+  await stillWorks(controlWindow);
 });
 
 test('an interface error shows a recoverable message instead of a blank window', async ({

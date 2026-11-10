@@ -21,14 +21,12 @@ const roleLabels: Record<AudioRole, string> = {
 interface Props {
   campaignId: CampaignId;
   control: ControlBridge | undefined;
-  /** The Game Master clicked an image (the prototype preview shows it). */
-  onShowImage(image: ImageMedia, address: string): void;
   /** A Media was deleted, with its placements in these Scenes. */
   onMediaDeleted(deletion: MediaDeletion): void;
 }
 
 /** The open Campaign's Media library: import, list, change an image's category, delete. */
-export function MediaLibrary({ campaignId, control, onShowImage, onMediaDeleted }: Props) {
+export function MediaLibrary({ campaignId, control, onMediaDeleted }: Props) {
   const [media, setMedia] = useState<Media[]>([]);
   const [audioRole, setAudioRole] = useState<AudioRole>('music');
   /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
@@ -130,7 +128,7 @@ export function MediaLibrary({ campaignId, control, onShowImage, onMediaDeleted 
         {media.map((item) => (
           <li className="media-item" key={item.id}>
             {item.kind === 'image' ? (
-              <ImageItem image={item} onShow={onShowImage} onCategory={changeCategory} />
+              <ImageItem image={item} onCategory={changeCategory} />
             ) : (
               <>
                 <span className="media-audio-icon">
@@ -192,23 +190,16 @@ export function MediaLibrary({ campaignId, control, onShowImage, onMediaDeleted 
 
 function ImageItem({
   image,
-  onShow,
   onCategory,
 }: {
   image: ImageMedia;
-  onShow: Props['onShowImage'];
   onCategory(image: ImageMedia, category: ImageCategory): void;
 }) {
-  const address = mediaAddress(image);
   return (
     <>
-      <button
-        className="asset-thumb"
-        title={`Afficher ${image.name} dans l’aperçu`}
-        onClick={() => onShow(image, address)}
-      >
-        <MediaImage address={address} alt={image.name} window="control" />
-      </button>
+      <span className="asset-thumb">
+        <MediaImage address={mediaAddress(image)} alt={image.name} window="control" />
+      </span>
       <span className="media-name" title={image.name}>
         {image.name}
       </span>
