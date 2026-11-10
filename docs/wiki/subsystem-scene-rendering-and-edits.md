@@ -57,3 +57,12 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Convention set here: an edit that adjusts several fields changes only the fields it is given. Whole-object edits made two quick edits undo each other (caught by a whole-app test).
 - Sliders send one edit on release (one undo step). Gap: the editor redraws only on release, not during the drag.
 - 2026-11-11 decision: placement lists show the top of the stack first. #29 asked to switch the Overlay list to match.
+
+## Overlay transforms and live drag (#29, 2026-11-11, `d733c25`)
+
+- Supersedes the #26 note above: as of `d733c25` both placement lists show the top/front of the stack first.
+- `SceneEdit`s `transform-overlay` (partial: x, y, height, each only when given) and `move-overlay {toIndex}`.
+- Live drag: Control-only channel `scenes:show-transient` → `OnAirCommands.showTransientEdit`. Applies the edit to the saved Scene and puts it on air only if Active; saves nothing. Same queue as `editScene`, so a transient update never lands after the commit.
+- Undo granularity: `src/useOverlayTransforms.ts` sends one committed `transform-overlay` per gesture (pointer release, or 500 ms after the last nudge, or blur/editor close). Transient updates never touch `editScene`, so #32's history gets one step per gesture.
+- `src/transientUpdates.ts`: at most one update per animation frame, none while one is in flight, latest only (unit-tested).
+- `SceneCanvas` has an optional `editing` prop; the Broadcast window never gets handlers.

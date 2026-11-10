@@ -36,3 +36,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - 2026-11-11: #30 Labels and Scene title merged at `d9156b8` (343 unit, 80 app tests). No deviations.
 - 2026-11-11: #28 Background stack and fit merged at `984374f` (366 unit, 83 app tests). No deviations. List order now top-first.
 - 2026-11-11: #27 Explorer drag-import merged at `a65b466` (379 unit, 87 app tests). See [library page](subsystem-media-library.md).
+- 2026-11-11: #29 Overlay transforms merged at `d733c25` (417 unit, 91 app tests). No deviations. Made `placing.spec.ts` wait for both Overlay rows (timing fix); check whether that was the flaky line 202.
