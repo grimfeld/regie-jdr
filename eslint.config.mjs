@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 /** Core modules the Control and Broadcast windows may import: no Node or Electron inside. */
-const RENDERER_SAFE_CORE = ['onAir', 'mediaAddress', 'sceneEdits', 'canvas', 'guards'];
+const RENDERER_SAFE_CORE = ['onAir', 'mediaAddress', 'sceneEdits', 'canvas', 'guards', 'librarySearch'];
 
 /**
  * Every lint suppression is one rule with a reason (CODING_STANDARDS.md, "Lint suppressions"):
@@ -182,6 +182,7 @@ export default tseslint.config(
                 '!./sceneEdits*',
                 '!./canvas*',
                 '!./guards*',
+                '!./librarySearch*',
               ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',
