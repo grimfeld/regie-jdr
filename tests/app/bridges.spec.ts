@@ -23,8 +23,8 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'listCampaigns',
     'listMedia',
     'listScenes',
+    'onAudioHalt',
     'onOnAirChanged',
-    'onStopAudio',
     'openBroadcast',
     'openCampaign',
     'setHomeTheme',
@@ -35,8 +35,8 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
   ]);
   expect(await broadcastWindow.evaluate(keysOf)).toEqual([
     'getOnAir',
+    'onAudioHalt',
     'onOnAirChanged',
-    'onStopAudio',
   ]);
 });
 

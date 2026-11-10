@@ -45,7 +45,7 @@ function subscribe<E extends EventChannel>(
 const bridge: ControlBridge = {
   getOnAir: () => invoke('onAir:get'),
   onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
-  onStopAudio: (listener) => subscribe('audio:stop-all', () => listener()),
+  onAudioHalt: (listener) => subscribe('audio:halt', () => listener()),
   openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
   closeCampaign: () => invoke('onAir:close-campaign'),
   activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),

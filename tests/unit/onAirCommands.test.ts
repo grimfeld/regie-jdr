@@ -24,13 +24,13 @@ describe('on-air commands', () => {
     const onAir = createOnAir();
     const broadcast: OnAirState[] = [];
     onAir.subscribe((snapshot) => broadcast.push(snapshot));
-    let audioStops = 0;
+    let audioHalts = 0;
     const commands = createOnAirCommands({
       campaigns: storage.campaigns,
       library,
       scenes,
       onAir,
-      audio: { stopAll: () => void audioStops++ },
+      audio: { halt: () => void audioHalts++ },
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const picked = path.join(dir.path, 'Cantina.png');
@@ -44,7 +44,7 @@ describe('on-air commands', () => {
       campaign,
       image,
       broadcast,
-      audioStops: () => audioStops,
+      audioHalts: () => audioHalts,
     };
   }
 
@@ -130,7 +130,7 @@ describe('on-air commands', () => {
       activeSceneId: null,
       scene: null,
     });
-    expect(ctx.audioStops()).toBe(1);
+    expect(ctx.audioHalts()).toBe(1);
     await ctx.commands.activateScene(scene.id);
 
     expect(await ctx.commands.openCampaign(other.id)).toMatchObject({
@@ -138,9 +138,9 @@ describe('on-air commands', () => {
       activeSceneId: null,
       scene: null,
     });
-    expect(ctx.audioStops()).toBe(2);
+    expect(ctx.audioHalts()).toBe(2);
     expect(await ctx.commands.closeCampaign()).toMatchObject({ campaignId: null, scene: null });
-    expect(ctx.audioStops()).toBe(3);
+    expect(ctx.audioHalts()).toBe(3);
   });
 
   it('refuses unknown Campaigns and Scenes, and Activating with no Campaign open', async () => {

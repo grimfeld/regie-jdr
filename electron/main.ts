@@ -197,13 +197,13 @@ function startApp() {
   const library = createMediaLibrary(storage);
   const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
-  // No audio engine yet: both windows are told to stop every sound (ADR-0002 decides where it lives).
+  // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
   const commands = createOnAirCommands({
     campaigns: storage.campaigns, library, scenes, onAir,
     audio: {
-      stopAll: () => {
-        sendEvent(broadcastWindow?.webContents, 'audio:stop-all', null);
-        sendEvent(controlWindow?.webContents, 'audio:stop-all', null);
+      halt: () => {
+        sendEvent(broadcastWindow?.webContents, 'audio:halt', null);
+        sendEvent(controlWindow?.webContents, 'audio:halt', null);
       }
     }
   });

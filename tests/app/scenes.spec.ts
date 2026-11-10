@@ -190,19 +190,19 @@ test('opening a Campaign puts nothing on air; switching Campaign clears the Broa
   await expect(shownBackgrounds(broadcastWindow)).toHaveCount(1);
   // Every on-air change from here on, as the Broadcast window receives it.
   await broadcastWindow.evaluate(() => {
-    const bridge = (window as unknown as { regie: { onStopAudio(l: () => void): void } }).regie;
-    const record = window as unknown as { audioStops: number };
-    record.audioStops = 0;
-    bridge.onStopAudio(() => record.audioStops++);
+    const bridge = (window as unknown as { regie: { onAudioHalt(l: () => void): void } }).regie;
+    const record = window as unknown as { audioHalts: number };
+    record.audioHalts = 0;
+    bridge.onAudioHalt(() => record.audioHalts++);
   });
-  const audioStops = () =>
-    broadcastWindow.evaluate(() => (window as unknown as { audioStops: number }).audioStops);
+  const audioHalts = () =>
+    broadcastWindow.evaluate(() => (window as unknown as { audioHalts: number }).audioHalts);
 
   await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
   await createCampaign(controlWindow, 'Warhammer');
   await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
   await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
-  await expect.poll(audioStops).toBe(2); // back to the list, then into Warhammer
+  await expect.poll(audioHalts).toBe(2); // back to the list, then into Warhammer
 
   // Back into Star Wars: nothing goes on air until a Scene is Activated.
   await controlWindow.getByRole('button', { name: 'Campagnes' }).click();

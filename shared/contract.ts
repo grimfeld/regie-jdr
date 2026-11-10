@@ -116,8 +116,8 @@ export interface InvokeChannels {
 export interface EventChannels {
   /** Every new on-air snapshot; a window ignores one older than what it shows. */
   'onAir:changed': OnAirState;
-  /** Stop every sound now (Campaign opened, switched or closed). For the audio engine. */
-  'audio:stop-all': null;
+  /** Halt all audio now (Campaign opened, switched or closed). For the audio engine. */
+  'audio:halt': null;
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -150,7 +150,7 @@ export type Unsubscribe = () => void;
 export interface BroadcastBridge {
   getOnAir(): Promise<OnAirState>;
   onOnAirChanged(listener: (snapshot: OnAirState) => void): Unsubscribe;
-  onStopAudio(listener: () => void): Unsubscribe;
+  onAudioHalt(listener: () => void): Unsubscribe;
 }
 
 /** Full bridge of the Control window. */

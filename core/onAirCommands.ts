@@ -15,7 +15,7 @@ import type { CampaignRepository } from './storage/index.js';
 
 /** Where audio plays. No audio engine yet: stopping is announced to the windows. */
 export interface AudioOutput {
-  stopAll(): void;
+  halt(): void;
 }
 
 export interface OnAirCommands {
@@ -64,13 +64,13 @@ export function createOnAirCommands(deps: {
         if (!(await campaigns.get(campaignId))) {
           throw new SceneError('Cette campagne n’existe plus.');
         }
-        audio.stopAll();
+        audio.halt();
         return onAir.openCampaign(campaignId);
       }),
 
     closeCampaign: () =>
       serialized(async () => {
-        audio.stopAll();
+        audio.halt();
         return onAir.closeCampaign();
       }),
 
