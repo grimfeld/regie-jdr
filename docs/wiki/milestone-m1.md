@@ -26,3 +26,5 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - Deleting a Scene leaves its id in Settings `lastActiveSceneByCampaign` (UI ignores it). Source: #24 report, 2026-11-11.
 - Manual check: ~500 images scroll smoothly in the library. Source: #25 report.
 - `GLOSSARY.md` lacks "broadcast projection". Source: #22 report.
+- 2026-11-11: #26 placing Media merged at `b8a3580` (325 unit, 77 app tests). Kept the image picker for keyboard users.
+- Follow-up (from #26): `GLOSSARY.md` has no French UI term for Overlay; "Superpositions" / "Ajouter en superposition" are working labels. User decision.

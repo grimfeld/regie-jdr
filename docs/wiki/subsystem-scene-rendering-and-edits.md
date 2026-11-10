@@ -33,3 +33,13 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Rename is a `SceneEdit` (`kind: 'rename'`), so undo covers it. Delete is a separate command (`commands.deleteScene`, `scenes:delete`) outside undo; deleting the Active Scene calls `OnAir.clearActiveScene` and leaves Blackout as is.
 - `editorPictureOf` (`core/onAir.ts`) builds the editor's full picture with Hidden placements and Labels marked.
 - Renommer, Supprimer, Activer sit in the editor heading and act on the Selected Scene only.
+
+## Placing Media and the placement lists (#26, 2026-11-11, `b8a3580`)
+
+- New `SceneEdit` `remove-placement` (undo-covered).
+- Drop rule: `placementEdit(image, target, dropPoint?)` in `core/sceneEdits.ts`, pure and renderer-safe. A drop on the black bars snaps to the nearest canvas edge.
+- UI entry for placing: `place(scene, image, target, dropPoint)` in `src/ScenesPanel.tsx`, beside `placeDropped`. Drag payload check: `carriesMedia` in `src/mediaDrag.ts`, used by `useDropTarget` in `src/PlacementLists.tsx`.
+- `BackgroundList` and `OverlayList` (`src/PlacementLists.tsx`) list items in stored order, bottom of the stack first. Each row is a `PlacementRow` taking children for extra controls.
+- Plug-in points: #27 adds a files branch next to `placeDropped` and extends `carriesMedia`; #28 fit/zoom controls in Background rows (and decides top-first vs bottom-first order); #29 forward/back in Overlay rows; #30 Label controls in Overlay rows, Scene title in the `SceneEditor` heading; #31 fades on the unchanged `is-hidden` canvas style.
+- The image picker stays as a keyboard way to place, with "Ajouter en superposition".
+- Playwright `dragTo` works in Electron (`tests/app/placing.spec.ts`).
