@@ -5,6 +5,7 @@ import type { ControlBridge, MediaImportKind } from '../shared/contract';
 import { mediaAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
+import { MediaImage } from './MediaImage';
 
 const categoryLabels: Record<ImageCategory, string> = {
   scenery: 'Décors',
@@ -148,7 +149,7 @@ function ImageItem({
         title={`Afficher ${image.name} dans l’aperçu`}
         onClick={() => onShow(image, address)}
       >
-        <img src={address} alt={image.name} />
+        <MediaImage address={address} alt={image.name} window="control" />
       </button>
       <span className="media-name" title={image.name}>
         {image.name}

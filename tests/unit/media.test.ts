@@ -339,4 +339,51 @@ describe('media addresses', () => {
       expect(await library.resolveAddress(url), url).toBeUndefined();
     }
   });
+
+  it('serve every allowlisted type with an explicit content type, and nothing else', async () => {
+    const { storage, campaign, library } = await importedImage();
+    const media = path.join(storage.campaignFolder(campaign.id), 'media');
+    const served: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+      flac: 'audio/flac',
+      m4a: 'audio/mp4',
+    };
+    const refused = ['gif', 'svg', 'html', 'js', 'json', 'txt', 'PNG', 'png.exe', 'exe.png.'];
+    for (const extension of [...Object.keys(served), ...refused]) {
+      await fs.writeFile(path.join(media, `${'1'.repeat(64)}.${extension}`), 'x');
+    }
+
+    for (const [extension, mimeType] of Object.entries(served)) {
+      const url = `regie-asset://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
+      expect(await library.resolveAddress(url), url).toMatchObject({ mimeType });
+    }
+    for (const extension of refused) {
+      const url = `regie-asset://media/${campaign.id}/${'1'.repeat(64)}.${extension}`;
+      expect(await library.resolveAddress(url), url).toBeUndefined();
+    }
+  });
+
+  it('serve nothing for Windows-style path escapes', async () => {
+    const { storage, campaign, library } = await importedImage();
+    const data = path.join(dir.path, 'data');
+    await fs.writeFile(path.join(data, `${ABC_SHA256}.png`), 'x');
+    const absolute = encodeURIComponent(path.join(data, `${ABC_SHA256}.png`));
+
+    for (const url of [
+      `regie-asset://media/${campaign.id}/..%5C..%5C..%5C${ABC_SHA256}.png`,
+      `regie-asset://media/${campaign.id}/..\\..\\..\\${ABC_SHA256}.png`,
+      `regie-asset://media/..%5C..%5C${campaign.id}/${ABC_SHA256}.jpeg`,
+      `regie-asset://media/${campaign.id}/${absolute}`,
+      `regie-asset://media/${encodeURIComponent(storage.campaignFolder(campaign.id))}/${ABC_SHA256}.jpeg`,
+      `regie-asset://media/${campaign.id}/${ABC_SHA256}.jpeg%00.png`,
+    ]) {
+      expect(await library.resolveAddress(url), url).toBeUndefined();
+    }
+  });
 });
