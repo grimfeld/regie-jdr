@@ -19,6 +19,8 @@ import type {
   SceneId,
 } from '../shared/domain.js';
 import type { DocumentType, Storage } from './storage/index.js';
+import { isRecord } from './guards.js';
+import { createKeyedSerialQueue } from './serialQueue.js';
 
 export class SceneError extends Error {}
 
@@ -43,10 +45,6 @@ const SCENES_FILE = 'scenes.json';
 const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain', 'stretch'];
 
 // Parsing ------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isId(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
@@ -176,16 +174,7 @@ function cleanName(name: string): string {
 
 export function createSceneLibrary(storage: Storage): SceneLibrary {
   /** Serializes the read-modify-write of each Campaign's Scenes document. */
-  const queues = new Map<CampaignId, Promise<unknown>>();
-  function serialized<T>(campaignId: CampaignId, task: () => Promise<T>): Promise<T> {
-    const previous = queues.get(campaignId) ?? Promise.resolve();
-    const next = previous.then(task, task);
-    queues.set(
-      campaignId,
-      next.catch(() => undefined),
-    );
-    return next;
-  }
+  const serialized = createKeyedSerialQueue<CampaignId>();
 
   async function fileOf(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {

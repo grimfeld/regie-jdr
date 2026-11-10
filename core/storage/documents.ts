@@ -10,6 +10,8 @@
  */
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { isRecord } from '../guards.js';
+import { createKeyedSerialQueue } from '../serialQueue.js';
 
 type Fields = Record<string, unknown>;
 
@@ -95,10 +97,6 @@ function isNotFound(error: unknown): boolean {
   return (error as NodeJS.ErrnoException)?.code === 'ENOENT';
 }
 
-function isRecord(value: unknown): value is Fields {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 type Decoded<T> =
   { status: 'ok'; value: T } | { status: 'corrupt' } | { status: 'tooNew'; version: number };
 
@@ -147,19 +145,9 @@ export function createDocumentStore(
 ): DocumentStore {
   const fileSystem = options.fileSystem ?? nodeFileSystem;
   // One operation at a time per file, so concurrent writes never share a temp file.
-  const queues = new Map<string, Promise<unknown>>();
-
-  function serialized<R>(file: string, operation: () => Promise<R>): Promise<R> {
-    const key = path.resolve(file);
-    const previous = queues.get(key) ?? Promise.resolve();
-    const next = previous.then(operation, operation);
-    const settled = next.catch(() => undefined);
-    queues.set(key, settled);
-    void settled.then(() => {
-      if (queues.get(key) === settled) queues.delete(key);
-    });
-    return next;
-  }
+  const queue = createKeyedSerialQueue<string>();
+  const serialized = <R>(file: string, operation: () => Promise<R>) =>
+    queue(path.resolve(file), operation);
 
   /** Writes `text` to `target` through a temporary file and a rename. */
   async function replaceAtomically(target: string, text: string): Promise<void> {

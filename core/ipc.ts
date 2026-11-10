@@ -23,6 +23,7 @@ import { isAudioRole, isImageCategory } from './media.js';
 import { parseScene } from './scenes.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
+import { isRecord } from './guards.js';
 
 /** The windows that can send messages. */
 export type WindowRole = 'control' | 'broadcast';
@@ -41,10 +42,6 @@ const controlOnly: readonly WindowRole[] = ['control'];
 const anyWindow: readonly WindowRole[] = ['control', 'broadcast'];
 
 // Guards -------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 /** For channels that take no argument. */
 function noPayload(args: readonly unknown[]): Parsed<void> {

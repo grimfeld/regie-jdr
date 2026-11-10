@@ -12,6 +12,7 @@ import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
 import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import type { CampaignRepository } from './storage/index.js';
+import { createSerialQueue } from './serialQueue.js';
 
 /** Where audio plays. No audio engine yet: stopping is announced to the windows. */
 export interface AudioOutput {
@@ -47,12 +48,7 @@ export function createOnAirCommands(deps: {
 }): OnAirCommands {
   const { campaigns, library, scenes, onAir, audio } = deps;
 
-  let queue: Promise<unknown> = Promise.resolve();
-  function serialized<T>(task: () => Promise<T>): Promise<T> {
-    const next = queue.then(task, task);
-    queue = next.catch(() => undefined);
-    return next;
-  }
+  const serialized = createSerialQueue();
 
   async function picture(scene: Scene) {
     return onAirSceneOf(scene, await library.list(scene.campaignId));

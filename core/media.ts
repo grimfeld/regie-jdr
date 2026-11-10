@@ -22,6 +22,8 @@ import {
   parseMediaAddress,
 } from './mediaAddress.js';
 import type { DocumentType, Storage } from './storage/index.js';
+import { isRecord } from './guards.js';
+import { createKeyedSerialQueue } from './serialQueue.js';
 
 export class MediaError extends Error {}
 
@@ -73,10 +75,6 @@ export const DEFAULT_IMAGE_CATEGORY: ImageCategory = 'scenery';
 
 const MEDIA_FOLDER = 'media';
 const INDEX_FILE = 'media.json';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function parseMedia(value: unknown, campaignId: CampaignId): Media | undefined {
   if (!isRecord(value)) return undefined;
@@ -137,16 +135,7 @@ async function storeFile(source: string, mediaFolder: string, media: Media): Pro
 
 export function createMediaLibrary(storage: Storage): MediaLibrary {
   /** Serializes the read-modify-write of each Campaign's index. */
-  const queues = new Map<CampaignId, Promise<unknown>>();
-  function serialized<T>(campaignId: CampaignId, task: () => Promise<T>): Promise<T> {
-    const previous = queues.get(campaignId) ?? Promise.resolve();
-    const next = previous.then(task, task);
-    queues.set(
-      campaignId,
-      next.catch(() => undefined),
-    );
-    return next;
-  }
+  const serialized = createKeyedSerialQueue<CampaignId>();
 
   async function campaignFolder(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {

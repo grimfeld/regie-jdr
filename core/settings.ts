@@ -6,6 +6,8 @@
 import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
 import type { DocumentType, Storage } from './storage/index.js';
+import { isRecord } from './guards.js';
+import { createSerialQueue } from './serialQueue.js';
 
 export type SettingsWindow = keyof Settings['windowBounds'];
 
@@ -23,10 +25,6 @@ export const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 
 function defaults(): Settings {
   return { theme: DEFAULT_HOME_THEME, windowBounds: {}, lastActiveSceneByCampaign: {} };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Whole pixels, a size of at least 1: anything else is not a usable window rectangle. */
@@ -66,16 +64,13 @@ export function createSettingsStore(storage: Storage): SettingsStore {
   const read = async () => (await storage.documents.read(file, settingsDocument)) ?? defaults();
 
   // Read-modify-writes one after the other, so no change is lost.
-  let queue: Promise<unknown> = Promise.resolve();
+  const serialized = createSerialQueue();
   function change(edit: (settings: Settings) => Settings): Promise<Settings> {
-    const task = async () => {
+    return serialized(async () => {
       const next = edit(await read());
       await storage.documents.write(file, settingsDocument, next);
       return next;
-    };
-    const next = queue.then(task, task);
-    queue = next.catch(() => undefined);
-    return next;
+    });
   }
 
   return {
