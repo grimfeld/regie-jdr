@@ -1,16 +1,17 @@
-import { app, BrowserWindow, dialog, net, protocol, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, protocol, type WebContents } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { randomUUID } from 'node:crypto';
 import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { createMediaLibrary, type MediaLibrary } from '../core/media.js';
+import { extensionsOf, MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { createOnAir } from '../core/onAir.js';
 import { openStorage } from '../core/storage/index.js';
-import type { ImportedImage } from '../shared/contract.js';
+import type { MediaImportKind } from '../shared/contract.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
@@ -24,11 +25,10 @@ if (process.env.REGIE_USER_DATA_DIR) app.setPath('userData', process.env.REGIE_U
 // Failures are logged to <userData>/logs/regie.log and no longer kill the app (electron/logging.ts).
 installErrorLogging();
 
-// Imported images are served via a custom scheme: file:// URLs are blocked
+// Media are served via a custom scheme (core/mediaAddress.ts): file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
-const ASSET_SCHEME = 'regie-asset';
 protocol.registerSchemesAsPrivileged([
-  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
 
 // The page every window loads: the dev server, or the built index.html on disk.
@@ -55,15 +55,25 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (event) => event.preventDefault());
 });
 
-function getAssetDirectory() {
-  return path.join(app.getPath('userData'), 'assets');
-}
-
-function registerAssetProtocol() {
-  protocol.handle(ASSET_SCHEME, (request) => {
-    const fileName = path.basename(decodeURIComponent(new URL(request.url).pathname));
-    const filePath = path.join(getAssetDirectory(), fileName);
-    return net.fetch(pathToFileURL(filePath).href);
+/**
+ * Serves Media files from their Campaign's media folder only, with an explicit content type.
+ * Anything else (malformed address, missing file, disallowed type, outside the folder) is a 404.
+ * Whole files only: range requests (audio seeking) come with the audio engine.
+ */
+function registerMediaProtocol(library: MediaLibrary) {
+  protocol.handle(MEDIA_SCHEME, async (request) => {
+    const notFound = () => new Response(null, { status: 404 });
+    try {
+      const resolved = await library.resolveAddress(request.url);
+      if (!resolved) return notFound();
+      const content = await fs.readFile(resolved.file);
+      return new Response(content, {
+        headers: { 'content-type': resolved.mimeType, 'cache-control': 'no-cache' },
+      });
+    } catch (error) {
+      log.warn(`Media request failed: ${request.url}`, error);
+      return notFound();
+    }
   });
 }
 
@@ -102,25 +112,21 @@ function createBroadcastWindow() {
   broadcastWindow.on('closed', () => { broadcastWindow = null; });
 }
 
-async function importImages(): Promise<ImportedImage[]> {
-  const options: Electron.OpenDialogOptions = {
-    title: 'Importer des visuels', properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
-  };
+/** Files the Game Master picks for an import, from the native file picker; [] if cancelled. */
+async function pickMediaFiles(kind: MediaImportKind): Promise<string[]> {
+  const options: Electron.OpenDialogOptions = kind.accept === 'image'
+    ? {
+        title: 'Importer des images', properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Images', extensions: extensionsOf('image') }]
+      }
+    : {
+        title: 'Importer des sons', properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Sons', extensions: extensionsOf('audio') }]
+      };
   const result = controlWindow
     ? await dialog.showOpenDialog(controlWindow, options)
     : await dialog.showOpenDialog(options);
-  if (result.canceled || result.filePaths.length === 0) return [];
-  const assetDirectory = getAssetDirectory();
-  await fs.mkdir(assetDirectory, { recursive: true });
-  const imported: ImportedImage[] = [];
-  for (const source of result.filePaths) {
-    const extension = path.extname(source).toLowerCase();
-    const fileName = `${randomUUID()}${extension}`;
-    await fs.copyFile(source, path.join(assetDirectory, fileName));
-    imported.push({ name: path.basename(source, extension), url: `${ASSET_SCHEME}://assets/${fileName}` });
-  }
-  return imported;
+  return result.canceled ? [] : result.filePaths;
 }
 
 /** A second launch of the app brings the existing Control window forward. */
@@ -132,12 +138,13 @@ function focusControlWindow() {
 }
 
 function startApp() {
-  registerAssetProtocol();
   // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
   const notices: string[] = [];
   const storage = openStorage(app.getPath('userData'), {
     notify: (message) => { notices.push(message); log.warn(message); }
   });
+  const library = createMediaLibrary(storage);
+  registerMediaProtocol(library);
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
     sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
@@ -151,7 +158,15 @@ function startApp() {
       'onAir:close-campaign': () => onAir.closeCampaign(),
       'onAir:activate-scene': ({ sceneId }) => onAir.activateScene(sceneId),
       'broadcast:open': () => createBroadcastWindow(),
-      'media:import-images': importImages,
+      'media:list': ({ campaignId }) => library.list(campaignId),
+      'media:import': async ({ campaignId, ...kind }) => {
+        const files = await pickMediaFiles(kind);
+        const result = await library.import(campaignId, files, kind);
+        result.refused.forEach((message) => log.info(`Media refused: ${message}`));
+        return result;
+      },
+      'media:set-category': ({ campaignId, mediaId, category }) =>
+        library.setImageCategory(campaignId, mediaId, category),
       'campaigns:list': () => storage.campaigns.list(),
       'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),

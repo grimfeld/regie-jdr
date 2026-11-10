@@ -5,16 +5,28 @@
  *
  * Adding a channel: see the checklist in core/ipc.ts.
  */
-import type { Campaign, CampaignId, OnAirState, SceneId, ThemeId } from './domain.js';
+import type {
+  AudioRole,
+  Campaign,
+  CampaignId,
+  ImageCategory,
+  Media,
+  MediaId,
+  OnAirState,
+  SceneId,
+  ThemeId,
+} from './domain.js';
 
-/** Image just imported into the library (prototype shape, until Media storage lands). */
-export interface ImportedImage {
-  name: string;
-  /** `regie-asset:` address of the stored file. */
-  url: string;
+/** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
+export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
+
+export interface MediaImportResult {
+  /** One Media per accepted file, in order; content already in the Campaign gives its Media. */
+  imported: Media[];
+  /** One French message per refused file (unsupported type, or not the kind asked for). */
+  refused: string[];
 }
 
-/**
 /** What can be changed on a Campaign; absent fields are left as they are. */
 export interface CampaignChanges {
   name?: string;
@@ -36,8 +48,21 @@ export interface InvokeChannels {
   'onAir:activate-scene': { payload: { sceneId: SceneId }; result: OnAirState };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
-  /** Pick images with the native file picker and copy them into the library. */
-  'media:import-images': { payload: void; result: ImportedImage[] };
+  /** The Media library of a Campaign, in import order. */
+  'media:list': { payload: { campaignId: CampaignId }; result: Media[] };
+  /**
+   * Pick files with the native file picker (the window never names files) and import them
+   * into the Campaign's library. Cancelling the picker imports nothing.
+   */
+  'media:import': {
+    payload: { campaignId: CampaignId } & MediaImportKind;
+    result: MediaImportResult;
+  };
+  /** Change an image's category. Fails for audio: its role is fixed at import. */
+  'media:set-category': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; category: ImageCategory };
+    result: Media;
+  };
   /** Every Campaign, sorted by name. */
   'campaigns:list': { payload: void; result: Campaign[] };
   /** Create a Campaign; fails with a French message for an empty name. */
@@ -95,7 +120,13 @@ export interface ControlBridge extends BroadcastBridge {
   closeCampaign(): Promise<OnAirState>;
   activateScene(sceneId: SceneId): Promise<OnAirState>;
   openBroadcast(): Promise<void>;
-  importImages(): Promise<ImportedImage[]>;
+  listMedia(campaignId: CampaignId): Promise<Media[]>;
+  importMedia(campaignId: CampaignId, kind: MediaImportKind): Promise<MediaImportResult>;
+  setImageCategory(
+    campaignId: CampaignId,
+    mediaId: MediaId,
+    category: ImageCategory,
+  ): Promise<Media>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;
   updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;

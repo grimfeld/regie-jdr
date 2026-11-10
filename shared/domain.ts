@@ -25,16 +25,22 @@ export interface Campaign {
 /** How the Game Master intends to use an image. Changeable; never restricts placement. */
 export type ImageCategory = 'scenery' | 'character';
 
-/** Role of an audio Media, fixed at import. */
-export type AudioRole = 'music' | 'soundEffect';
+/**
+ * Role of an audio Media, fixed at import: Music (the looping atmosphere track, one at a time),
+ * Sound effect (played once, on demand, never loops) or Ambience (looping background sound,
+ * several can play together).
+ */
+export type AudioRole = 'music' | 'soundEffect' | 'ambience';
 
 interface MediaBase {
   id: MediaId;
   campaignId: CampaignId;
   /** SHA-256 of the file content (hex). The stored file is named `<contentHash><extension>`. */
   contentHash: string;
-  /** File name at import, without extension. */
+  /** File name at import, without extension. Never changes. */
   originalName: string;
+  /** Name shown in the library; the Game Master can change it. Initially `originalName`. */
+  name: string;
   /** Lower-case, with the dot: `.png`. */
   extension: string;
 }
@@ -84,9 +90,11 @@ export interface Overlay {
   label?: string;
 }
 
-/** A Sound effect that loops while its Scene is active. */
-export interface LoopingSoundEffect {
+/** An Ambience listed on a Scene, switched on or off independently of the others. */
+export interface SceneAmbience {
   mediaId: MediaId;
+  /** Whether it plays while the Scene is active; all that are on play together, looping. */
+  on: boolean;
   /** 0..1 */
   volume: number;
 }
@@ -94,7 +102,7 @@ export interface LoopingSoundEffect {
 /** Volumes of a Scene, 0..1. */
 export interface SceneVolumes {
   music: number;
-  soundEffects: number;
+  ambience: number;
 }
 
 /** A reusable, saved audiovisual setup in a Campaign. */
@@ -107,7 +115,7 @@ export interface Scene {
   overlays: Overlay[];
   /** Music Media, in order. One plays at a time, looping; the first starts on Activate. */
   music: MediaId[];
-  soundEffects: LoopingSoundEffect[];
+  ambiences: SceneAmbience[];
   volumes: SceneVolumes;
   /** Private to the Game Master: never shown in the Broadcast window. */
   notes: string;
@@ -118,7 +126,6 @@ export interface SoundboardPad {
   id: string;
   mediaId: MediaId;
   label?: string;
-  loop: boolean;
   /** 0..1 */
   volume: number;
 }

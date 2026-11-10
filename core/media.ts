@@ -1,0 +1,270 @@
+/**
+ * The Media manager: a Campaign's library of imported images and audio. No Electron
+ * dependency.
+ *
+ * On disk, in the Campaign's folder:
+ *   media/<sha256><extension>   the files, named by content hash (one copy per content)
+ *   media.json                  the Media index ({ media: Media[] }, versioned document)
+ *
+ * Deduplication is per Campaign: the same file imported into two Campaigns is stored in both.
+ * Errors meant for the Game Master are MediaError with a French message.
+ */
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import type { MediaImportKind, MediaImportResult } from '../shared/contract.js';
+import type { AudioRole, CampaignId, ImageCategory, Media, MediaId } from '../shared/domain.js';
+import {
+  isMediaExtension,
+  MEDIA_FILE_TYPES,
+  mediaFileName,
+  parseMediaAddress,
+} from './mediaAddress.js';
+import type { DocumentType, Storage } from './storage/index.js';
+
+export class MediaError extends Error {}
+
+export interface MediaLibrary {
+  /** The Campaign's Media, in import order. */
+  list(campaignId: CampaignId): Promise<Media[]>;
+  import(
+    campaignId: CampaignId,
+    files: readonly string[],
+    kind: MediaImportKind,
+  ): Promise<MediaImportResult>;
+  /** Changes an image's category. Audio has a role instead, fixed at import. */
+  setImageCategory(
+    campaignId: CampaignId,
+    mediaId: MediaId,
+    category: ImageCategory,
+  ): Promise<Media>;
+  /** Files in the Campaign's media folder that no Media refers to (file names). */
+  listOrphanFiles(campaignId: CampaignId): Promise<string[]>;
+  /**
+   * The file and content type a Media address serves, or undefined (a 404) when the address
+   * is malformed, its Campaign or file does not exist, or it points outside the media folder.
+   */
+  resolveAddress(url: string): Promise<{ file: string; mimeType: string } | undefined>;
+}
+
+export const IMAGE_CATEGORIES: readonly ImageCategory[] = ['scenery', 'character'];
+export const AUDIO_ROLES: readonly AudioRole[] = ['music', 'soundEffect', 'ambience'];
+
+export function isImageCategory(value: unknown): value is ImageCategory {
+  return typeof value === 'string' && (IMAGE_CATEGORIES as readonly string[]).includes(value);
+}
+
+export function isAudioRole(value: unknown): value is AudioRole {
+  return typeof value === 'string' && (AUDIO_ROLES as readonly string[]).includes(value);
+}
+
+/** Category of a newly imported image, until the Game Master changes it. */
+export const DEFAULT_IMAGE_CATEGORY: ImageCategory = 'scenery';
+
+const MEDIA_FOLDER = 'media';
+const INDEX_FILE = 'media.json';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseMedia(value: unknown, campaignId: CampaignId): Media | undefined {
+  if (!isRecord(value)) return undefined;
+  const { id, contentHash, originalName, name, extension, kind } = value;
+  if (typeof id !== 'string' || typeof contentHash !== 'string') return undefined;
+  if (!/^[0-9a-f]{64}$/.test(contentHash)) return undefined;
+  if (typeof originalName !== 'string' || typeof name !== 'string') return undefined;
+  if (typeof extension !== 'string' || !isMediaExtension(extension)) return undefined;
+  const base = { id, campaignId, contentHash, originalName, name, extension };
+  if (kind === 'image' && isImageCategory(value.category)) {
+    return { ...base, kind, category: value.category };
+  }
+  if (kind === 'audio' && isAudioRole(value.role)) return { ...base, kind, role: value.role };
+  return undefined;
+}
+
+/** The index stores Media without their Campaign id: it is the folder's. */
+type StoredMedia = Omit<Media, 'campaignId'>;
+
+const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
+  name: 'media',
+  version: 1,
+  migrations: {},
+  parse({ media }) {
+    if (!Array.isArray(media)) return undefined;
+    const parsed = media.map((item) => parseMedia(item, ''));
+    if (parsed.some((item) => item === undefined)) return undefined;
+    return {
+      media: (parsed as Media[]).map(({ campaignId: _campaignId, ...stored }) => stored),
+    };
+  },
+};
+
+async function sha256Of(file: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer);
+  return hash.digest('hex');
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    return (await fsp.stat(file)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Copies a picked file into the media folder, unless its file is already there. */
+async function storeFile(source: string, mediaFolder: string, media: Media): Promise<void> {
+  const target = path.join(mediaFolder, mediaFileName(media));
+  if (await exists(target)) return;
+  await fsp.mkdir(mediaFolder, { recursive: true });
+  // Copy then rename: an interrupted import never leaves a half-written Media file.
+  const partial = `${target}.${randomUUID()}.tmp`;
+  await fsp.copyFile(source, partial);
+  await fsp.rename(partial, target);
+}
+
+export function createMediaLibrary(storage: Storage): MediaLibrary {
+  /** Serializes the read-modify-write of each Campaign's index. */
+  const queues = new Map<CampaignId, Promise<unknown>>();
+  function serialized<T>(campaignId: CampaignId, task: () => Promise<T>): Promise<T> {
+    const previous = queues.get(campaignId) ?? Promise.resolve();
+    const next = previous.then(task, task);
+    queues.set(
+      campaignId,
+      next.catch(() => undefined),
+    );
+    return next;
+  }
+
+  async function campaignFolder(campaignId: CampaignId): Promise<string> {
+    if (!(await storage.campaigns.get(campaignId))) {
+      throw new MediaError('Cette campagne n’existe plus.');
+    }
+    return storage.campaignFolder(campaignId);
+  }
+
+  async function readIndex(folder: string, campaignId: CampaignId): Promise<Media[]> {
+    const index = await storage.documents.read(path.join(folder, INDEX_FILE), mediaIndexDocument);
+    return (index?.media ?? []).map((stored) => ({ ...stored, campaignId }) as Media);
+  }
+
+  async function writeIndex(folder: string, media: Media[]): Promise<void> {
+    await storage.documents.write(path.join(folder, INDEX_FILE), mediaIndexDocument, {
+      media: media.map(({ campaignId: _campaignId, ...stored }) => stored),
+    });
+  }
+
+  return {
+    async list(campaignId) {
+      return readIndex(await campaignFolder(campaignId), campaignId);
+    },
+
+    import(campaignId, files, kind) {
+      return serialized(campaignId, async () => {
+        const folder = await campaignFolder(campaignId);
+        const library = await readIndex(folder, campaignId);
+        const mediaFolder = path.join(folder, MEDIA_FOLDER);
+        const result: MediaImportResult = { imported: [], refused: [] };
+        let changed = false;
+        for (const source of files) {
+          const extension = path.extname(source).toLowerCase();
+          const fileName = path.basename(source);
+          const type = isMediaExtension(extension) ? MEDIA_FILE_TYPES[extension] : undefined;
+          if (!type) {
+            result.refused.push(
+              `« ${fileName} » n’a pas été importé : ce type de fichier n’est pas pris en charge (images PNG, JPEG, WebP ; sons MP3, WAV, OGG, FLAC, M4A).`,
+            );
+            continue;
+          }
+          if (type.kind !== kind.accept) {
+            result.refused.push(
+              kind.accept === 'image'
+                ? `« ${fileName} » n’a pas été importé : ce n’est pas une image.`
+                : `« ${fileName} » n’a pas été importé : ce n’est pas un son.`,
+            );
+            continue;
+          }
+          const contentHash = await sha256Of(source);
+          const existing = library.find((media) => media.contentHash === contentHash);
+          if (existing) {
+            // Same content again: no second Media. Puts its file back if it went missing.
+            await storeFile(source, mediaFolder, existing);
+            result.imported.push(existing);
+            continue;
+          }
+          const originalName = path.basename(source, path.extname(source));
+          const base = {
+            id: randomUUID(),
+            campaignId,
+            contentHash,
+            originalName,
+            name: originalName,
+            extension,
+          };
+          const media: Media =
+            kind.accept === 'image'
+              ? { ...base, kind: 'image', category: DEFAULT_IMAGE_CATEGORY }
+              : { ...base, kind: 'audio', role: kind.role };
+          await storeFile(source, mediaFolder, media);
+          library.push(media);
+          result.imported.push(media);
+          changed = true;
+        }
+        if (changed) await writeIndex(folder, library);
+        return result;
+      });
+    },
+
+    setImageCategory(campaignId, mediaId, category) {
+      return serialized(campaignId, async () => {
+        const folder = await campaignFolder(campaignId);
+        const library = await readIndex(folder, campaignId);
+        const index = library.findIndex((media) => media.id === mediaId);
+        if (index < 0) throw new MediaError('Ce média n’existe plus.');
+        const media = library[index];
+        if (media.kind !== 'image') {
+          throw new MediaError(
+            'Seules les images ont une catégorie ; le rôle d’un son ne change pas.',
+          );
+        }
+        const updated: Media = { ...media, category };
+        library[index] = updated;
+        await writeIndex(folder, library);
+        return updated;
+      });
+    },
+
+    async listOrphanFiles(campaignId) {
+      const folder = await campaignFolder(campaignId);
+      const known = new Set((await readIndex(folder, campaignId)).map(mediaFileName));
+      let entries: import('node:fs').Dirent[];
+      try {
+        entries = await fsp.readdir(path.join(folder, MEDIA_FOLDER), { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
+      }
+      return entries
+        .filter((entry) => entry.isFile() && !known.has(entry.name))
+        .map((entry) => entry.name)
+        .sort();
+    },
+
+    async resolveAddress(url) {
+      const address = parseMediaAddress(url);
+      if (!address) return undefined;
+      let folder: string;
+      try {
+        folder = storage.campaignFolder(address.campaignId);
+      } catch {
+        return undefined;
+      }
+      const file = path.join(folder, MEDIA_FOLDER, address.fileName);
+      if (!(await exists(file))) return undefined;
+      return { file, mimeType: MEDIA_FILE_TYPES[address.extension].mimeType };
+    },
+  };
+}

@@ -44,7 +44,7 @@ test('a window message the main process fails to carry out shows a notice and is
   await expect
     .poll(() => logFile(dataDir))
     .toMatch(
-      /ERROR IPC call failed: "media:import-images"\n {2}Error: sélecteur de fichiers indisponible/,
+      /ERROR IPC call failed: "media:import"\n {2}Error: sélecteur de fichiers indisponible/,
     );
 
   await notice.getByRole('button', { name: 'Fermer' }).click();

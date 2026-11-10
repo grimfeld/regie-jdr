@@ -17,7 +17,6 @@ describe('sender policy', () => {
       payload: scene,
     });
     expect(checkInvoke('broadcast:open', 'control', [])).toMatchObject({ ok: true });
-    expect(checkInvoke('media:import-images', 'control', [])).toMatchObject({ ok: true });
   });
 
   it('lets the Broadcast window read the on-air state', () => {
@@ -30,7 +29,7 @@ describe('sender policy', () => {
       ['onAir:close-campaign', []],
       ['onAir:activate-scene', [scene]],
       ['broadcast:open', []],
-      ['media:import-images', []],
+      ['media:import', [{ campaignId: 'star-wars', accept: 'image' }]],
     ] as const) {
       const verdict = checkInvoke(channel, 'broadcast', [...args]);
       expect(verdict.ok).toBe(false);
@@ -133,6 +132,58 @@ describe('Campaign channels', () => {
     ['an unknown theme', 'campaigns:update', [{ id, changes: { theme: 'neon' } }]],
     ['no changes object', 'campaigns:update', [{ id }]],
     ['a name of the wrong type', 'campaigns:update', [{ id, changes: { name: null } }]],
+  ] as const)('reject %s', (_label, channel, args) => {
+    expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
+  });
+});
+
+describe('Media channels', () => {
+  const campaignId = '3f0c9a52-7a51-4d8e-9a43-0f0f2b0c1d2e';
+  const mediaId = '9b2d1c3e-1111-4d8e-9a43-0f0f2b0c1d2e';
+
+  it('are for the Control window only', () => {
+    for (const [channel, args] of [
+      ['media:list', [{ campaignId }]],
+      ['media:import', [{ campaignId, accept: 'image' }]],
+      ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
+    ] as const) {
+      expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
+      expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
+    }
+  });
+
+  it('accept an image import, or an audio import with one of the three roles', () => {
+    expect(
+      checkInvoke('media:import', 'control', [{ campaignId, accept: 'image', role: 'music' }]),
+    ).toEqual({ ok: true, payload: { campaignId, accept: 'image' } });
+    for (const role of ['music', 'soundEffect', 'ambience']) {
+      expect(
+        checkInvoke('media:import', 'control', [{ campaignId, accept: 'audio', role, x: 1 }]),
+      ).toEqual({ ok: true, payload: { campaignId, accept: 'audio', role } });
+    }
+  });
+
+  it('accept a category change, keeping only contract fields', () => {
+    expect(
+      checkInvoke('media:set-category', 'control', [
+        { campaignId, mediaId, category: 'scenery', role: 'music' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, category: 'scenery' } });
+  });
+
+  it.each([
+    ['a Campaign id that is a path', 'media:list', [{ campaignId: '../..' }]],
+    ['no Campaign id', 'media:list', [{}]],
+    ['an unknown kind', 'media:import', [{ campaignId, accept: 'video' }]],
+    ['audio with no role', 'media:import', [{ campaignId, accept: 'audio' }]],
+    ['audio with an unknown role', 'media:import', [{ campaignId, accept: 'audio', role: 'loop' }]],
+    [
+      'source files chosen by the window',
+      'media:import',
+      [{ campaignId, accept: 'image' }, ['C:/x.png']],
+    ],
+    ['an unknown category', 'media:set-category', [{ campaignId, mediaId, category: 'creature' }]],
+    ['no Media id', 'media:set-category', [{ campaignId, category: 'scenery' }]],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Aperture, ArrowLeft, AudioLines, ImagePlus, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
+import { Aperture, ArrowLeft, AudioLines, MonitorPlay, Music2, Palette, Play, Plus, Radio, Settings2, Volume2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
-import type { BroadcastBridge, CampaignChanges, ControlBridge, ImportedImage } from '../shared/contract';
+import type { BroadcastBridge, CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
+import { MediaLibrary } from './MediaLibrary';
 import { showNotice } from './notices';
 
 /** Control window preview (prototype): local only, the Broadcast window shows what is on air. */
@@ -137,21 +138,11 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   const [sfxVolume, setSfxVolume] = useState(75);
   const [localVolume, setLocalVolume] = useState(80);
   const [stageVolume, setStageVolume] = useState(80);
-  const [assets, setAssets] = useState<ImportedImage[]>([]);
 
   const themeLabel = themes.find(t => t.id === theme)?.label ?? 'Imperium';
 
   function updateScene(next: PreviewScene) {
     setScene(next);
-  }
-
-  async function addImages() {
-    if (!control) return;
-    const imported = await control.importImages();
-    if (imported.length === 0) return;
-    setAssets(current => [...current, ...imported]);
-    const first = imported[0];
-    updateScene({ ...scene, background: first.url, title: first.name || 'Nouvelle scène' });
   }
 
   return (
@@ -173,10 +164,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             <div className="scene-edit"><label>TITRE DE LA SCÈNE<input value={scene.title} onChange={e => updateScene({ ...scene, title: e.target.value })} /></label><label>DESCRIPTION<input value={scene.description} onChange={e => updateScene({ ...scene, description: e.target.value })} /></label></div>
           </div>
 
-          <div className="section-heading compact"><div><span className="eyebrow">BIBLIOTHÈQUE PERSONNELLE</span><h2>Visuels importés</h2></div><button className="secondary-button" onClick={addImages}><ImagePlus size={16}/> Importer des images</button></div>
-          <div className="asset-strip">
-            {assets.length ? assets.map((asset, i) => <button className="asset-thumb" key={`${asset.url}-${i}`} title={asset.name} onClick={() => updateScene({ ...scene, background: asset.url, title: asset.name })}><img src={asset.url} alt={asset.name}/></button>) : <div className="asset-empty">Vos décors, portraits et créatures apparaîtront ici après import.</div>}
-          </div>
+          <MediaLibrary campaignId={campaign.id} control={control} onShowImage={(image, address) => updateScene({ ...scene, background: address, title: image.name })} />
         </section>
 
         <aside className="control-column">

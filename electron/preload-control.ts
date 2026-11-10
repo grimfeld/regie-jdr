@@ -49,7 +49,10 @@ const bridge: ControlBridge = {
   closeCampaign: () => invoke('onAir:close-campaign'),
   activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
-  importImages: () => invoke('media:import-images'),
+  listMedia: (campaignId) => invoke('media:list', { campaignId }),
+  importMedia: (campaignId, kind) => invoke('media:import', { campaignId, ...kind }),
+  setImageCategory: (campaignId, mediaId, category) =>
+    invoke('media:set-category', { campaignId, mediaId, category }),
   listCampaigns: () => invoke('campaigns:list'),
   createCampaign: (name) => invoke('campaigns:create', { name }),
   updateCampaign: (id, changes) => invoke('campaigns:update', { id, changes }),

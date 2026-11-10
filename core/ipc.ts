@@ -15,9 +15,11 @@ import type {
   CampaignChanges,
   InvokeChannel,
   InvokeChannels,
+  MediaImportKind,
   Payload,
 } from '../shared/contract.js';
-import type { CampaignId } from '../shared/domain.js';
+import type { CampaignId, ImageCategory, MediaId } from '../shared/domain.js';
+import { isAudioRole, isImageCategory } from './media.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 
@@ -97,6 +99,31 @@ function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: Campa
   return { id: value.id, changes };
 }
 
+function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
+  if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
+  return { campaignId: value.campaignId };
+}
+
+function mediaImport(value: unknown): Parsed<{ campaignId: CampaignId } & MediaImportKind> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  if (value.accept === 'image') return { ...campaign, accept: 'image' };
+  if (value.accept === 'audio' && isAudioRole(value.role)) {
+    return { ...campaign, accept: 'audio', role: value.role };
+  }
+  return INVALID;
+}
+
+function categoryChange(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; mediaId: MediaId; category: ImageCategory }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { mediaId, category } = value;
+  if (typeof mediaId !== 'string' || mediaId === '' || !isImageCategory(category)) return INVALID;
+  return { ...campaign, mediaId, category };
+}
+
 // Rules --------------------------------------------------------------------
 
 const rules: { [C in InvokeChannel]: Rule<C> } = {
@@ -105,7 +132,9 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
   'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
-  'media:import-images': { from: controlOnly, parse: noPayload },
+  'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
+  'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
+  'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
   'campaigns:list': { from: controlOnly, parse: noPayload },
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
   'campaigns:update': { from: controlOnly, parse: onePayload(campaignUpdate) },
