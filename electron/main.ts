@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, protocol, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, protocol, screen, type WebContents } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -12,11 +12,17 @@ import { extensionsOf, MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
 import { createSceneLibrary } from '../core/scenes.js';
+import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
 import { openStorage } from '../core/storage/index.js';
+import { placeWindow } from '../core/windowPlacement.js';
 import type { MediaImportKind } from '../shared/contract.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
+// Global Settings (home theme, window bounds, last Active Scenes); set when the app starts.
+let settings: SettingsStore | null = null;
+// Settings writes still running: the app waits for them before it quits.
+const pendingWrites = new Set<Promise<unknown>>();
 // What is on air: in memory only, so nothing is on air after a restart.
 const onAir = createOnAir();
 
@@ -86,12 +92,48 @@ function roleOf(sender: WebContents): WindowRole | undefined {
   return undefined;
 }
 
-function createControlWindow() {
+/** Runs a Settings write; failures are logged, and the app waits for it before quitting. */
+function saveSetting(write: (store: SettingsStore) => Promise<unknown>) {
+  if (!settings) return;
+  const pending = write(settings).catch((error) => log.error('Saving the settings failed', error));
+  pendingWrites.add(pending);
+  void pending.finally(() => pendingWrites.delete(pending));
+}
+
+/**
+ * Where a window reopens: its saved bounds, brought back onto the screen when the display it
+ * was on is gone (primary display first). Nothing saved: the window's default size.
+ */
+async function savedPlacement(window: SettingsWindow): Promise<Electron.Rectangle | undefined> {
+  if (!settings) return undefined;
+  try {
+    const saved = (await settings.get()).windowBounds[window];
+    const primary = screen.getPrimaryDisplay();
+    const others = screen.getAllDisplays().filter((display) => display.id !== primary.id);
+    return placeWindow(saved, [primary, ...others].map((display) => display.workArea));
+  } catch (error) {
+    log.warn('Reading the saved window bounds failed', error);
+    return undefined;
+  }
+}
+
+/** Saves a window's bounds (not maximized or minimized ones) when it closes. */
+function rememberBounds(window: BrowserWindow, name: SettingsWindow) {
+  window.on('close', () => {
+    const bounds = window.getNormalBounds();
+    saveSetting((store) => store.setWindowBounds(name, bounds));
+  });
+}
+
+async function createControlWindow() {
+  const placement = await savedPlacement('control');
   controlWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1080, minHeight: 700,
+    ...placement,
     title: 'Régie JDR — Poste du MJ', backgroundColor: '#101217',
     webPreferences: secureWebPreferences('control')
   });
+  rememberBounds(controlWindow, 'control');
   if (process.env.VITE_DEV_SERVER_URL) {
     controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     controlWindow.webContents.openDevTools({ mode: 'detach' });
@@ -100,13 +142,17 @@ function createControlWindow() {
   }
 }
 
-function createBroadcastWindow() {
+async function createBroadcastWindow() {
+  if (broadcastWindow && !broadcastWindow.isDestroyed()) { broadcastWindow.focus(); return; }
+  const placement = await savedPlacement('broadcast');
+  // A second click while the bounds were being read: the first one opened it.
   if (broadcastWindow && !broadcastWindow.isDestroyed()) { broadcastWindow.focus(); return; }
   broadcastWindow = new BrowserWindow({
-    width: 1280, height: 720, title: 'Régie JDR — Diffusion',
+    width: 1280, height: 720, ...placement, title: 'Régie JDR — Diffusion',
     backgroundColor: '#08090c', autoHideMenuBar: true,
     webPreferences: secureWebPreferences('broadcast')
   });
+  rememberBounds(broadcastWindow, 'broadcast');
   broadcastWindow.setMenuBarVisibility(false);
   // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
   if (process.env.VITE_DEV_SERVER_URL) broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=stage`);
@@ -145,6 +191,8 @@ function startApp() {
   const storage = openStorage(app.getPath('userData'), {
     notify: (message) => { notices.push(message); log.warn(message); }
   });
+  const settingsStore = createSettingsStore(storage);
+  settings = settingsStore;
   const library = createMediaLibrary(storage);
   const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
@@ -169,7 +217,13 @@ function startApp() {
       'onAir:get': () => onAir.current(),
       'onAir:open-campaign': ({ campaignId }) => commands.openCampaign(campaignId),
       'onAir:close-campaign': () => commands.closeCampaign(),
-      'onAir:activate-scene': ({ sceneId }) => commands.activateScene(sceneId),
+      'onAir:activate-scene': async ({ sceneId }) => {
+        const state = await commands.activateScene(sceneId);
+        // Remembered for highlighting only: nothing goes on air after a restart.
+        const { campaignId } = state;
+        if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));
+        return state;
+      },
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
       'scenes:update': (scene) => commands.updateScene(scene),
@@ -188,14 +242,23 @@ function startApp() {
       'campaigns:list': () => storage.campaigns.list(),
       'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
-      'notices:take': () => notices.splice(0)
+      'notices:take': () => notices.splice(0),
+      'settings:get': () => settingsStore.get(),
+      'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme)
     },
     roleOf,
     log
   );
-  createControlWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createControlWindow(); });
+  void createControlWindow();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createControlWindow(); });
 }
+
+// Window bounds are saved as the windows close: finish those writes before quitting.
+app.on('will-quit', (event) => {
+  if (pendingWrites.size === 0) return;
+  event.preventDefault();
+  void Promise.allSettled([...pendingWrites]).then(() => app.quit());
+});
 
 // Only one app per data folder: a second launch hands over to the first and quits.
 if (app.requestSingleInstanceLock()) {

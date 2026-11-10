@@ -63,6 +63,8 @@ const bridge: ControlBridge = {
   createCampaign: (name) => invoke('campaigns:create', { name }),
   updateCampaign: (id, changes) => invoke('campaigns:update', { id, changes }),
   takeNotices: () => invoke('notices:take'),
+  getSettings: () => invoke('settings:get'),
+  setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);

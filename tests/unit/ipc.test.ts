@@ -260,3 +260,30 @@ describe('Scene channels', () => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });
 });
+
+describe('Settings channels', () => {
+  it('are for the Control window only', () => {
+    for (const [channel, args] of [
+      ['settings:get', []],
+      ['settings:set-theme', [{ theme: 'retro' }]],
+    ] as const) {
+      expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
+      expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
+    }
+  });
+
+  it('accept a known home theme, keeping only contract fields', () => {
+    expect(checkInvoke('settings:set-theme', 'control', [{ theme: 'fantasy', x: 1 }])).toEqual({
+      ok: true,
+      payload: { theme: 'fantasy' },
+    });
+  });
+
+  it.each([
+    ['an unknown theme', [{ theme: 'neon' }]],
+    ['no theme', [{}]],
+    ['a bare string', ['retro']],
+  ] as const)('reject %s', (_label, args) => {
+    expect(checkInvoke('settings:set-theme', 'control', [...args])).toMatchObject({ ok: false });
+  });
+});
