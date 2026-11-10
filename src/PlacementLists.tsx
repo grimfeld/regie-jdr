@@ -1,5 +1,5 @@
 import { useState, type DragEvent, type ReactNode } from 'react';
-import { Eye, EyeOff, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { SceneEdit } from '../shared/contract';
 import type { ImageMedia, MediaId, Scene } from '../shared/domain';
 import { BackgroundControls } from './BackgroundControls';
@@ -96,31 +96,53 @@ export function BackgroundList({ scene, images, onEdit, onDrop }: ListProps) {
 }
 
 /**
- * The Selected Scene's Overlays, back first (all above every Background), each with show/hide,
- * remove, and its Label. Dropping a library image here places it as an Overlay, whatever its Image category.
+ * The Selected Scene's Overlays, front first like the Backgrounds (all above every Background),
+ * each with show/hide, bring forward / send back among the Overlays, remove, and its Label.
+ * Dropping a library image here places it as an Overlay, whatever its Image category.
  */
 export function OverlayList({ scene, images, onEdit, onDrop }: ListProps) {
+  const count = scene.overlays.length;
+  const frontFirst = scene.overlays.map((overlay, index) => ({ overlay, index })).reverse();
   return (
     <PlacementList
       title="Superpositions"
       empty="Déposez une image ici pour l’ajouter en superposition."
       onDrop={onDrop}
     >
-      {scene.overlays.map((overlay) => (
-        <PlacementRow
-          key={overlay.id}
-          name={mediaName(images, overlay.mediaId)}
-          visible={overlay.visible}
-          onEdit={onEdit}
-          placementId={overlay.id}
-        >
-          <LabelControls
-            overlay={overlay}
-            name={mediaName(images, overlay.mediaId)}
+      {frontFirst.map(({ overlay, index }) => {
+        const name = mediaName(images, overlay.mediaId);
+        const moveTo = (toIndex: number) =>
+          onEdit({ kind: 'move-overlay', placementId: overlay.id, toIndex });
+        return (
+          <PlacementRow
+            key={overlay.id}
+            name={name}
+            visible={overlay.visible}
             onEdit={onEdit}
-          />
-        </PlacementRow>
-      ))}
+            placementId={overlay.id}
+          >
+            <button
+              className="placement-move"
+              aria-label={`Avancer ${name}`}
+              title={`Placer ${name} devant la superposition suivante`}
+              disabled={index >= count - 1}
+              onClick={() => moveTo(index + 1)}
+            >
+              <ArrowUp size={13} aria-hidden />
+            </button>
+            <button
+              className="placement-move"
+              aria-label={`Reculer ${name}`}
+              title={`Placer ${name} derrière la superposition précédente`}
+              disabled={index <= 0}
+              onClick={() => moveTo(index - 1)}
+            >
+              <ArrowDown size={13} aria-hidden />
+            </button>
+            <LabelControls overlay={overlay} name={name} onEdit={onEdit} />
+          </PlacementRow>
+        );
+      })}
     </PlacementList>
   );
 }

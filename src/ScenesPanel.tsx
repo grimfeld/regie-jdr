@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { Clapperboard, History, Pencil, Plus, Radio, Trash2 } from 'lucide-react';
 import type { CampaignId, ImageMedia, NormalizedPoint, Scene, SceneId } from '../shared/domain';
-import type { ControlBridge, SceneEdit } from '../shared/contract';
+import type { ControlBridge, OverlayTransform, SceneEdit } from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
@@ -12,6 +12,7 @@ import { SceneCanvas } from './SceneCanvas';
 import { SceneTitleField } from './PlayerTextFields';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
+import { useOverlayTransforms } from './useOverlayTransforms';
 
 interface Props {
   campaignId: CampaignId;
@@ -275,6 +276,11 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
           onRefreshImages={refreshImages}
           onEdit={(command) => edit(selected, command)}
           onEditShowingFailure={(command) => editShowingFailure(selected, command)}
+          onTransient={(transient) =>
+            control
+              ? control.showTransientEdit(campaignId, selected.id, transient)
+              : Promise.resolve()
+          }
           onDrop={(event, target, dropPoint) =>
             void placeDropped(selected, event, target, dropPoint)
           }
@@ -306,6 +312,8 @@ interface EditorProps {
   onEdit: (command: SceneEdit) => Promise<void>;
   /** Sends an edit; a failure is shown as a notice. */
   onEditShowingFailure: (command: SceneEdit) => void;
+  /** Shows a live drag's transient update on air (Active Scene only), unsaved. */
+  onTransient: (edit: OverlayTransform) => Promise<void>;
   /**
    * Something was dropped on the canvas (with the drop point, as canvas fractions) or on a
    * placement list. Read the event's data before awaiting anything.
@@ -320,11 +328,19 @@ interface EditorProps {
  * The editor of the Selected Scene: its name (rename), "EN DIRECT" when it is the Active
  * Scene, Activate and delete (after confirmation), its Scene title, its full composition drawn by the shared
  * renderer with Hidden placements in the GM-only style, and its Background and Overlay lists.
- * Library images dropped on the canvas or on a list are placed there.
+ * Library images dropped on the canvas or on a list are placed there. Overlays are moved,
+ * resized and nudged on the canvas (useOverlayTransforms).
  */
 function SceneEditor(props: EditorProps) {
   const { scene, images, active, onRefreshImages, onEdit, onEditShowingFailure, onDrop } = props;
   const canvasDrop = useDropTarget((event) => onDrop(event, 'canvas', canvasPoint(event)));
+  const transforms = useOverlayTransforms({
+    scene,
+    active,
+    onCommit: (command) =>
+      onEdit(command).catch((error: unknown) => showNotice(errorMessage(error))),
+    onTransient: props.onTransient,
+  });
   const [renameTo, setRenameTo] = useState<string | null>(null);
   const [renameError, setRenameError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -420,8 +436,21 @@ function SceneEditor(props: EditorProps) {
         </div>
       )}
 
-      <div className={`editor-canvas${canvasDrop.over ? ' drop-ready' : ''}`} {...canvasDrop.props}>
-        <SceneCanvas picture={editorPictureOf(scene, images)} window="control" />
+      <div
+        className={`editor-canvas${canvasDrop.over ? ' drop-ready' : ''}`}
+        role="group"
+        aria-label="Composition de la scène"
+        {...canvasDrop.props}
+        {...transforms.canvasProps}
+      >
+        <SceneCanvas
+          picture={editorPictureOf(transforms.scene, images)}
+          window="control"
+          editing={{
+            selectedOverlayId: transforms.selectedId,
+            onOverlayPointerDown: transforms.onOverlayPointerDown,
+          }}
+        />
       </div>
 
       <PlacementPicker

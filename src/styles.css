@@ -680,6 +680,31 @@ button {
   border: 1px solid var(--accent2);
   border-radius: 4px;
 }
+/* Overlays in the editor: picked and dragged with the pointer, resized by their handle. */
+.editor-canvas .canvas-overlay {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.editor-canvas .canvas-overlay.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.canvas-overlay-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 2px;
+}
+.editor-canvas:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
 /* Hidden placements and Labels, in the editor only: the Game Master sees them, faded. */
 .canvas-background.is-hidden,
 .canvas-overlay.is-hidden,
@@ -985,7 +1010,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 4px;
 }
-/* A Background's controls: its place in the stack, its fit, and its framing in Cover. */
+/* A placement's place in its stack (Backgrounds and Overlays); a Background's fit and framing. */
 .placement-move {
   padding: 4px 6px;
   color: var(--muted);
