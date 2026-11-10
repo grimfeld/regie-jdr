@@ -3,7 +3,7 @@ import { expect, test } from './harness';
 test('built app renders the Control window and opens the Broadcast window with no failed requests', async ({
   regie,
 }) => {
-  const { app, controlWindow, failedRequests } = regie;
+  const { app, controlWindow, failedRequests, cspViolations } = regie;
 
   await expect(controlWindow.getByText('POSTE DU MAÎTRE DU JEU')).toBeVisible();
 
@@ -18,6 +18,7 @@ test('built app renders the Control window and opens the Broadcast window with n
   );
 
   expect(failedRequests).toEqual([]);
+  expect(cspViolations).toEqual([]);
 });
 
 test('each test runs the app on its own temporary data folder', async ({ regie }) => {

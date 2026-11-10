@@ -85,3 +85,33 @@ test('the app can still navigate within its own pages', async ({ regie }) => {
   });
   await expect(controlWindow.getByText('SCÈNE EN COURS')).toBeVisible();
 });
+
+test('the content security policy blocks inline scripts and remote content in both windows', async ({
+  regie,
+}) => {
+  const { app, controlWindow, cspViolations } = regie;
+  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
+  expect(cspViolations).toEqual([]);
+
+  for (const page of [controlWindow, broadcastWindow]) {
+    const outcome = await page.evaluate(async () => {
+      const blocked: string[] = [];
+      document.addEventListener('securitypolicyviolation', (event) =>
+        blocked.push(event.effectiveDirective),
+      );
+      const inline = document.createElement('script');
+      inline.textContent = 'window.inlineScriptRan = true';
+      document.body.append(inline);
+      const remoteScript = document.createElement('script');
+      remoteScript.src = 'https://example.com/evil.js';
+      document.body.append(remoteScript);
+      const remoteImage = document.createElement('img');
+      remoteImage.src = 'https://example.com/tracker.png';
+      document.body.append(remoteImage);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const ran = (window as { inlineScriptRan?: boolean }).inlineScriptRan === true;
+      return { ran, blocked: [...new Set(blocked)].sort() };
+    });
+    expect(outcome).toEqual({ ran: false, blocked: ['img-src', 'script-src-elem'] });
+  }
+});
