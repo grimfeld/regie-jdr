@@ -4,6 +4,7 @@ import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { BroadcastBridge, CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
+import { MediaImage } from './MediaImage';
 import { MediaLibrary } from './MediaLibrary';
 import { showNotice } from './notices';
 
@@ -158,7 +159,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
           <div className="preview-frame">
             <div className="preview-topline"><span><span className="live-dot" /> APERÇU JOUEURS</span><span>16:9 · FENÊTRE INDÉPENDANTE</span></div>
             <div className="preview-scene">
-              {scene.background ? <img src={scene.background} alt="" /> : <div className="empty-scene"><Aperture size={42}/><strong>Aucun décor chargé</strong><span>Importez une image pour commencer votre scène.</span></div>}
+              {scene.background ? <MediaImage address={scene.background} alt="" window="control" /> : <div className="empty-scene"><Aperture size={42}/><strong>Aucun décor chargé</strong><span>Importez une image pour commencer votre scène.</span></div>}
               <div className="preview-title"><span>SCÈNE ACTIVE</span><h2>{scene.title}</h2></div>
             </div>
             <div className="scene-edit"><label>TITRE DE LA SCÈNE<input value={scene.title} onChange={e => updateScene({ ...scene, title: e.target.value })} /></label><label>DESCRIPTION<input value={scene.description} onChange={e => updateScene({ ...scene, description: e.target.value })} /></label></div>

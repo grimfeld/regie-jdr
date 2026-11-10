@@ -205,3 +205,25 @@ test('Media addresses serve only the Campaign media files, with their content ty
     missing: [404, null],
   });
 });
+
+test('a Media file deleted outside the app shows the missing placeholder in the Control window', async ({
+  regie,
+}) => {
+  const { app, controlWindow, dataDir, cspViolations } = regie;
+  await createCampaign(controlWindow);
+  await stubFilePicker(app, [fixture('red-16x9.png')]);
+  await importImages(controlWindow);
+  await expect(mediaItem(controlWindow, 'red-16x9').getByRole('img')).toBeVisible();
+
+  const [campaignId] = await fs.readdir(path.join(dataDir, 'campaigns'));
+  const mediaFolder = path.join(dataDir, 'campaigns', campaignId, 'media');
+  for (const file of await fs.readdir(mediaFolder)) await fs.rm(path.join(mediaFolder, file));
+  await controlWindow.reload();
+
+  const item = mediaItem(controlWindow, 'red-16x9');
+  await expect(item.getByRole('img', { name: 'Média manquant : red-16x9' })).toBeVisible();
+  await expect(item).toContainText('Média manquant');
+  // No <img> left to show a broken-image icon.
+  await expect(item.locator('img')).toHaveCount(0);
+  expect(cspViolations).toEqual([]);
+});
