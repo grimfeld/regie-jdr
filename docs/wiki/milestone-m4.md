@@ -34,3 +34,4 @@ Read first: ADR-0005 (Campaign export as plain zip), [carry-forward](carry-forwa
 - 2026-11-12: #70 Chapters merged at `ff0a117` (1426 unit, 204 app tests).
 - 2026-11-12: #71 remapping merged at `e4c0257` (1471 unit, 206 app tests). Every M4 agent slice done; closeout and review running.
 - 2026-11-12: M4 closeout merged at `2491f70` (1480 unit, 214 app tests). Fields: one zero-specificity base rule in `src/styles.css` themes every field (Fondus, Scene title, Label, Transition were system grey); `tests/app/theme-fields.spec.ts` checks every visible field in all three themes. Top bar fits at 1080 px with ~60 px spare (`tests/app/topbar.spec.ts`). Chapters: `src/optimisticSaves.ts` shows one French notice per failure burst and re-reads the saved order once in-flight moves settle. Import refuses with sizes in French when free space (`fs.statfs`) is short.
+- 2026-11-12: M4 review fixes merged at `b171400`. M4 complete; PR next.
