@@ -37,3 +37,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - 2026-11-12: #40 Silence merged at `310287b` (733 unit, 124 app tests).
 - 2026-11-12: M1 fix `9a0c2ab` (framing slider after undo) merged forward, clean merge; gates run by the next slice.
 - 2026-11-12: #38 Activate fades merged at `1808490` (126 app tests). Ran gates after the M1 fix merge-forward.
+- 2026-11-12: #41 shortcuts merged at `2879653` (753 unit, 128 app tests). See [shortcuts](subsystem-keyboard-shortcuts.md). Silence key S is the agent's choice: flag in PR.
