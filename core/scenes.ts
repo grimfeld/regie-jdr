@@ -116,6 +116,7 @@ async function moveOldRecoveredNotes(folder: string): Promise<void> {
     if (!taken) await fsp.rename(path.join(folder, name), target);
   }
 }
+
 const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain'];
 
 // Parsing ------------------------------------------------------------------
