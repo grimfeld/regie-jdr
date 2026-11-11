@@ -17,6 +17,8 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 
 ## Follow-ups to clear before the M3 PR
 
+- Notes editor restarts (losing Notes undo) after any Media delete touching Notes, even when the open Scene was untouched; restart only when the open Scene changed. Source: #54 report.
+
 - A Notes save pending under 500 ms is lost if the app quits then; flush on quit. Source: #51 report.
 - Merge-forward from M2: scenes schema versions/migrations may conflict if M2 bumps the scenes schema; harness helpers duplicated with M2 closeout. Source: #51 report.
 - 2026-11-12: #46 running order merged at `1a54d3e` (805 unit, 134 app tests). No migration needed (already creation order). Gap: no keyboard reorder.
@@ -26,3 +28,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: #53 Notes image size merged at `828f354` (907 unit, 152 app tests).
 - 2026-11-12: #48 Crossfade merged at `5258baf` (930 unit, 155 app tests). Manual check: how the dissolve feels, large-image frames.
 - 2026-11-12: M2 CI fixed at `65e6049` (real slider-draft race; see [flaky tests](problem-flaky-app-tests.md)); #75 CI green. Backport to M1 #74 and merge-forward to M3 in progress.
+- 2026-11-12: #54 Notes images as uses merged at `6701986` (941 unit, 157 app tests). Gap: Notes undo lost for untouched open Scene after a delete touching other Notes.

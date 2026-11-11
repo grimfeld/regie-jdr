@@ -22,3 +22,9 @@ Source: #51 report, 2026-11-12. True as of `m3-transitions-closeout@30645d0`. De
 - Corner handle (bottom-right) drags with locked aspect, written once on release (one Notes undo step); arrows on the handle resize by 5 %. Width is relative to the containing block. Duplicate copies it.
 - Double-click opens a modal `<dialog>` in the Control window body; nothing reaches the Broadcast window (tested).
 - Gotcha: the handle must stay an empty `<button>`: TipTap's `NodeView.stopEvent` leaves button events to the node view, and cancelling mousedown stops ProseMirror from dragging the node away (commit `828f354`).
+
+## Notes images as Media uses (#54, 2026-11-12, `6701986`)
+
+- `MediaDeletion.affectedNotes` beside `affectedPads`; dialog lists "Notes concernées". Confirming removes those images (`removeMediaPlacements` renamed `removeMediaUses`); an emptied quote/Notes gets one empty paragraph.
+- Undo: Scene histories cleared only for Scenes that placed the Media. To stop TipTap undo resurrecting a deleted image, the Notes editor restarts on cleaned Notes (`notesRevision`) and saving Notes drops images whose Media is gone.
+- Gap: after such a delete the Notes editor restarts even for an untouched open Scene, losing its Notes undo history.
