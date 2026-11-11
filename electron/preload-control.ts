@@ -92,6 +92,8 @@ const bridge: ControlBridge = {
   getSoundboard: (campaignId) => invoke('soundboard:get', { campaignId }),
   editSoundboard: (campaignId, edit) => invoke('soundboard:edit', { campaignId, edit }),
   pressPad: (campaignId, padId) => invoke('soundboard:press', { campaignId, padId }),
+  showSoundboardTransient: (campaignId, edit) =>
+    invoke('soundboard:show-transient', { campaignId, edit }),
   pickMusic: (mediaId) => invoke('audio:pick-music', { mediaId }),
   setMusicPlayback: (playback) => invoke('audio:set-music-playback', { playback }),
 };

@@ -1220,39 +1220,11 @@ button {
   align-items: center;
   gap: 6px;
 }
-/* The Scene's Ambience level, and each Ambience's own volume on a line under it. */
-.ambience-volume {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--muted);
-}
-/* The Ambience level sits on the heading's line, so the list is no taller than the Music's. */
-.scene-ambiences-heading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.scene-ambiences-heading h4 {
-  margin: 0;
-}
-.scene-ambiences-heading .ambience-volume {
-  flex: 1;
-}
-.scene-ambiences li .ambience-volume {
+/* Each Ambience's own volume, on a line under its name. */
+.scene-ambiences li .level-slider {
   order: 1;
   flex-basis: 100%;
   padding-left: 22px;
-}
-.ambience-volume input {
-  flex: 1;
-  min-width: 0;
-}
-.ambience-volume output {
-  min-width: 4ch;
-  text-align: right;
 }
 
 /* Soundboard ("Table de bruitages"): one pad per Sound effect, lit while it sounds. */
@@ -1307,18 +1279,10 @@ button {
   flex: 1;
   min-width: 0;
 }
-.soundboard-level {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.soundboard .level-slider {
   font-size: 12px;
-  color: var(--muted);
 }
-.soundboard-level input {
-  flex: 1;
-  min-width: 0;
-}
-.soundboard-pad-controls .soundboard-level {
+.soundboard-pad-controls .level-slider {
   flex: 1;
 }
 .music-pick {
@@ -1335,19 +1299,20 @@ button {
 .music-pick:hover {
   text-decoration: underline;
 }
-/* The Music level sits on the heading's line, like the Ambience level. */
-.scene-music-heading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* A list's heading, with the Scene's Music or Ambience level on its own line under it. */
+.scene-music-heading,
+.scene-ambiences-heading {
+  display: grid;
+  gap: 4px;
   margin-bottom: 8px;
 }
-.scene-music-heading h4 {
+.scene-music-heading h4,
+.scene-ambiences-heading h4 {
   margin: 0;
 }
+/* Every level slider (src/LevelSlider.tsx): label, range, value in percent. */
 .level-slider {
   display: flex;
-  flex: 1;
   align-items: center;
   gap: 8px;
   font-size: 11px;

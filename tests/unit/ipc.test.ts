@@ -366,6 +366,19 @@ describe('Scene channels', () => {
       ok: true,
       payload: level,
     });
+    const ambienceLevel = { ...transient, edit: { kind: 'set-ambience-level', level: 0.5 } };
+    expect(checkInvoke('scenes:show-transient', 'control', [ambienceLevel])).toEqual({
+      ok: true,
+      payload: ambienceLevel,
+    });
+    const volume = {
+      ...transient,
+      edit: { kind: 'set-ambience-volume', mediaId: 'm1', volume: 0.5 },
+    };
+    expect(checkInvoke('scenes:show-transient', 'control', [volume])).toEqual({
+      ok: true,
+      payload: volume,
+    });
   });
 
   it('accept an edit command, keeping only contract fields', () => {
@@ -563,6 +576,10 @@ describe('Soundboard payload guards', () => {
       ['soundboard:get', [{ campaignId: 'star-wars' }]],
       ['soundboard:edit', [{ campaignId: 'star-wars', edit: { kind: 'remove-pad', padId: 'p' } }]],
       ['soundboard:press', [{ campaignId: 'star-wars', padId: 'p' }]],
+      [
+        'soundboard:show-transient',
+        [{ campaignId: 'star-wars', edit: { kind: 'set-level', volume: 0 } }],
+      ],
       ['audio:report-pads', [{ voices: [], upTo: 0 }]],
     ] as const) {
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
@@ -583,6 +600,20 @@ describe('Soundboard payload guards', () => {
       checkInvoke('soundboard:press', 'control', [{ campaignId: 'star-wars', padId: 'p', x: 1 }]),
     ).toEqual({ ok: true, payload: { campaignId: 'star-wars', padId: 'p' } });
     expect(
+      checkInvoke('soundboard:show-transient', 'control', [
+        {
+          campaignId: 'star-wars',
+          edit: { kind: 'set-pad-volume', padId: 'p', volume: 0.5, x: 1 },
+        },
+      ]),
+    ).toEqual({
+      ok: true,
+      payload: {
+        campaignId: 'star-wars',
+        edit: { kind: 'set-pad-volume', padId: 'p', volume: 0.5 },
+      },
+    });
+    expect(
       checkInvoke('audio:report-pads', 'control', [
         { voices: [{ voiceId: 2, state: 'playing', src: 'x' }], upTo: 2, extra: 1 },
       ]),
@@ -597,6 +628,11 @@ describe('Soundboard payload guards', () => {
       [{ campaignId: 'star-wars', edit: { kind: 'set-pad-volume', padId: 'p', volume: 2 } }],
     ],
     ['a press with no pad', 'soundboard:press', [{ campaignId: 'star-wars' }]],
+    [
+      'a transient update that is not a level',
+      'soundboard:show-transient',
+      [{ campaignId: 'star-wars', edit: { kind: 'remove-pad', padId: 'p' } }],
+    ],
     ['a pad report with no upTo', 'audio:report-pads', [{ voices: [] }]],
   ] as const)('reject %s', (_case, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });

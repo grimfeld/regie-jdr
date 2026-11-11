@@ -19,6 +19,7 @@ import type {
   Payload,
   SceneEdit,
   SoundboardEdit,
+  SoundboardLevel,
   TransientEdit,
 } from '../shared/contract.js';
 import path from 'node:path';
@@ -162,6 +163,17 @@ function soundboardEdit(value: unknown): Parsed<{ campaignId: CampaignId; edit: 
   if (campaign === INVALID || !isRecord(value)) return INVALID;
   const edit = parseSoundboardEdit(value.edit);
   return edit ? { ...campaign, edit } : INVALID;
+}
+
+function soundboardLevel(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; edit: SoundboardLevel }> {
+  const parsed = soundboardEdit(value);
+  if (parsed === INVALID) return INVALID;
+  const { campaignId, edit } = parsed;
+  return edit.kind === 'set-level' || edit.kind === 'set-pad-volume'
+    ? { campaignId, edit }
+    : INVALID;
 }
 
 function padPress(value: unknown): Parsed<{ campaignId: CampaignId; padId: string }> {
@@ -333,6 +345,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'soundboard:get': { from: controlOnly, parse: onePayload(campaignOf) },
   'soundboard:edit': { from: controlOnly, parse: onePayload(soundboardEdit) },
   'soundboard:press': { from: controlOnly, parse: onePayload(padPress) },
+  'soundboard:show-transient': { from: controlOnly, parse: onePayload(soundboardLevel) },
   'audio:pick-music': { from: controlOnly, parse: onePayload(musicPick) },
   'audio:set-music-playback': { from: controlOnly, parse: onePayload(musicPlayback) },
 };

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Trash2, Waves } from 'lucide-react';
 import type { DragEvent } from 'react';
-import type { SceneEdit } from '../shared/contract';
+import type { AmbienceLevel, SceneEdit } from '../shared/contract';
 import type { AudioMedia, MediaId, Scene } from '../shared/domain';
+import { LevelSlider, useTransientSender } from './LevelSlider';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { useDropTarget } from './PlacementLists';
@@ -10,18 +11,35 @@ import { useDropTarget } from './PlacementLists';
 /**
  * The Selected Scene's Ambiences and its Ambience level. Dropping an Ambience from the library
  * adds it, switched off; each can be switched on or off, given its own volume, or removed. On
- * the Active Scene every change is heard at once; on any other Scene it is only saved. Each
- * change is one Scene edit (a slider sends it once released), so undo takes it back in one step.
+ * the Active Scene every change is heard at once, a slider while it is dragged; on any other
+ * Scene it is only saved. Each change is one Scene edit (a slider sends it once released), so
+ * undo takes it back in one step.
  */
 export function SceneAmbienceList(props: {
   scene: Scene;
   sounds: readonly AudioMedia[];
+  /** Whether the Scene is the Active Scene: its levels are heard while dragged. */
+  active: boolean;
   /** An Ambience was dropped here: add it to the Scene. */
   onAdd: (mediaId: MediaId) => void;
   /** Sends an edit; a failure is shown as a notice. */
   onEdit: (command: SceneEdit) => void;
+  /** Makes a level or volume being dragged heard on air (Active Scene only), unsaved. */
+  onTransient: (edit: AmbienceLevel) => Promise<void>;
 }) {
-  const { scene, sounds, onAdd, onEdit } = props;
+  const { scene, sounds, active, onAdd, onEdit, onTransient } = props;
+  /** The sender of the sliders' transient updates, created on first use (in an event). */
+  const live = useTransientSender(onTransient);
+  /** A slider's value: heard while dragged on the Active Scene, saved once released. */
+  const sliderOf = (edit: (level: number) => AmbienceLevel) => ({
+    onLive: (level: number) => {
+      if (active) live().push(edit(level));
+    },
+    onCommit: (level: number) => {
+      live().drop();
+      onEdit(edit(level));
+    },
+  });
   const drop = useDropTarget(
     (event: DragEvent<HTMLElement>) => {
       const mediaId = droppedAudioId(event, 'ambience');
@@ -43,11 +61,11 @@ export function SceneAmbienceList(props: {
     >
       <div className="scene-ambiences-heading">
         <h4>Ambiances</h4>
-        <VolumeSlider
+        <LevelSlider
           label="Niveau"
           accessibleName="Niveau des ambiances"
           value={scene.volumes.ambience}
-          onCommit={(level) => onEdit({ kind: 'set-ambience-level', level })}
+          {...sliderOf((level) => ({ kind: 'set-ambience-level', level }))}
         />
       </div>
       <ul aria-label="Ambiances">
@@ -77,11 +95,11 @@ export function SceneAmbienceList(props: {
               >
                 <Trash2 size={13} aria-hidden />
               </button>
-              <VolumeSlider
+              <LevelSlider
                 label="Volume"
                 accessibleName={`Volume de ${name}`}
                 value={volume}
-                onCommit={(next) => onEdit({ kind: 'set-ambience-volume', mediaId, volume: next })}
+                {...sliderOf((level) => ({ kind: 'set-ambience-volume', mediaId, volume: level }))}
               />
             </li>
           );
@@ -91,59 +109,5 @@ export function SceneAmbienceList(props: {
         <p className="placement-empty">Déposez une ambiance ici pour l’ajouter à la scène.</p>
       )}
     </div>
-  );
-}
-
-/**
- * A volume slider in percent that follows the pointer or the arrow keys and commits its value
- * (0..1) once released (pointer up, key up, or leaving it), so a whole drag is one edit. Until
- * the saved value changes, it keeps showing the value it committed.
- */
-function VolumeSlider(props: {
-  label: string;
-  /** The slider's accessible name when `label` alone is not enough. */
-  accessibleName?: string;
-  /** The saved volume, 0..1. */
-  value: number;
-  onCommit: (value: number) => void;
-}) {
-  const { label, accessibleName = label, value, onCommit } = props;
-  const saved = Math.round(value * 100);
-  // The percent being chosen and whether it was sent; dropped once the saved value changes
-  // (the committed value saved, an undo), so a later return to an old value never revives it.
-  const [draft, setDraft] = useState<{ shown: number; sent: boolean }>();
-  const [savedSeen, setSavedSeen] = useState(saved);
-  if (savedSeen !== saved) {
-    setSavedSeen(saved);
-    setDraft(undefined);
-  }
-  const current = savedSeen === saved ? draft : undefined;
-  const shown = current ? current.shown : saved;
-  const commit = () => {
-    if (!current || current.sent) return;
-    if (current.shown === saved) {
-      setDraft(undefined);
-      return;
-    }
-    setDraft({ ...current, sent: true });
-    onCommit(current.shown / 100);
-  };
-  return (
-    <label className="ambience-volume">
-      <span>{label}</span>
-      <input
-        type="range"
-        aria-label={accessibleName}
-        min={0}
-        max={100}
-        step={1}
-        value={shown}
-        onChange={(e) => setDraft({ shown: Number(e.target.value), sent: false })}
-        onPointerUp={commit}
-        onKeyUp={commit}
-        onBlur={commit}
-      />
-      <output>{shown} %</output>
-    </label>
   );
 }

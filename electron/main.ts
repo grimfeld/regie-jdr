@@ -488,6 +488,10 @@ function startApp() {
         const { masterVolume } = await settingsStore.get();
         sendPadCommands(padVoices.press(await soundboards.press(campaignId, padId, masterVolume)));
       },
+      // A level slider being dragged: heard on the pads sounding, never saved.
+      'soundboard:show-transient': async ({ campaignId, edit }) => {
+        if (onAir.current().campaignId === campaignId) await retunePads(edit);
+      },
       'audio:pick-music': ({ mediaId }) => commands.pickMusic(mediaId),
       'audio:set-music-playback': ({ playback }) => commands.setMusicPlayback(playback),
     },

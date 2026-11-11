@@ -136,6 +136,15 @@ export type SoundboardEdit =
   | { kind: 'set-level'; volume: number };
 
 /**
+ * A Soundboard level or pad volume being dragged: the pad sounds still sounding take it at
+ * once, nothing is saved. The drag ends with the same edit through `soundboard:edit`.
+ */
+export type SoundboardLevel = Extract<
+  SoundboardEdit,
+  { kind: 'set-level' } | { kind: 'set-pad-volume' }
+>;
+
+/**
  * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
  * never saved. The drag's end is sent as the same edit through `scenes:edit`.
  */
@@ -147,12 +156,18 @@ export type BackgroundFraming = Extract<SceneEdit, { kind: 'frame-background' }>
 /** A Scene's Music level being dragged: heard on the Active Scene, never saved. */
 export type MusicLevel = Extract<SceneEdit, { kind: 'set-music-level' }>;
 
+/** A Scene's Ambience level or one Ambience's volume being dragged: heard like a MusicLevel. */
+export type AmbienceLevel = Extract<
+  SceneEdit,
+  { kind: 'set-ambience-level' } | { kind: 'set-ambience-volume' }
+>;
+
 /**
  * A transient update of a live drag (an Overlay moved or resized, a framing or level slider
  * dragged): shown or heard on the Active Scene, never saved nor undoable. The drag's end is
  * sent as the same edit through `scenes:edit`, one undo step.
  */
-export type TransientEdit = OverlayTransform | BackgroundFraming | MusicLevel;
+export type TransientEdit = OverlayTransform | BackgroundFraming | MusicLevel | AmbienceLevel;
 
 /**
  * What can be undone and redone on a Scene: the French label of the next undo and of the next
@@ -340,6 +355,14 @@ export interface InvokeChannels {
    * sounds, with or without an Active Scene. Fails for another Campaign than the open one.
    */
   'soundboard:press': { payload: { campaignId: CampaignId; padId: string }; result: void };
+  /**
+   * Make a Soundboard level or pad volume being dragged heard on the pad sounds still sounding
+   * (open Campaign only; ignored for another). Never saved.
+   */
+  'soundboard:show-transient': {
+    payload: { campaignId: CampaignId; edit: SoundboardLevel };
+    result: void;
+  };
   /** What is sounding, for the "En cours" strip. */
   'audio:get-sounding': { payload: void; result: AudioSounding };
   /**
@@ -473,6 +496,7 @@ export interface ControlBridge extends BroadcastBridge {
   getSoundboard(campaignId: CampaignId): Promise<Soundboard>;
   editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   pressPad(campaignId: CampaignId, padId: string): Promise<void>;
+  showSoundboardTransient(campaignId: CampaignId, edit: SoundboardLevel): Promise<void>;
   onSoundingChanged(listener: (sounding: AudioSounding) => void): Unsubscribe;
   pickMusic(mediaId: MediaId): Promise<void>;
   setMusicPlayback(playback: MusicPlayback): Promise<void>;

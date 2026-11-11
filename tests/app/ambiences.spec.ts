@@ -192,14 +192,17 @@ test('Ambience volumes compose with Master; a slider drag is one undo step; remo
   await expect(undoButton(page)).toHaveText('Annuler : régler le niveau des ambiances');
   await expect.poll(() => gainOf(page, 'Pluie')).toBeCloseTo(0.2, 5);
 
-  // A mouse drag of the Ambience's own volume: one edit, on release.
+  // A mouse drag of the Ambience's own volume: heard while held, one edit on release.
   const volume = ambience(page, 'Pluie').getByRole('slider', { name: 'Volume de Pluie' });
+  await volume.scrollIntoViewIfNeeded();
   const box = await volume.boundingBox();
   if (!box) throw new Error('The volume slider is not shown.');
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + box.width - 2, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2, y, { steps: 8 });
+  await expect.poll(() => gainOf(page, 'Pluie')).toBeLessThan(0.16);
+  await expect(undoButton(page)).toHaveText('Annuler : régler le niveau des ambiances');
   await page.mouse.up();
   await expect(undoButton(page)).toHaveText('Annuler : régler le volume de l’ambiance Pluie');
   const percent = Number(await volume.inputValue());

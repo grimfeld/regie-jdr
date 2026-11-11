@@ -61,7 +61,7 @@ export interface OnAirCommands {
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   /**
    * Shows a transient update of a live drag (a move or resize of an Overlay, a framing slider
-   * of a Background, a Music level slider): on the Active Scene, the broadcast shows (or the
+   * of a Background, a Music or Ambience level or an Ambience volume slider): on the Active Scene, the broadcast shows (or the
    * mix plays) the saved Scene with `edit` applied; nothing is saved and no undo step is
    * recorded. On any other Scene it does nothing. The drag ends with the same edit through
    * `editScene`, which saves it as one step; if that fails, the Scene as saved goes back on air.
@@ -320,7 +320,9 @@ export function createOnAirCommands(deps: {
           case 'frame-background':
             onAir.showActiveScene(sceneId, await picture(shown));
             return;
-          case 'set-music-level': {
+          case 'set-music-level':
+          case 'set-ambience-level':
+          case 'set-ambience-volume': {
             const media = await library.list(campaignId);
             audio.showActiveScene(shown, media, 'volume', await missingAudio(shown, media));
             return;
