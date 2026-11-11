@@ -22,6 +22,7 @@ import { MAX_NOTES_SIZE, parseNotes } from '../core/notes';
 import { errorMessage } from './CampaignList';
 import { libraryImageOf } from './mediaDrag';
 import { NotesImage, NotesImagesContext } from './NotesImage';
+import { NotesDepthLimit } from './notesDepth';
 import { showNotice } from './notices';
 
 /** How long after the last change the Notes are saved. Leaving the editor saves at once. */
@@ -40,12 +41,13 @@ export type NotesImageSource =
 /**
  * The Notes editor's content: exactly what core/notes.ts allows, nothing else. ProseMirror
  * keeps only content its schema knows, so a paste of links, tables or colours keeps just their
- * text in allowed blocks; an image is a Media of the library (src/NotesImage.tsx).
+ * text in allowed blocks; an image is a Media of the library (src/NotesImage.tsx). Nesting stops
+ * at the depth the Notes may be saved with (src/notesDepth.ts).
  *
  * StarterKit v3 options: https://tiptap.dev/docs/editor/extensions/functionality/starterkit
  * Task lists: https://tiptap.dev/docs/editor/extensions/nodes/task-list
  */
-const EXTENSIONS = [
+export const NOTES_EXTENSIONS = [
   StarterKit.configure({
     heading: { levels: [1, 2] },
     code: false,
@@ -64,6 +66,7 @@ const EXTENSIONS = [
     },
   }),
   NotesImage,
+  NotesDepthLimit,
 ];
 
 /**
@@ -137,7 +140,7 @@ export function SceneNotes(props: {
   );
 
   const editor = useEditor({
-    extensions: EXTENSIONS,
+    extensions: NOTES_EXTENSIONS,
     content: props.notes,
     // The window's Content Security Policy refuses injected <style> elements: the editor's base
     // styles are in styles.css instead.
