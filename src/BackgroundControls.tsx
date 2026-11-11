@@ -141,6 +141,9 @@ function FramingSlider(props: {
   const { label, name, value, min, max, step, onLive, onRelease } = props;
   // The value being chosen, the saved value it was chosen from, and whether it was sent.
   const [draft, setDraft] = useState<{ shown: number; from: number; sent: boolean }>();
+  // Once the saved value changes (the commit saved, an undo), the draft is over for good: an
+  // undo back to the value it started from must not bring it back.
+  if (draft && draft.from !== value) setDraft(undefined);
   const current = draft?.from === value ? draft : undefined;
   const commit = () => {
     if (!current || current.sent) return;
