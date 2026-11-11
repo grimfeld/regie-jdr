@@ -8,3 +8,11 @@
 - Broadcast window asserted to carry no `data-theme`.
 - Hooks: #66–#68 edit only their own theme file (`--texture`, `--frame`, `--font-*`, `--radius*`); #65 sample cards use `data-theme` like the swatches, then delete `--swatch-dark`/`--swatch-light`. New text/surface pairs must be added to the contrast test's lists.
 - Left literal: radii 2/3/5/6/8 px; `backgroundColor` in `electron/main.ts` (painted before page load).
+
+## Rétro SF (#66, 2026-11-12, `6521557`)
+
+- `src/themes/retro.css`: near-black green page, thin bright green borders, small radii, phosphor glow, static scanlines (`--texture`, page background only), blinking `_` after "RÉGIE JDR" (off under reduced motion). Also sets `color-scheme: dark` and `accent-color`, and styles `.brand strong` (ties the theme to two class names).
+- Font: Share Tech Mono (display only), local Latin-subset woff2 in `src/themes/fonts/`, SIL OFL 1.1, from Fontsource 5.3.0; licence text beside it. Body text stays Arial for long reading.
+- Assets register `docs/theme-assets.md` with a review checklist; #67/#68 add rows.
+- Tests `tests/app/retro-theme.spec.ts` (font loads with no CSP violation; scanlines off panels; cursor stops under reduced motion), failed against the old theme.
+- Screenshots live outside worktrees (Playwright wipes `test-results/`): scratchpad `shots/`. Chief of staff looked at `retro-campaign-after.png` on 2026-11-12: readable, top bar fits at ~1420 px.
