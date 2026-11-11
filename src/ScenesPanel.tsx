@@ -125,8 +125,8 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
    */
   async function edit(scene: Scene, command: SceneEdit) {
     if (command.kind === 'set-visible' || command.kind === 'set-label-visible') {
-      const preview = applySceneEdit(scene, command, () => '');
-      setScenes((current) => current.map((item) => (item.id === scene.id ? preview : item)));
+      const shownAtOnce = applySceneEdit(scene, command, () => '');
+      setScenes((current) => current.map((item) => (item.id === scene.id ? shownAtOnce : item)));
     }
     if (!control) return;
     try {
