@@ -197,6 +197,72 @@ describe('openZipArchive', () => {
     });
   });
 
+  /** A closed Campaign in `source` holding one Media of `size` bytes, as Export reads it. */
+  async function bigCampaign(size: number) {
+    const source = path.join(dir.path, 'source');
+    const content = Buffer.alloc(size, 9);
+    const hash = createHash('sha256').update(content).digest('hex');
+    await fs.mkdir(path.join(source, 'media'), { recursive: true });
+    await fs.writeFile(path.join(source, 'campaign.json'), CAMPAIGN);
+    await fs.writeFile(path.join(source, 'media', `${hash}.ogg`), content);
+    return { source, media: [{ contentHash: hash, extension: '.ogg' }] };
+  }
+
+  it('leaves no file at the chosen place when an Export is cancelled mid-stream', async () => {
+    const { source, media } = await bigCampaign(16 * 1024 * 1024);
+    const out = path.join(dir.path, 'out');
+    await fs.mkdir(out);
+    const controller = new AbortController();
+    let lastDone = 0;
+
+    await expect(
+      exportCampaign({
+        campaignFolder: source,
+        campaignName: 'Les Ombres',
+        media,
+        appVersion: '0.1.0',
+        writeArchive: writeZipArchive(path.join(out, 'Les Ombres.zip')),
+        signal: controller.signal,
+        onProgress: ({ doneBytes, totalBytes }) => {
+          lastDone = doneBytes;
+          // Past the documents, partway through the Media file.
+          if (doneBytes > 1024 * 1024 && doneBytes < totalBytes) controller.abort();
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(lastDone).toBeLessThan(16 * 1024 * 1024);
+    expect(await fs.readdir(out)).toEqual([]);
+  });
+
+  it('leaves no folder and no Campaign when an Import is cancelled mid-stream', async () => {
+    const { source, media } = await bigCampaign(16 * 1024 * 1024);
+    const zip = path.join(dir.path, 'Les Ombres.zip');
+    await exportCampaign({
+      campaignFolder: source,
+      campaignName: 'Les Ombres',
+      media,
+      appVersion: '0.1.0',
+      writeArchive: writeZipArchive(zip),
+    });
+    const controller = new AbortController();
+
+    await expect(
+      importCampaign({
+        openArchive: openZipArchive(zip),
+        ...folders(),
+        existingNames: [],
+        signal: controller.signal,
+        onProgress: ({ doneBytes, totalBytes }) => {
+          if (doneBytes > 0 && doneBytes < totalBytes) controller.abort();
+        },
+      }),
+    ).rejects.toThrow();
+
+    const left = await fs.readdir(path.join(dir.path, 'data'), { recursive: true });
+    expect(left.sort()).toEqual(['imports']);
+  });
+
   const UNREADABLE = /n’a pas pu être lu/;
   const REFUSED = /fichier non autorisé/;
 
