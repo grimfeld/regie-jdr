@@ -632,15 +632,25 @@ describe('on-air commands', () => {
       expect(await undo()).toEqual(placed);
     });
 
-    it('merges quick moves of one Overlay (a nudge burst) into one step', async () => {
+    it('keeps a drag and a resize of one Overlay as two steps, however quick', async () => {
       const ctx = await setup();
       const { placed, edit, undo, state } = await editing(ctx);
-      for (const x of [0.51, 0.52, 0.53]) {
-        await edit({ kind: 'transform-overlay', placementId: 'p1', position: { x } });
-      }
+      const moved = await edit({
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.4, y: 0.5 },
+      });
+      await edit({
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.4, y: 0.5 },
+        height: 0.3,
+      });
+      expect((await state()).undo).toBe('redimensionner Cantina');
 
+      expect(await undo()).toEqual(moved);
+      expect((await state()).undo).toBe('déplacer Cantina');
       expect(await undo()).toEqual(placed);
-      expect((await state()).undo).toBe('placer Cantina en superposition');
     });
 
     it('refuses to undo or redo with nothing to, in French', async () => {

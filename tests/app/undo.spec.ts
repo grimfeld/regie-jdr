@@ -130,6 +130,53 @@ test('undo and redo on the Active Scene change the broadcast at once; a drag und
   await expect(undoButton(page)).toHaveText(`Annuler : afficher ${IMAGE}`);
 });
 
+/** Presses the mouse on `target`'s centre, moves it by fractions of the canvas, releases it. */
+async function dragBy(page: Page, target: Locator, dx: number, dy: number) {
+  const stage = await editor(page).locator('.scene-canvas-stage').boundingBox();
+  const box = await target.boundingBox();
+  if (!stage || !box) throw new Error('The canvas or the target is not shown.');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    box.x + box.width / 2 + dx * stage.width,
+    box.y + box.height / 2 + dy * stage.height,
+    {
+      steps: 4,
+    },
+  );
+  await page.mouse.up();
+}
+
+test('a burst of arrow-key nudges undoes as one step; a drag then a quick resize are two', async ({
+  regie,
+}) => {
+  const { controlWindow: page } = regie;
+  await sceneWithImage(regie, 'Cantina');
+  await editor(page).getByLabel('Image à placer').selectOption({ label: IMAGE });
+  await editor(page).getByRole('button', { name: 'Ajouter en superposition' }).click();
+  const canvas = editor(page).locator('.editor-canvas');
+  const overlay = canvas.locator('.canvas-overlay');
+  await expect(canvas.locator('.canvas-overlay img:not([hidden])')).toHaveCount(1);
+
+  await overlay.click();
+  await expect(overlay).toHaveClass(/is-selected/);
+  await canvas.press('ArrowLeft');
+  await canvas.press('ArrowLeft');
+  await canvas.press('ArrowLeft');
+  await expect(undoButton(page)).toHaveText(`Annuler : déplacer ${IMAGE}`);
+  await undoButton(page).click();
+  await expect(undoButton(page)).toHaveText(`Annuler : placer ${IMAGE} en superposition`);
+  await expect.poll(async () => (await centreOn(canvas, overlay)).x).toBeCloseTo(0.5, 3);
+
+  // Two gestures, one right after the other: each is its own step.
+  await dragBy(page, overlay, -0.2, 0);
+  await dragBy(page, overlay.locator('.canvas-overlay-handle'), -0.05, -0.05);
+  await expect(undoButton(page)).toHaveText(`Annuler : redimensionner ${IMAGE}`);
+  await undoButton(page).click();
+  await expect(undoButton(page)).toHaveText(`Annuler : déplacer ${IMAGE}`);
+  await expect.poll(async () => (await centreOn(canvas, overlay)).x).toBeCloseTo(0.3, 2);
+});
+
 test('Ctrl+Z while typing in a field undoes the typing, not a Scene edit', async ({ regie }) => {
   const { controlWindow: page } = regie;
   await sceneWithImage(regie, 'Cantina');

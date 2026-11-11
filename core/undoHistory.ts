@@ -6,6 +6,10 @@
  * undoable. Opening, switching or closing a Campaign clears every history; so does a restart.
  *
  * Each step carries a short French label for the undo and redo buttons ("masquer Orc").
+ *
+ * Every recorded edit is one step, never merged with the next: the editor already sends a whole
+ * drag, resize or burst of arrow-key nudges as one edit (src/useOverlayTransforms.ts), so
+ * merging here could only join separate gestures (a drag then a resize).
  */
 import type { SceneEdit, UndoState } from '../shared/contract.js';
 import type { CampaignId, MediaId, Scene, SceneId } from '../shared/domain.js';
@@ -15,12 +19,6 @@ export type { UndoState };
 /** How many steps a Scene's history keeps; older ones are forgotten. */
 export const UNDO_DEPTH = 100;
 
-/**
- * Edits with the same merge key that follow each other within this time are one step: a burst
- * of arrow-key nudges whose edits the editor had to send apart still undoes at once.
- */
-export const MERGE_WINDOW_MS = 1000;
-
 /** One edit as `editScene` saw it. */
 export interface RecordedEdit {
   /** The Scene as saved before the edit. */
@@ -29,8 +27,6 @@ export interface RecordedEdit {
   after: Scene;
   /** What the undo button says it undoes, in French: "masquer Orc". */
   label: string;
-  /** Edits sharing a merge key may merge into one step (see `mergeKeyOf`). */
-  mergeKey?: string;
 }
 
 /**
@@ -42,20 +38,11 @@ export interface UndoMove {
   restore: Scene;
 }
 
-interface Step {
-  before: Scene;
-  after: Scene;
-  label: string;
-  mergeKey?: string;
-  /** When the step was last recorded or merged into (ms). */
-  at: number;
-}
+type Step = RecordedEdit;
 
 interface History {
   undo: Step[];
   redo: Step[];
-  /** Whether the last thing done was recording `undo`'s top step, so a new edit may merge. */
-  mergeOpen: boolean;
 }
 
 export interface UndoHistories {
@@ -77,10 +64,8 @@ export interface UndoHistories {
   clearAll(): void;
 }
 
-export function createUndoHistories(
-  options: { depth?: number; mergeWindowMs?: number; now?: () => number } = {},
-): UndoHistories {
-  const { depth = UNDO_DEPTH, mergeWindowMs = MERGE_WINDOW_MS, now = Date.now } = options;
+export function createUndoHistories(options: { depth?: number } = {}): UndoHistories {
+  const { depth = UNDO_DEPTH } = options;
   const histories = new Map<string, History>();
   const keyOf = (campaignId: CampaignId, sceneId: SceneId) => JSON.stringify([campaignId, sceneId]);
 
@@ -88,36 +73,23 @@ export function createUndoHistories(
     const key = keyOf(campaignId, sceneId);
     let history = histories.get(key);
     if (!history) {
-      history = { undo: [], redo: [], mergeOpen: false };
+      history = { undo: [], redo: [] };
       histories.set(key, history);
     }
     return history;
   }
 
   function peek(campaignId: CampaignId, sceneId: SceneId) {
-    return histories.get(keyOf(campaignId, sceneId)) ?? { undo: [], redo: [], mergeOpen: false };
+    return histories.get(keyOf(campaignId, sceneId)) ?? { undo: [], redo: [] };
   }
 
   return {
-    record({ before, after, label, mergeKey }) {
+    record({ before, after, label }) {
       if (isSameValue(before, after)) return;
       const history = historyOf(after.campaignId, after.id);
-      const time = now();
-      const last = history.undo.at(-1);
       history.redo = [];
-      if (
-        last &&
-        history.mergeOpen &&
-        mergeKey !== undefined &&
-        last.mergeKey === mergeKey &&
-        time - last.at <= mergeWindowMs
-      ) {
-        history.undo[history.undo.length - 1] = { ...last, after, label, at: time };
-      } else {
-        history.undo.push({ before, after, label, mergeKey, at: time });
-        if (history.undo.length > depth) history.undo.splice(0, history.undo.length - depth);
-      }
-      history.mergeOpen = true;
+      history.undo.push({ before, after, label });
+      if (history.undo.length > depth) history.undo.splice(0, history.undo.length - depth);
     },
 
     state(campaignId, sceneId) {
@@ -134,7 +106,6 @@ export function createUndoHistories(
       const history = historyOf(campaignId, sceneId);
       const step = history.undo.pop();
       if (step) history.redo.push(step);
-      history.mergeOpen = false;
     },
 
     nextRedo(campaignId, sceneId) {
@@ -146,7 +117,6 @@ export function createUndoHistories(
       const history = historyOf(campaignId, sceneId);
       const step = history.redo.pop();
       if (step) history.undo.push(step);
-      history.mergeOpen = false;
     },
 
     clear(campaignId, sceneId) {
@@ -157,14 +127,6 @@ export function createUndoHistories(
       histories.clear();
     },
   };
-}
-
-/**
- * Edits that may merge into one step when they follow each other quickly: moves and resizes of
- * the same Overlay (a nudge burst). Any other edit is a step of its own.
- */
-export function mergeKeyOf(edit: SceneEdit): string | undefined {
-  return edit.kind === 'transform-overlay' ? `transform-overlay:${edit.placementId}` : undefined;
 }
 
 /**

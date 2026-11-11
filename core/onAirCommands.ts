@@ -19,7 +19,6 @@ import { createSerialQueue } from './serialQueue.js';
 import {
   createUndoHistories,
   isSameValue,
-  mergeKeyOf,
   undoLabel,
   type UndoHistories,
   type UndoMove,
@@ -191,7 +190,6 @@ export function createOnAirCommands(deps: {
           before: scene,
           after: saved,
           label: undoLabel(scene, edit, (id) => media.find((item) => item.id === id)?.name),
-          mergeKey: mergeKeyOf(edit),
         });
         return saved;
       }),
