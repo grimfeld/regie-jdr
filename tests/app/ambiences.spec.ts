@@ -224,7 +224,7 @@ test('Ambience volumes compose with Master; a slider drag is one undo step; remo
 });
 
 interface WatchWindow {
-  pluieStates?: string[];
+  soundStates?: Record<string, string[]>;
 }
 
 /**
@@ -234,7 +234,8 @@ interface WatchWindow {
 async function watchSound(page: Page, name: string) {
   await page.evaluate((watched) => {
     const states: string[] = [];
-    (window as unknown as WatchWindow).pluieStates = states;
+    const watching = window as unknown as WatchWindow;
+    watching.soundStates = { ...watching.soundStates, [watched]: states };
     const strip = document.querySelector('section[aria-label="En cours"]');
     if (!strip) throw new Error('The "En cours" strip is not shown.');
     const record = () => {
@@ -251,17 +252,18 @@ async function watchSound(page: Page, name: string) {
   }, name);
 }
 
-async function watchedStates(page: Page) {
-  return page.evaluate(() => (window as unknown as WatchWindow).pluieStates ?? []);
+async function watchedStates(page: Page, name: string) {
+  return page.evaluate(
+    (watched) => (window as unknown as WatchWindow).soundStates?.[watched] ?? [],
+    name,
+  );
 }
 
 test('Activating a Scene that shares an Ambience keeps it sounding throughout, at the new level', async ({
   regie,
 }) => {
   const page = regie.controlWindow;
-  // Long enough not to loop while watched: each loop of a media element briefly shows
-  // "chargement…" (it fires `waiting`), which would hide a real restart.
-  await campaignWithSounds(regie, 30);
+  await campaignWithSounds(regie);
   await createScene(page, 'Taverne, jour');
   await soundInLibrary(page, 'Auberge')
     .locator('.media-audio-icon')
@@ -294,6 +296,32 @@ test('Activating a Scene that shares an Ambience keeps it sounding throughout, a
   await page.waitForTimeout(2000);
 
   // The rain never left the strip nor reloaded: the same sound played on, only quieter.
-  expect(new Set(await watchedStates(page))).toEqual(new Set(['playing']));
+  expect(new Set(await watchedStates(page, 'Pluie'))).toEqual(new Set(['playing']));
   await expect(sounding(page, 'Pluie')).toHaveAttribute('data-state', 'playing');
+});
+
+test('Music and Ambiences loop seamlessly: the strip never shows them loading again', async ({
+  regie,
+}) => {
+  const page = regie.controlWindow;
+  // 2 s tones: several loops while watched.
+  await campaignWithSounds(regie);
+  await createScene(page, 'Taverne');
+  await soundInLibrary(page, 'Auberge')
+    .locator('.media-audio-icon')
+    .dragTo(musicList(page).locator('xpath=..'));
+  await expect(musicList(page).getByRole('listitem')).toHaveText([/Auberge/]);
+  await dropAmbience(page, 'Pluie');
+  await ambienceSwitch(page, 'Pluie').check();
+  await activate(page);
+  await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'playing');
+  await expect(sounding(page, 'Pluie')).toHaveAttribute('data-state', 'playing');
+
+  await watchSound(page, 'Auberge');
+  await watchSound(page, 'Pluie');
+  await page.waitForTimeout(7000);
+
+  // Three loops each, and neither ever went back to "chargement…" nor left the strip.
+  expect(new Set(await watchedStates(page, 'Auberge'))).toEqual(new Set(['playing']));
+  expect(new Set(await watchedStates(page, 'Pluie'))).toEqual(new Set(['playing']));
 });
