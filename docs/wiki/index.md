@@ -29,6 +29,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Flaky whole-app tests](problem-flaky-app-tests.md)
 - [Usage limit stops every agent at once](problem-usage-limit.md)
 - [Session interrupted mid-work](problem-session-interrupted.md)
+- [`gh pr edit --base` fails on the Projects-classic API](problem-gh-pr-edit-base.md)
 
 ## Process
 
