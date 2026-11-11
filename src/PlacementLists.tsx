@@ -5,6 +5,7 @@ import type { ImageMedia, MediaId, Scene } from '../shared/domain';
 import { BackgroundControls } from './BackgroundControls';
 import { carriesMedia } from './mediaDrag';
 import { LabelControls } from './PlayerTextFields';
+import type { FramingGesture } from './useBackgroundFraming';
 
 /**
  * Props of a drop target: it accepts what `accepts` says (by default a library image or files
@@ -62,7 +63,13 @@ function mediaName(images: readonly ImageMedia[], mediaId: MediaId): string {
  * the rows below it), each with show/hide, its place in the stack, its fit, and remove.
  * Dropping a library image here places it as a Background, whatever its Image category.
  */
-export function BackgroundList({ scene, images, onEdit, onDrop }: ListProps) {
+export function BackgroundList({
+  scene,
+  images,
+  onEdit,
+  onDrop,
+  framing,
+}: ListProps & { framing: FramingGesture }) {
   const count = scene.backgrounds.length;
   const topFirst = scene.backgrounds.map((background, index) => ({ background, index })).reverse();
   return (
@@ -87,6 +94,7 @@ export function BackgroundList({ scene, images, onEdit, onDrop }: ListProps) {
               count={count}
               name={name}
               onEdit={onEdit}
+              framing={framing}
             />
           </PlacementRow>
         );

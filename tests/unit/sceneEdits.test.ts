@@ -5,7 +5,7 @@ import {
   MAX_OVERLAY_HEIGHT,
   MIN_OVERLAY_HEIGHT,
   nudgedPosition,
-  parseOverlayTransform,
+  parseTransientEdit,
   parseSceneEdit,
   placementEdit,
   resizedOverlay,
@@ -507,16 +507,18 @@ describe('Scene edit commands from a window message', () => {
     expect(parseSceneEdit(value)).toBeUndefined();
   });
 
-  it('accept only a transform as a transient update of a live drag', () => {
+  it('accept only a transform or a framing as a transient update of a live drag', () => {
     const move = { kind: 'transform-overlay', placementId: 'p1', position: { x: 0.2, y: 0.3 } };
-    expect(parseOverlayTransform({ ...move, extra: 1 })).toEqual(move);
+    expect(parseTransientEdit({ ...move, extra: 1 })).toEqual(move);
     const resize = { ...move, height: 0.2 };
-    expect(parseOverlayTransform(resize)).toEqual(resize);
+    expect(parseTransientEdit(resize)).toEqual(resize);
+    const framing = { kind: 'frame-background', placementId: 'b1', zoom: 2, focus: { x: 0.3 } };
+    expect(parseTransientEdit({ ...framing, extra: 1 })).toEqual(framing);
     expect(
-      parseOverlayTransform({ kind: 'set-visible', placementId: 'p1', visible: true }),
+      parseTransientEdit({ kind: 'set-visible', placementId: 'p1', visible: true }),
     ).toBeUndefined();
     expect(
-      parseOverlayTransform({ kind: 'move-overlay', placementId: 'p1', toIndex: 0 }),
+      parseTransientEdit({ kind: 'move-overlay', placementId: 'p1', toIndex: 0 }),
     ).toBeUndefined();
   });
 });

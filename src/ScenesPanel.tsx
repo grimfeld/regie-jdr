@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { Clapperboard, History, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
 import type { CampaignId, ImageMedia, NormalizedPoint, Scene, SceneId } from '../shared/domain';
-import type { ControlBridge, OverlayTransform, SceneEdit, UndoState } from '../shared/contract';
+import type { ControlBridge, SceneEdit, TransientEdit, UndoState } from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
@@ -13,6 +13,7 @@ import { SceneCanvas } from './SceneCanvas';
 import { SceneTitleField } from './PlayerTextFields';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
+import { useBackgroundFraming } from './useBackgroundFraming';
 import { useOverlayTransforms } from './useOverlayTransforms';
 
 interface Props {
@@ -339,7 +340,7 @@ interface EditorProps {
   /** Sends an edit; a failure is shown as a notice. */
   onEditShowingFailure: (command: SceneEdit) => void;
   /** Shows a live drag's transient update on air (Active Scene only), unsaved. */
-  onTransient: (edit: OverlayTransform) => Promise<void>;
+  onTransient: (edit: TransientEdit) => Promise<void>;
   /**
    * Something was dropped on the canvas (with the drop point, as canvas fractions) or on a
    * placement list. Read the event's data before awaiting anything.
@@ -355,13 +356,20 @@ interface EditorProps {
  * Scene, Activate and delete (after confirmation), its Scene title, its full composition drawn by the shared
  * renderer with Hidden placements in the GM-only style, and its Background and Overlay lists.
  * Library images dropped on the canvas or on a list are placed there. Overlays are moved,
- * resized and nudged on the canvas (useOverlayTransforms).
+ * resized and nudged on the canvas (useOverlayTransforms); a Background's framing sliders show
+ * their framing live, on air too (useBackgroundFraming).
  */
 function SceneEditor(props: EditorProps) {
   const { scene, images, active, onRefreshImages, onEdit, onEditShowingFailure, onDrop } = props;
   const canvasDrop = useDropTarget((event) => onDrop(event, 'canvas', canvasPoint(event)));
   const transforms = useOverlayTransforms({
     scene,
+    active,
+    onCommit: (command) =>
+      onEdit(command).catch((error: unknown) => showNotice(errorMessage(error))),
+    onTransient: props.onTransient,
+  });
+  const framing = useBackgroundFraming({
     active,
     onCommit: (command) =>
       onEdit(command).catch((error: unknown) => showNotice(errorMessage(error))),
@@ -493,7 +501,7 @@ function SceneEditor(props: EditorProps) {
         {...transforms.canvasProps}
       >
         <SceneCanvas
-          picture={editorPictureOf(transforms.scene, images)}
+          picture={editorPictureOf(framing.apply(transforms.scene), images)}
           window="control"
           fadeDurationMs={props.fadeDurationMs}
           editing={{
@@ -520,6 +528,7 @@ function SceneEditor(props: EditorProps) {
           images={images}
           onEdit={onEditShowingFailure}
           onDrop={(event) => onDrop(event, 'backgrounds')}
+          framing={framing.gesture}
         />
         <OverlayList
           scene={scene}

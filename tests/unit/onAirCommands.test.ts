@@ -324,6 +324,30 @@ describe('on-air commands', () => {
     });
   });
 
+  it('shows a live framing of a Background on the Active Scene without saving it', async () => {
+    const ctx = await setup();
+    const scene = await sceneShowing(ctx, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+
+    await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+      kind: 'frame-background',
+      placementId: 'bg-Cantina',
+      zoom: 2,
+      focus: { x: 0.25 },
+    });
+
+    expect(ctx.broadcast.at(-1)?.scene?.backgrounds[0]).toMatchObject({
+      zoom: 2,
+      focus: { x: 0.25, y: 0.5 },
+    });
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
+    expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+      undo: null,
+      redo: null,
+    });
+  });
+
   it('renames a Scene; on the Active Scene the broadcast carries no Scene name', async () => {
     const ctx = await setup();
     const scene = await sceneShowing(ctx, 'Cantina');

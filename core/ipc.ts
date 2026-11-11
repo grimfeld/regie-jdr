@@ -16,14 +16,14 @@ import type {
   InvokeChannel,
   InvokeChannels,
   MediaImportKind,
-  OverlayTransform,
   Payload,
   SceneEdit,
+  TransientEdit,
 } from '../shared/contract.js';
 import path from 'node:path';
 import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
-import { parseOverlayTransform, parseSceneEdit } from './sceneEdits.js';
+import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 import { parseFadeDuration } from './fades.js';
@@ -218,10 +218,10 @@ function sceneEdit(
 
 function transientEdit(
   value: unknown,
-): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: OverlayTransform }> {
+): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: TransientEdit }> {
   const scene = sceneOf(value);
   if (scene === INVALID || !isRecord(value)) return INVALID;
-  const edit = parseOverlayTransform(value.edit);
+  const edit = parseTransientEdit(value.edit);
   return edit ? { ...scene, edit } : INVALID;
 }
 

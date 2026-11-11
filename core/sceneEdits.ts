@@ -7,7 +7,7 @@
  * Adding an edit: a variant of SceneEdit (shared/contract.ts), its case in `applySceneEdit`
  * and in `parseSceneEdit`.
  */
-import type { OverlayTransform, SceneEdit } from '../shared/contract.js';
+import type { OverlayTransform, SceneEdit, TransientEdit } from '../shared/contract.js';
 import type {
   Background,
   ImageMedia,
@@ -22,7 +22,7 @@ import { isRecord } from './guards.js';
 /** A Scene error the Game Master can read (French message). */
 export class SceneError extends Error {}
 
-export type { OverlayTransform, SceneEdit };
+export type { OverlayTransform, SceneEdit, TransientEdit };
 
 export const MAX_SCENE_NAME_LENGTH = 100;
 
@@ -361,12 +361,12 @@ function isOverlayHeight(value: unknown): value is number {
 }
 
 /**
- * A transient update of a live drag from untrusted data: a transform of an Overlay, keeping
- * only its fields; or undefined.
+ * A transient update of a live drag from untrusted data: a transform of an Overlay or a
+ * framing of a Background, keeping only its fields; or undefined.
  */
-export function parseOverlayTransform(value: unknown): OverlayTransform | undefined {
+export function parseTransientEdit(value: unknown): TransientEdit | undefined {
   const edit = parseSceneEdit(value);
-  return edit?.kind === 'transform-overlay' ? edit : undefined;
+  return edit?.kind === 'transform-overlay' || edit?.kind === 'frame-background' ? edit : undefined;
 }
 
 /** A SceneEdit from untrusted data (a window message), keeping only its fields; or undefined. */

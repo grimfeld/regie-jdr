@@ -156,6 +156,47 @@ test('on the Active Scene, Contain, zoom and pan reach the On-air monitor and th
   for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(topLeft);
 });
 
+test('on the Active Scene, a framing slider shows its framing in all three views during the drag, and saves it once on release', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  const { square } = await cantina(regie);
+  const broadcastWindow = await activate(regie);
+  const all = views(controlWindow, broadcastWindow);
+  const covered = { x: 0, y: -0.39, width: 1, height: 1.78 };
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(covered);
+  const savedZoom = async () => {
+    const call = bridgeOf(controlWindow);
+    const [campaign] = await call<{ id: string }[]>('listCampaigns');
+    const [scene] = await call<Scene[]>('listScenes', campaign.id);
+    return scene.backgrounds.find((item) => item.id === square)?.zoom;
+  };
+
+  // Press the zoom slider's thumb (at its left end, zoom 1) and drag it to the right end.
+  const slider = backgroundList(controlWindow).getByLabel('Zoom de Carre');
+  await slider.scrollIntoViewIfNeeded();
+  const box = await slider.boundingBox();
+  if (!box) throw new Error('The zoom slider is not shown.');
+  const middle = box.y + box.height / 2;
+  await controlWindow.mouse.move(box.x + 4, middle);
+  await controlWindow.mouse.down();
+  await controlWindow.mouse.move(box.x + box.width + 20, middle, { steps: 10 });
+
+  // Still held: shown everywhere, saved nowhere.
+  const zoomed = { x: -1.5, y: -3.06, width: 4, height: 7.11 };
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(zoomed);
+  expect(await savedZoom()).toBe(1);
+
+  await controlWindow.mouse.up();
+  await expect.poll(savedZoom).toBe(4);
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(zoomed);
+
+  // The whole drag is one undo step.
+  await controlWindow.keyboard.press('Control+z');
+  await expect.poll(savedZoom).toBe(1);
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(covered);
+});
+
 test('reordering Backgrounds changes which covers which in all three views; the list shows the top first', async ({
   regie,
 }) => {

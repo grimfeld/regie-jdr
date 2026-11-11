@@ -90,6 +90,15 @@ export type SceneEdit =
  */
 export type OverlayTransform = Extract<SceneEdit, { kind: 'transform-overlay' }>;
 
+/** A Background's zoom or focal point being chosen with a slider: shown and sent like a drag. */
+export type BackgroundFraming = Extract<SceneEdit, { kind: 'frame-background' }>;
+
+/**
+ * A transient update of a live drag (an Overlay moved or resized, a framing slider dragged):
+ * shown on air on the Active Scene, never saved.
+ */
+export type TransientEdit = OverlayTransform | BackgroundFraming;
+
 /**
  * What can be undone and redone on a Scene: the French label of the next undo and of the next
  * redo ("masquer Orc"), or null when there is none.
@@ -162,7 +171,7 @@ export interface InvokeChannels {
    * with `scenes:edit`.
    */
   'scenes:show-transient': {
-    payload: { campaignId: CampaignId; sceneId: SceneId; edit: OverlayTransform };
+    payload: { campaignId: CampaignId; sceneId: SceneId; edit: TransientEdit };
     result: void;
   };
   /** What can be undone and redone on a Scene (its undo history, kept by the main process). */
@@ -301,11 +310,7 @@ export interface ControlBridge extends BroadcastBridge {
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
-  showTransientEdit(
-    campaignId: CampaignId,
-    sceneId: SceneId,
-    edit: OverlayTransform,
-  ): Promise<void>;
+  showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
   getUndoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
