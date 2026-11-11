@@ -7,6 +7,7 @@ import {
   copyOfScene,
   createSceneLibrary,
   parseScene,
+  RECOVERED_FOLDER,
   SceneError,
   type SceneLibrary,
 } from '../../core/scenes';
@@ -345,22 +346,42 @@ describe('scene library', () => {
       expect(await scenes.list(campaign.id)).toEqual([{ ...cantina, notes: emptyNotes() }, hangar]);
     });
 
-    it('keeps the unreadable Notes in a file of the Campaign folder, and says where, once', async () => {
+    it('keeps the unreadable Notes in a file of the Campaign’s recovered folder, and says where, once', async () => {
       const { campaign, scenes, notices, folder, badNotes, cantina } = await damaged();
 
       await scenes.list(campaign.id);
       await scenes.list(campaign.id);
 
-      const kept = (await fs.readdir(folder)).filter((name) => name.startsWith('notes-illisibles'));
-      expect(kept).toHaveLength(1);
-      expect(JSON.parse(await fs.readFile(path.join(folder, kept[0]), 'utf8'))).toEqual({
+      const recovered = path.join(folder, RECOVERED_FOLDER);
+      const kept = await fs.readdir(recovered);
+      expect(kept).toEqual([expect.stringMatching(/^notes-illisibles-.*\.json$/)]);
+      expect(JSON.parse(await fs.readFile(path.join(recovered, kept[0]), 'utf8'))).toEqual({
         sceneId: cantina.id,
         sceneName: 'Cantina',
         notes: badNotes,
       });
       expect(notices).toEqual([
-        `Les notes de la scène « Cantina » étaient illisibles : elles sont vides. Leur contenu d’origine est gardé dans ${path.join(folder, kept[0])}.`,
+        `Les notes de la scène « Cantina » étaient illisibles : elles sont vides. Leur contenu d’origine est gardé dans ${path.join(recovered, kept[0])}.`,
       ]);
+      // Never at the top of the Campaign folder, where the Campaign's documents are.
+      expect((await fs.readdir(folder)).filter((name) => name.startsWith('notes-'))).toEqual([
+        RECOVERED_FOLDER,
+      ]);
+    });
+
+    it('moves Notes kept at the top of the Campaign folder by an older version into the recovered folder', async () => {
+      const { campaign, scenes, storage } = await setup();
+      const folder = storage.campaignFolder(campaign.id);
+      const old = 'notes-illisibles-cantina-1762000000000.json';
+      await fs.writeFile(path.join(folder, old), '{"sceneName":"Cantina"}');
+
+      await scenes.list(campaign.id);
+
+      expect(await fs.readdir(path.join(folder, RECOVERED_FOLDER))).toEqual([old]);
+      expect(await fs.readFile(path.join(folder, RECOVERED_FOLDER, old), 'utf8')).toBe(
+        '{"sceneName":"Cantina"}',
+      );
+      expect((await fs.readdir(folder)).includes(old)).toBe(false);
     });
   });
 

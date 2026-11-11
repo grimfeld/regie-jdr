@@ -57,6 +57,11 @@ test('Exporter on the Campaign list saves a zip of its documents and Media', asy
   const [mediaFile] = await fs.readdir(path.join(folder, 'media'));
   // Left by the app beside the documents: never part of an Export.
   await fs.writeFile(path.join(folder, 'scenes.json.tmp'), 'partial');
+  // Unreadable Notes an older version kept there (not a document: no schemaVersion).
+  await fs.writeFile(
+    path.join(folder, 'notes-illisibles-cantina-1762000000000.json'),
+    '{"sceneName":"Cantina"}',
+  );
   const target = path.join(dataDir, 'Sauvegarde.zip');
   await stubSaveDialog(app, target);
 
@@ -71,7 +76,7 @@ test('Exporter on the Campaign list saves a zip of its documents and Media', asy
   expect(names).toEqual(
     expect.arrayContaining(['campaign.json', 'media.json', `media/${mediaFile}`]),
   );
-  expect(names.filter((name) => /\.(tmp|bak)$|^thumbnails\//.test(name))).toEqual([]);
+  expect(names.filter((name) => /\.(tmp|bak)$|^thumbnails\/|illisibles/.test(name))).toEqual([]);
   const image = entries.find((entry) => entry.name === `media/${mediaFile}`);
   expect(image?.method).toBe(0);
   expect(image?.content.equals(await fs.readFile(fixture(`${IMAGE}.png`)))).toBe(true);

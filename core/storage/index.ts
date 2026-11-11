@@ -9,6 +9,7 @@
  *   <root>/campaigns/<campaignId>/media/          Media files, named <sha256><extension>
  *   <root>/campaigns/<campaignId>/scenes.json     Scenes (core/scenes.ts)
  *   <root>/campaigns/<campaignId>/soundboard.json Soundboard (core/soundboard.ts)
+ *   <root>/campaigns/<campaignId>/notes-illisibles/ unreadable Notes kept aside (core/scenes.ts)
  *   <root>/settings.json                          global Settings (core/settings.ts)
  *   <root>/imports/                               Imports being checked (core/campaignImport.ts)
  * Every document has a `<file>.bak` (previous good version) next to it once rewritten.

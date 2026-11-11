@@ -220,6 +220,30 @@ describe('exportCampaign', () => {
     ]);
   });
 
+  it('writes only the Campaign’s known documents, never recovered Notes or other JSON files', async () => {
+    const folder = await campaignFolder({ withMedia: [] });
+    // Kept by an older version at the top of the folder: no schemaVersion, not a document.
+    await fs.writeFile(
+      path.join(folder, 'notes-illisibles-cantina-1762000000000.json'),
+      '{"sceneName":"Cantina"}',
+    );
+    await fs.writeFile(path.join(folder, 'notes.json'), '{"anything":true}');
+    await fs.mkdir(path.join(folder, 'notes-illisibles'));
+    await fs.writeFile(path.join(folder, 'notes-illisibles', 'kept.json'), '{}');
+    await fs.writeFile(path.join(folder, 'soundboard.json'), '{"schemaVersion":1,"pads":[]}');
+    const { written, writeArchive } = recordingArchive();
+
+    await exportCampaign({ ...options(folder, writeArchive), media: [] });
+
+    expect(written[0].map((entry) => entry.path)).toEqual([
+      EXPORT_MANIFEST_FILE,
+      'campaign.json',
+      'media.json',
+      'scenes.json',
+      'soundboard.json',
+    ]);
+  });
+
   it('skips Media missing on disk and says how many', async () => {
     const folder = await campaignFolder({ withMedia: [`${HASH_B}.ogg`] });
     const { written, writeArchive } = recordingArchive();

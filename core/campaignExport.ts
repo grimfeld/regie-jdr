@@ -6,16 +6,16 @@
  *
  * Archive layout (format version 1):
  *   regie-export.json            the manifest (ExportManifest), first entry
- *   <document>.json              every document at the top of the Campaign's folder, compressed
+ *   <document>.json              each of CAMPAIGN_DOCUMENTS the Campaign's folder holds, compressed
  *   media/<sha256><extension>    the Media files the Media index lists, stored uncompressed
- * Never in an Export: `.tmp` and `.bak` files, thumbnails (rebuilt on demand), anything else.
+ * Never in an Export: `.tmp` and `.bak` files, thumbnails (rebuilt on demand), kept unreadable
+ * Notes, any other file.
  *
  * The manifest records each document's `schemaVersion` as found on disk, so Import can refuse
  * an Export holding a document newer than the app and migrate older ones, and each Media file's
  * size, so Import can check what it unpacks. A change to this layout bumps
  * EXPORT_FORMAT_VERSION.
  */
-import type { Dirent } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { Media } from '../shared/domain.js';
@@ -29,6 +29,16 @@ export const EXPORT_FORMAT = 'regie-jdr-campaign-export';
 export const EXPORT_FORMAT_VERSION = 1;
 const MEDIA_FOLDER = 'media';
 const CAMPAIGN_FILE = 'campaign.json';
+/**
+ * The documents of a Campaign's folder an Export holds, the ones Import accepts
+ * (core/campaignImport.ts): an allowlist, so no other file there can spoil an Export.
+ */
+export const CAMPAIGN_DOCUMENTS: readonly string[] = [
+  CAMPAIGN_FILE,
+  'media.json',
+  'scenes.json',
+  'soundboard.json',
+];
 
 /** What an Export says about itself, as its first entry. */
 export interface ExportManifest {
@@ -224,25 +234,19 @@ export async function exportCampaign(input: {
   return { missingMedia: plan.missingMedia };
 }
 
-/** The documents at the top of a Campaign's folder (`*.json`, so never `.tmp` or `.bak`). */
+/** The CAMPAIGN_DOCUMENTS the Campaign's folder holds, with their text. */
 async function readDocuments(folder: string): Promise<{ path: string; text: string }[]> {
-  let entries: Dirent[];
-  try {
-    entries = await fsp.readdir(folder, { withFileTypes: true });
-  } catch (error) {
-    if (isRecord(error) && error.code === 'ENOENT') return [];
-    throw error;
-  }
-  const names = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-    .map((entry) => entry.name)
-    .sort();
-  return Promise.all(
-    names.map(async (name) => ({
-      path: name,
-      text: await fsp.readFile(path.join(folder, name), 'utf8'),
-    })),
+  const documents = await Promise.all(
+    CAMPAIGN_DOCUMENTS.map(async (name) => {
+      try {
+        return [{ path: name, text: await fsp.readFile(path.join(folder, name), 'utf8') }];
+      } catch (error) {
+        if (isRecord(error) && error.code === 'ENOENT') return [];
+        throw error;
+      }
+    }),
   );
+  return documents.flat();
 }
 
 /** Size of a file in bytes; undefined when it is missing or not a file. */

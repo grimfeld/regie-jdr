@@ -8,7 +8,9 @@
  *
  * A Scene whose stored Notes cannot be read keeps its other fields with empty Notes; the rest of
  * the document loads as usual. The unreadable Notes are kept as they were in a file of the
- * Campaign folder, `notes-illisibles-<Scene id>-<time>.json`, and the Game Master is told where.
+ * Campaign's `notes-illisibles/` folder, `notes-illisibles-<Scene id>-<time>.json`, and the Game
+ * Master is told where. Never at the top of the Campaign folder, which holds its documents only:
+ * files an older version kept there are moved into that folder as the Scenes are first read.
  */
 import { randomUUID } from 'node:crypto';
 import fsp from 'node:fs/promises';
@@ -92,6 +94,28 @@ export interface SceneLibrary {
 }
 
 const SCENES_FILE = 'scenes.json';
+/** Folder of a Campaign where unreadable Notes are kept (never exported). */
+export const RECOVERED_FOLDER = 'notes-illisibles';
+const RECOVERED_FILE = /^notes-illisibles-[A-Za-z0-9_-]+-\d+\.json$/;
+
+/**
+ * Moves the files of unreadable Notes an older version kept at the top of the Campaign folder
+ * into its recovered folder. A file already there under that name stays where it is.
+ */
+async function moveOldRecoveredNotes(folder: string): Promise<void> {
+  const names = (await fsp.readdir(folder)).filter((name) => RECOVERED_FILE.test(name));
+  if (names.length === 0) return;
+  const recovered = path.join(folder, RECOVERED_FOLDER);
+  await fsp.mkdir(recovered, { recursive: true });
+  for (const name of names) {
+    const target = path.join(recovered, name);
+    const taken = await fsp.lstat(target).then(
+      () => true,
+      () => false,
+    );
+    if (!taken) await fsp.rename(path.join(folder, name), target);
+  }
+}
 const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain'];
 
 // Parsing ------------------------------------------------------------------
@@ -371,6 +395,8 @@ export function createSceneLibrary(
   const { notify = () => undefined, now = Date.now } = options;
   /** Serializes the reads and read-modify-writes of each Campaign's Scenes document. */
   const serialized = createKeyedSerialQueue<CampaignId>();
+  /** Campaigns whose old recovered Notes were moved (or tried) since the app started. */
+  const tidied = new Set<CampaignId>();
 
   async function fileOf(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {
@@ -384,6 +410,11 @@ export function createSceneLibrary(
    * may save them (unreadable Notes).
    */
   async function readOrder(file: string, campaignId: CampaignId): Promise<ScenesInOrder<Scene>> {
+    if (!tidied.has(campaignId)) {
+      tidied.add(campaignId);
+      // Best effort: left where they are, they only clutter the folder (Export skips them).
+      await moveOldRecoveredNotes(path.dirname(file)).catch(() => undefined);
+    }
     const document = await storage.documents.read(file, scenesDocument);
     const scenes = (document?.scenes ?? []).map((scene) => ({ ...scene, campaignId }));
     const order = { scenes, chapters: document?.chapters ?? [] };
@@ -403,8 +434,10 @@ export function createSceneLibrary(
 
   /** Keeps each Scene's unreadable Notes in a file of its own, and tells the Game Master. */
   async function keepUnreadable(folder: string, unreadable: readonly UnreadableNotes[]) {
+    const recovered = path.join(folder, RECOVERED_FOLDER);
+    await fsp.mkdir(recovered, { recursive: true });
     for (const entry of unreadable) {
-      const kept = path.join(folder, `notes-illisibles-${entry.sceneId}-${String(now())}.json`);
+      const kept = path.join(recovered, `notes-illisibles-${entry.sceneId}-${String(now())}.json`);
       await fsp.writeFile(
         kept,
         `${JSON.stringify(entry, null, 2)}

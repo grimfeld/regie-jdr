@@ -170,9 +170,10 @@ test('a Scene whose stored Notes cannot be read opens with empty Notes, its cont
     await expect(
       page.getByText(/Les notes de la scène « Cantina » étaient illisibles/),
     ).toBeVisible();
-    const kept = (await fs.readdir(folder)).filter((name) => name.startsWith('notes-illisibles'));
-    expect(kept).toHaveLength(1);
-    expect(JSON.parse(await fs.readFile(path.join(folder, kept[0]), 'utf8'))).toMatchObject({
+    const recovered = path.join(folder, 'notes-illisibles');
+    const kept = await fs.readdir(recovered);
+    expect(kept).toEqual([expect.stringMatching(/^notes-illisibles-.*\.json$/)]);
+    expect(JSON.parse(await fs.readFile(path.join(recovered, kept[0]), 'utf8'))).toMatchObject({
       sceneName: 'Cantina',
       notes: badNotes,
     });
