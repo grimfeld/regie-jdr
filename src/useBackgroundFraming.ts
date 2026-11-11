@@ -17,8 +17,11 @@ interface Options {
 export interface FramingGesture {
   /** A slider moved: show the framing it gives, unsaved. */
   onLive: (edit: BackgroundFraming) => void;
-  /** A slider was released: save `edit`, or nothing when its value did not change. */
-  onRelease: (edit: BackgroundFraming | undefined) => void;
+  /**
+   * A slider was released: save `edit`, or nothing when its value did not change. Settles once
+   * saved (or once the failure is shown and the Scene reloaded); never rejects.
+   */
+  onRelease: (edit: BackgroundFraming | undefined) => Promise<void>;
 }
 
 /**
@@ -70,13 +73,13 @@ export function useBackgroundFraming({ active, onCommit, onTransient }: Options)
       if (!edit) {
         // Back where it started: the last transient update shows the saved framing again.
         show(undefined);
-        return;
+        return Promise.resolve();
       }
       sender().drop();
       const settle = () => {
         if (current.current === done) show(undefined);
       };
-      latest.current.onCommit(edit).then(settle, settle);
+      return latest.current.onCommit(edit).then(settle, settle);
     },
   };
 

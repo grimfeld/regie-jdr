@@ -403,6 +403,9 @@ function SceneEditor(props: EditorProps) {
       onEdit(command).catch((error: unknown) => showNotice(errorMessage(error))),
     onTransient: props.onTransient,
   });
+  /** Saves a released level slider's edit; settles once saved or once the failure is shown. */
+  const commitLevel = (command: SceneEdit) =>
+    onEdit(command).catch((error: unknown) => showNotice(errorMessage(error)));
   const [renameTo, setRenameTo] = useState<string | null>(null);
   const [renameError, setRenameError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -563,6 +566,7 @@ function SceneEditor(props: EditorProps) {
             onEditShowingFailure({ kind: 'add-music', mediaId });
           }}
           onEdit={onEditShowingFailure}
+          onCommitLevel={commitLevel}
           onPick={props.onPickMusic}
           onTransient={props.onTransient}
         />
@@ -576,6 +580,7 @@ function SceneEditor(props: EditorProps) {
             onEditShowingFailure({ kind: 'add-ambience', mediaId });
           }}
           onEdit={onEditShowingFailure}
+          onCommitLevel={commitLevel}
         />
       </div>
     </section>

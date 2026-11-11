@@ -24,12 +24,14 @@ export function SceneMusicList(props: {
   onAdd: (mediaId: MediaId) => void;
   /** Sends a Scene edit; a failure is shown as a notice. */
   onEdit: (command: SceneEdit) => void;
+  /** Saves the level slider's edit once released; settles once saved or a failure is shown. */
+  onCommitLevel: (command: SceneEdit) => Promise<void>;
   /** Crossfades to this track (Active Scene only). */
   onPick: (mediaId: MediaId) => void;
   /** Makes a Music level being dragged heard on air (Active Scene only), unsaved. */
   onTransient: (edit: MusicLevel) => Promise<void>;
 }) {
-  const { scene, sounds, active, onAdd, onEdit, onPick, onTransient } = props;
+  const { scene, sounds, active, onAdd, onEdit, onCommitLevel, onPick, onTransient } = props;
   const drop = useDropTarget(
     (event: DragEvent<HTMLElement>) => {
       const mediaId = droppedAudioId(event, 'music');
@@ -60,7 +62,7 @@ export function SceneMusicList(props: {
           }}
           onCommit={(next) => {
             level().drop();
-            onEdit({ kind: 'set-music-level', level: next });
+            return onCommitLevel({ kind: 'set-music-level', level: next });
           }}
         />
       </div>
