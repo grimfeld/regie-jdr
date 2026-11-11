@@ -10,12 +10,13 @@
  * Voices that leave the mix fade out, then are dropped. On start (and after a reload of the
  * Control window) it reads the current mix, so the current Music starts from its beginning.
  *
- * Where later slices plug in: pad commands (#39) get their own channel and decoded buffers
- * here; load failures (#42) are already reported as 'failed'.
+ * Pad sounds (the Soundboard) have their own channel, src/padPlayer.ts, on the same context.
+ * Where later slices plug in: load failures (#42) are already reported as 'failed'.
  */
 import type { AudioEngineBridge } from '../shared/contract';
 import type { AudioMix, AudioVoice, MediaId, VoiceState } from '../shared/domain';
 import { latestMix } from '../core/audioMix';
+import { startPadPlayer } from './padPlayer';
 
 interface Voice {
   element: HTMLAudioElement;
@@ -129,6 +130,7 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     if (voices.get(mediaId) === voice) voices.delete(mediaId);
   }
 
+  const stopPads = startPadPlayer(context, bridge);
   // Subscribe first, then read the current mix: nothing is missed in between.
   const unsubscribe = bridge.onMixChanged(apply);
   bridge
@@ -138,6 +140,7 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
 
   return () => {
     unsubscribe();
+    stopPads();
     for (const [mediaId, voice] of voices) {
       clearTimeout(voice.pending);
       drop(mediaId, voice);

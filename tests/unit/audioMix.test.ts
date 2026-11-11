@@ -197,13 +197,19 @@ describe('what is sounding', () => {
         { mediaId: 'm1', role: 'music', name: 'Nom m1', state: 'playing' },
         { mediaId: 'a1', role: 'ambience', name: 'Nom a1', state: 'loading' },
       ],
+      pads: [],
     });
+  });
+
+  it('shows the Soundboard pads sounding beside the voices', () => {
+    const pads = [{ padId: 'p1', name: 'Épée' }];
+    expect(soundingOf({ ...mix, voices: [] }, { voices: [] }, pads)).toEqual({ voices: [], pads });
   });
 
   it('ignores voices the engine still holds that left the mix (fading out)', () => {
     expect(
       soundingOf({ ...mix, voices: [] }, { voices: [{ mediaId: 'm1', state: 'playing' }] }),
-    ).toEqual({ voices: [] });
+    ).toEqual({ voices: [], pads: [] });
   });
 });
 

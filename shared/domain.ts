@@ -147,6 +147,7 @@ export interface Scene {
 export interface SoundboardPad {
   id: string;
   mediaId: MediaId;
+  /** The name the pad shows; absent: the Sound effect's name. */
   label?: string;
   /** 0..1 */
   volume: number;
@@ -303,7 +304,42 @@ export interface SoundingVoice {
   state: VoiceState;
 }
 
-/** What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it. */
+/**
+ * What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it,
+ * and the Soundboard pads the engine reports playing.
+ */
 export interface AudioSounding {
   voices: SoundingVoice[];
+  pads: SoundingPad[];
+}
+
+/**
+ * A pad sound: one press of a Soundboard pad, playing its Sound effect once. Pressing a pad
+ * that still sounds starts another, overlapping one. Numbered by the main process, in press
+ * order.
+ */
+export type PadVoiceId = number;
+
+/**
+ * What the main process tells the audio engine about pad sounds (core/padVoices.ts): play one
+ * at `gain` (Master volume included), or cut some with a short fade.
+ */
+export type PadCommand =
+  | { kind: 'play'; voiceId: PadVoiceId; src: string; gain: number }
+  | { kind: 'cut'; voiceIds: PadVoiceId[]; fadeMs: number };
+
+/**
+ * The audio engine's report on pad sounds: the state of each it holds, and the last pad sound
+ * it was told to play. A pad sound up to that one that it no longer holds has ended.
+ */
+export interface PadReport {
+  voices: { voiceId: PadVoiceId; state: VoiceState }[];
+  upTo: PadVoiceId;
+}
+
+/** A Soundboard pad the engine reports sounding (at least one of its pad sounds playing). */
+export interface SoundingPad {
+  padId: string;
+  /** The pad's name, for the "En cours" strip. */
+  name: string;
 }

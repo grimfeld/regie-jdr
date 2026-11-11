@@ -18,9 +18,12 @@ import type {
   MediaId,
   NormalizedPoint,
   OnAirState,
+  PadCommand,
+  PadReport,
   Scene,
   SceneId,
   Settings,
+  Soundboard,
   ThemeId,
 } from './domain.js';
 
@@ -104,6 +107,23 @@ export type SceneEdit =
   | { kind: 'set-ambience-volume'; mediaId: MediaId; volume: number }
   /** Sets the Scene's Ambience level (0..1), which applies to all its Ambiences. */
   | { kind: 'set-ambience-level'; level: number };
+
+/**
+ * One edit of a Campaign's Soundboard (core/soundboard.ts), saved at once. Never in an undo
+ * history: undo is about Scene composition.
+ */
+export type SoundboardEdit =
+  /** Adds a pad for a Sound effect, after the others, at full volume, named after it. */
+  | { kind: 'add-pad'; mediaId: MediaId }
+  /** Names a pad; '' gives it back its Sound effect's name. */
+  | { kind: 'rename-pad'; padId: string; label: string }
+  /** Moves a pad to `toIndex` in the pad order (0 is the first; past the end is the last). */
+  | { kind: 'move-pad'; padId: string; toIndex: number }
+  | { kind: 'remove-pad'; padId: string }
+  /** Sets a pad's volume, 0..1. */
+  | { kind: 'set-pad-volume'; padId: string; volume: number }
+  /** Sets the Soundboard level, 0..1, applied to every pad. */
+  | { kind: 'set-level'; volume: number };
 
 /**
  * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
@@ -282,10 +302,27 @@ export interface InvokeChannels {
   'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
   /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
   'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
-  /** The current mix, for the audio engine (on start and on every reload). */
+  /**
+   * The current mix, for the audio engine (on start and on every reload): it holds no pad
+   * sounds then, so the main process forgets them.
+   */
   'audio:get-mix': { payload: void; result: AudioMix };
   /** The audio engine reports what is actually sounding. */
   'audio:report': { payload: AudioEngineReport; result: void };
+  /** The audio engine reports the pad sounds it holds. */
+  'audio:report-pads': { payload: PadReport; result: void };
+  /** A Campaign's Soundboard (an empty one until edited). */
+  'soundboard:get': { payload: { campaignId: CampaignId }; result: Soundboard };
+  /** Apply one edit to a Campaign's Soundboard and get it as saved. */
+  'soundboard:edit': {
+    payload: { campaignId: CampaignId; edit: SoundboardEdit };
+    result: Soundboard;
+  };
+  /**
+   * Press a pad of the open Campaign's Soundboard: its Sound effect plays once, over whatever
+   * sounds, with or without an Active Scene. Fails for another Campaign than the open one.
+   */
+  'soundboard:press': { payload: { campaignId: CampaignId; padId: string }; result: void };
   /** What is sounding, for the "En cours" strip. */
   'audio:get-sounding': { payload: void; result: AudioSounding };
 }
@@ -296,6 +333,8 @@ export interface EventChannels {
   'onAir:changed': OnAirState;
   /** Every new mix, for the audio engine; it ignores one older than what it applies. */
   'audio:mix-changed': AudioMix;
+  /** Play or cut pad sounds, for the audio engine. */
+  'audio:pad-command': PadCommand;
   /** What is sounding changed (a new mix, or an engine report), for the "En cours" strip. */
   'audio:sounding-changed': AudioSounding;
 }
@@ -344,6 +383,8 @@ export interface AudioEngineBridge {
   getMix(): Promise<AudioMix>;
   onMixChanged(listener: (mix: AudioMix) => void): Unsubscribe;
   report(report: AudioEngineReport): Promise<void>;
+  onPadCommand(listener: (command: PadCommand) => void): Unsubscribe;
+  reportPads(report: PadReport): Promise<void>;
 }
 
 /** Full bridge of the Control window. */
@@ -389,5 +430,8 @@ export interface ControlBridge extends BroadcastBridge {
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   setMasterVolume(masterVolume: number): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
+  getSoundboard(campaignId: CampaignId): Promise<Soundboard>;
+  editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
+  pressPad(campaignId: CampaignId, padId: string): Promise<void>;
   onSoundingChanged(listener: (sounding: AudioSounding) => void): Unsubscribe;
 }

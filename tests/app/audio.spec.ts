@@ -204,7 +204,7 @@ test('the audio engine’s bridge can only read the mix and report; the Broadcas
     await controlWindow.evaluate(() =>
       Object.keys((window as unknown as { regieAudio: object }).regieAudio).sort(),
     ),
-  ).toEqual(['getMix', 'onMixChanged', 'report']);
+  ).toEqual(['getMix', 'onMixChanged', 'onPadCommand', 'report', 'reportPads']);
 
   await app.evaluate(({ session }, filePath) => {
     session.defaultSession.registerPreloadScript({ type: 'frame', filePath });

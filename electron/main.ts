@@ -15,12 +15,14 @@ import { createAudioOnAir } from '../core/audioOnAir.js';
 import { parseByteRange } from '../core/byteRange.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
+import { createPadVoices } from '../core/padVoices.js';
+import { createSoundboardStore, SoundboardError } from '../core/soundboard.js';
 import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import type { MediaImportKind } from '../shared/contract.js';
-import type { AudioEngineReport } from '../shared/domain.js';
+import type { AudioEngineReport, PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
@@ -32,6 +34,8 @@ const pendingWrites = new Set<Promise<unknown>>();
 const onAir = createOnAir();
 // What plays (the audio part of the on-air state): in memory only, so nothing plays after a restart.
 const audio = createAudioOnAir();
+// What the Soundboard's pads play: in memory only, like the mix.
+const padVoices = createPadVoices();
 // What the audio engine (in the Control window, ADR-0002) last reported sounding.
 let engineReport: AudioEngineReport = { voices: [] };
 
@@ -305,6 +309,7 @@ function startApp() {
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
   const scenes = createSceneLibrary(storage);
+  const soundboards = createSoundboardStore({ storage, library });
   registerMediaProtocol(library);
   const commands = createOnAirCommands({
     campaigns: storage.campaigns,
@@ -330,8 +335,18 @@ function startApp() {
     sendEvent(
       controlWindow?.webContents,
       'audio:sounding-changed',
-      soundingOf(audio.mix(), engineReport),
+      soundingOf(audio.mix(), engineReport, padVoices.sounding()),
     );
+  const sendPadCommands = (commands: readonly PadCommand[]) => {
+    for (const command of commands) {
+      sendEvent(controlWindow?.webContents, 'audio:pad-command', command);
+    }
+  };
+  /** A Campaign opened, switched or closed: its pad sounds stop with the rest of the audio. */
+  const stopPads = () => {
+    sendPadCommands(padVoices.clear());
+    sendSounding();
+  };
   audio.subscribe((mix) => {
     sendEvent(controlWindow?.webContents, 'audio:mix-changed', mix);
     sendSounding();
@@ -345,8 +360,16 @@ function startApp() {
   registerHandlers(
     {
       'onAir:get': () => onAir.current(),
-      'onAir:open-campaign': ({ campaignId }) => commands.openCampaign(campaignId),
-      'onAir:close-campaign': () => commands.closeCampaign(),
+      'onAir:open-campaign': async ({ campaignId }) => {
+        const state = await commands.openCampaign(campaignId);
+        stopPads();
+        return state;
+      },
+      'onAir:close-campaign': async () => {
+        const state = await commands.closeCampaign();
+        stopPads();
+        return state;
+      },
       'onAir:activate-scene': async ({ sceneId }) => {
         const state = await commands.activateScene(sceneId);
         // Remembered for highlighting only: nothing goes on air after a restart.
@@ -385,8 +408,11 @@ function startApp() {
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
       'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
-      'media:delete': ({ campaignId, mediaId, confirmed }) =>
-        commands.deleteMedia(campaignId, mediaId, confirmed),
+      'media:delete': async ({ campaignId, mediaId, confirmed }) => {
+        const deletion = await commands.deleteMedia(campaignId, mediaId, confirmed);
+        if (deletion.deleted) await soundboards.removeMedia(campaignId, mediaId);
+        return deletion;
+      },
       'campaigns:list': () => storage.campaigns.list(),
       'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
@@ -403,12 +429,30 @@ function startApp() {
         audio.setMasterVolume(saved.masterVolume);
         return saved;
       },
-      'audio:get-mix': () => audio.mix(),
+      // The engine reads the mix as it starts (or restarts, with the Control window): it holds
+      // no pad sounds then.
+      'audio:get-mix': () => {
+        padVoices.forget();
+        sendSounding();
+        return audio.mix();
+      },
       'audio:report': (report) => {
         engineReport = report;
         sendSounding();
       },
-      'audio:get-sounding': () => soundingOf(audio.mix(), engineReport),
+      'audio:get-sounding': () => soundingOf(audio.mix(), engineReport, padVoices.sounding()),
+      'audio:report-pads': (report) => {
+        if (padVoices.report(report)) sendSounding();
+      },
+      'soundboard:get': ({ campaignId }) => soundboards.get(campaignId),
+      'soundboard:edit': ({ campaignId, edit }) => soundboards.edit(campaignId, edit),
+      'soundboard:press': async ({ campaignId, padId }) => {
+        if (onAir.current().campaignId !== campaignId) {
+          throw new SoundboardError('Ouvrez cette campagne pour jouer ses bruitages.');
+        }
+        const { masterVolume } = await settingsStore.get();
+        sendPadCommands(padVoices.press(await soundboards.press(campaignId, padId, masterVolume)));
+      },
     },
     roleOf,
     log,

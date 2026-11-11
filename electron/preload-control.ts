@@ -1,5 +1,6 @@
 // Control window bridges: the full API (contract: ControlBridge) and, apart, the audio engine's
-// (contract: AudioEngineBridge), which can only receive the mix and report what sounds.
+// (contract: AudioEngineBridge), which can only receive the mix and pad commands and report
+// what sounds.
 // Sandboxed preload: it can only require('electron'), so contract imports are type-only and
 // the small helpers below are repeated in preload-broadcast.ts.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
@@ -86,6 +87,9 @@ const bridge: ControlBridge = {
   setMasterVolume: (masterVolume) => invoke('settings:set-master-volume', { masterVolume }),
   getSounding: () => invoke('audio:get-sounding'),
   onSoundingChanged: (listener) => subscribe('audio:sounding-changed', listener),
+  getSoundboard: (campaignId) => invoke('soundboard:get', { campaignId }),
+  editSoundboard: (campaignId, edit) => invoke('soundboard:edit', { campaignId, edit }),
+  pressPad: (campaignId, padId) => invoke('soundboard:press', { campaignId, padId }),
 };
 
 // The audio engine's bridge: tests/unit/bridges.test.ts checks it calls nothing else.
@@ -93,6 +97,8 @@ const audioEngine: AudioEngineBridge = {
   getMix: () => invoke('audio:get-mix'),
   onMixChanged: (listener) => subscribe('audio:mix-changed', listener),
   report: (report) => invoke('audio:report', report),
+  onPadCommand: (listener) => subscribe('audio:pad-command', listener),
+  reportPads: (report) => invoke('audio:report-pads', report),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);

@@ -10,7 +10,7 @@
  * - #37 Ambiences: `mixOf` already plays switched-on Ambiences; new SceneEdits get their
  *   AudioChange in `audioChangeOf`.
  * - #38 Activate continuity: voices are known by Media, so a Media in both mixes keeps playing.
- * - #39 Soundboard: pad gains (Master × Soundboard level × pad volume) go beside `voiceGain`.
+ * - #39 Soundboard: pad sounds are one-off commands beside the mix (core/padVoices.ts).
  * - #40 Silence: a flag in AudioOnAirState that zeroes every target here.
  * - #42 missing files: leave Media known to be missing out in `audioOf`.
  */
@@ -136,10 +136,16 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
 
 /**
  * What is sounding: each voice of `mix` with the state the engine last reported for it, loading
- * until it does. Voices the engine still holds but the mix dropped (fading out) are not shown.
+ * until it does, and the Soundboard `pads` sounding. Voices the engine still holds but the mix
+ * dropped (fading out) are not shown.
  */
-export function soundingOf(mix: AudioMix, report: AudioEngineReport): AudioSounding {
+export function soundingOf(
+  mix: AudioMix,
+  report: AudioEngineReport,
+  pads: AudioSounding['pads'] = [],
+): AudioSounding {
   return {
+    pads,
     voices: mix.voices.map(({ mediaId, role, name }) => ({
       mediaId,
       role,
@@ -155,7 +161,7 @@ const MAX_REPORTED_VOICES = 64;
 const MAX_ID_LENGTH = 200;
 const VOICE_STATES: readonly VoiceState[] = ['loading', 'playing', 'paused', 'failed'];
 
-function isVoiceState(value: unknown): value is VoiceState {
+export function isVoiceState(value: unknown): value is VoiceState {
   return typeof value === 'string' && (VOICE_STATES as readonly string[]).includes(value);
 }
 

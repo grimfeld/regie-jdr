@@ -18,6 +18,7 @@ import type {
   MediaImportKind,
   Payload,
   SceneEdit,
+  SoundboardEdit,
   TransientEdit,
 } from '../shared/contract.js';
 import path from 'node:path';
@@ -26,6 +27,7 @@ import type {
   CampaignId,
   ImageCategory,
   MediaId,
+  PadReport,
   SceneId,
   ThemeId,
 } from '../shared/domain.js';
@@ -35,6 +37,8 @@ import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 import { parseFadeDuration } from './fades.js';
 import { parseAudioEngineReport } from './audioMix.js';
+import { parsePadReport } from './padVoices.js';
+import { parseSoundboardEdit } from './soundboard.js';
 import { parseVolume } from './settings.js';
 import { isRecord } from './guards.js';
 
@@ -132,6 +136,25 @@ function engineReport(value: unknown): Parsed<AudioEngineReport> {
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
   if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
   return { campaignId: value.campaignId };
+}
+
+function padReport(value: unknown): Parsed<PadReport> {
+  return parsePadReport(value) ?? INVALID;
+}
+
+function soundboardEdit(value: unknown): Parsed<{ campaignId: CampaignId; edit: SoundboardEdit }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const edit = parseSoundboardEdit(value.edit);
+  return edit ? { ...campaign, edit } : INVALID;
+}
+
+function padPress(value: unknown): Parsed<{ campaignId: CampaignId; padId: string }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { padId } = value;
+  if (typeof padId !== 'string' || padId === '' || padId.length > MAX_NAME_PAYLOAD) return INVALID;
+  return { ...campaign, padId };
 }
 
 function importKindOf(value: Record<string, unknown>): Parsed<MediaImportKind> {
@@ -288,6 +311,10 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'audio:get-mix': { from: controlOnly, parse: noPayload },
   'audio:report': { from: controlOnly, parse: onePayload(engineReport) },
   'audio:get-sounding': { from: controlOnly, parse: noPayload },
+  'audio:report-pads': { from: controlOnly, parse: onePayload(padReport) },
+  'soundboard:get': { from: controlOnly, parse: onePayload(campaignOf) },
+  'soundboard:edit': { from: controlOnly, parse: onePayload(soundboardEdit) },
+  'soundboard:press': { from: controlOnly, parse: onePayload(padPress) },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

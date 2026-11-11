@@ -36,6 +36,8 @@ export const AUDIO_FADE_MS = {
   undo: 1000,
   /** Everything stops: a Campaign opened, switched or closed, the Active Scene deleted. */
   stop: 300,
+  /** A pad sound cut to make room for a new one (core/padVoices.ts). */
+  pad: 80,
 } as const;
 
 /** The kind of change a new mix makes, which sets how long it fades (AUDIO_FADE_MS). */

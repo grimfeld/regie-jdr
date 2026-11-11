@@ -518,3 +518,49 @@ describe('audio payload guards', () => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });
 });
+
+describe('Soundboard payload guards', () => {
+  it('keep the Soundboard and pad sounds from the Broadcast window', () => {
+    for (const [channel, args] of [
+      ['soundboard:get', [{ campaignId: 'star-wars' }]],
+      ['soundboard:edit', [{ campaignId: 'star-wars', edit: { kind: 'remove-pad', padId: 'p' } }]],
+      ['soundboard:press', [{ campaignId: 'star-wars', padId: 'p' }]],
+      ['audio:report-pads', [{ voices: [], upTo: 0 }]],
+    ] as const) {
+      expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
+      expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
+    }
+  });
+
+  it('keep only the fields of an edit, a press and a pad report', () => {
+    expect(
+      checkInvoke('soundboard:edit', 'control', [
+        { campaignId: 'star-wars', edit: { kind: 'set-level', volume: 0.5, loop: true }, x: 1 },
+      ]),
+    ).toEqual({
+      ok: true,
+      payload: { campaignId: 'star-wars', edit: { kind: 'set-level', volume: 0.5 } },
+    });
+    expect(
+      checkInvoke('soundboard:press', 'control', [{ campaignId: 'star-wars', padId: 'p', x: 1 }]),
+    ).toEqual({ ok: true, payload: { campaignId: 'star-wars', padId: 'p' } });
+    expect(
+      checkInvoke('audio:report-pads', 'control', [
+        { voices: [{ voiceId: 2, state: 'playing', src: 'x' }], upTo: 2, extra: 1 },
+      ]),
+    ).toEqual({ ok: true, payload: { voices: [{ voiceId: 2, state: 'playing' }], upTo: 2 } });
+  });
+
+  it.each([
+    ['an edit for a bad Campaign id', 'soundboard:edit', [{ campaignId: '../x', edit: {} }]],
+    [
+      'a pad volume above 1',
+      'soundboard:edit',
+      [{ campaignId: 'star-wars', edit: { kind: 'set-pad-volume', padId: 'p', volume: 2 } }],
+    ],
+    ['a press with no pad', 'soundboard:press', [{ campaignId: 'star-wars' }]],
+    ['a pad report with no upTo', 'audio:report-pads', [{ voices: [] }]],
+  ] as const)('reject %s', (_case, channel, args) => {
+    expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
+  });
+});

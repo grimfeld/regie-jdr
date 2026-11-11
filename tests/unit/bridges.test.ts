@@ -33,7 +33,7 @@ describe('sender rules and bridges', () => {
     expect(allowed).toEqual(reads);
   });
 
-  it('gives the audio engine a bridge that only reads the mix and reports what sounds', () => {
+  it('gives the audio engine a bridge that only reads the mix and pad commands and reports what sounds', () => {
     const source = readFileSync(
       new URL('../../electron/preload-control.ts', import.meta.url),
       'utf8',
@@ -43,6 +43,12 @@ describe('sender rules and bridges', () => {
     const called = [...(engineBridge ?? '').matchAll(/\b(?:invoke|subscribe)\(\s*'([^']+)'/g)].map(
       (match) => match[1],
     );
-    expect(called.sort()).toEqual(['audio:get-mix', 'audio:mix-changed', 'audio:report']);
+    expect(called.sort()).toEqual([
+      'audio:get-mix',
+      'audio:mix-changed',
+      'audio:pad-command',
+      'audio:report',
+      'audio:report-pads',
+    ]);
   });
 });
