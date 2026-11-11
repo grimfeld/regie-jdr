@@ -32,7 +32,12 @@ import {
   parseNotes,
 } from './notes.js';
 import { moveInRunningOrder } from './runningOrder.js';
-import { cleanSceneName, MAX_SCENE_NAME_LENGTH, SceneError } from './sceneEdits.js';
+import {
+  cleanSceneName,
+  isTransitionKind,
+  MAX_SCENE_NAME_LENGTH,
+  SceneError,
+} from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
 export { SceneError };
@@ -138,9 +143,10 @@ function parseList<T>(value: unknown, parse: (item: unknown) => T | undefined): 
  */
 export function parseScene(value: unknown, campaignId: CampaignId): Scene | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, name, title, volumes } = value;
+  const { id, name, title, volumes, transition } = value;
   const notes = parseNotes(value.notes);
   if (!isId(id) || typeof name !== 'string' || !notes) return undefined;
+  if (!isTransitionKind(transition)) return undefined;
   if (typeof title !== 'string') return undefined;
   if (!isRecord(volumes) || !isUnit(volumes.music) || !isUnit(volumes.ambience)) return undefined;
   const backgrounds = parseList(value.backgrounds, parseBackground);
@@ -159,6 +165,7 @@ export function parseScene(value: unknown, campaignId: CampaignId): Scene | unde
     ambiences,
     volumes: { music: volumes.music, ambience: volumes.ambience },
     notes,
+    transition,
   };
 }
 
@@ -275,14 +282,23 @@ function migrateScenesV2(fields: Record<string, unknown>): Record<string, unknow
   return { ...fields, scenes };
 }
 
+/** Version 3 to 4 (Milestone 3): every Scene gets its entry Transition, Crossfade. */
+function migrateScenesV3(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.scenes)) return fields;
+  const scenes = fields.scenes.map((scene: unknown) =>
+    isRecord(scene) ? { ...scene, transition: 'crossfade' } : scene,
+  );
+  return { ...fields, scenes };
+}
+
 function zIndexOf(item: unknown): number {
   return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
 }
 
 const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
   name: 'scenes',
-  version: 3,
-  migrations: { 1: migrateScenesV1, 2: migrateScenesV2 },
+  version: 4,
+  migrations: { 1: migrateScenesV1, 2: migrateScenesV2, 3: migrateScenesV3 },
   parse({ scenes }) {
     const parsed = parseList(scenes, (item) => parseScene(item, ''));
     return parsed && { scenes: parsed.map(stored) };
@@ -333,6 +349,7 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
           ambiences: [],
           volumes: { music: 1, ambience: 1 },
           notes: emptyNotes(),
+          transition: 'crossfade',
         };
         await write(file, [...scenes, scene]);
         return scene;

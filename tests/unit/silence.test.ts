@@ -46,6 +46,7 @@ const taverne: Scene = {
   ambiences: [{ mediaId: 'a1', on: true, volume: 0.5 }],
   volumes: { music: 1, ambience: 1 },
   notes: emptyNotes(),
+  transition: 'crossfade',
 };
 
 const heard: MixInput = {

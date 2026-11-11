@@ -35,6 +35,7 @@ describe('scene library', () => {
       ambiences: [],
       volumes: { music: 1, ambience: 1 },
       notes: emptyNotes(),
+      transition: 'crossfade',
     });
     expect(await scenes.list(campaign.id)).toEqual([scene]);
   });
@@ -242,6 +243,7 @@ describe('scene library', () => {
         ambiences: [],
         volumes: { music: 1, ambience: 1 },
         notes: notesFromPlainText('secret'),
+        transition: 'crossfade',
       },
     ]);
   });
@@ -271,6 +273,46 @@ describe('scene library', () => {
       ],
     });
     expect(empty.notes).toEqual(emptyNotes());
+  });
+
+  it('gives a new Scene the Crossfade Transition', async () => {
+    const { campaign, scenes } = await setup();
+    expect((await scenes.create(campaign.id, 'La cantina')).transition).toBe('crossfade');
+  });
+
+  it('keeps a Scene’s Transition after the storage is reopened (restart)', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'Embuscade');
+    await scenes.save({ ...scene, transition: 'cut' });
+
+    const reopened = createSceneLibrary(openStorage(root()));
+    expect((await reopened.get(campaign.id, scene.id))?.transition).toBe('cut');
+  });
+
+  it('gives every Scene saved before Transitions (version 3) the Crossfade Transition', async () => {
+    const { storage, campaign, scenes } = await setup();
+    const {
+      campaignId: _campaignId,
+      transition: _transition,
+      ...stored
+    } = await scenes.create(campaign.id, 'La cantina');
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'scenes.json'),
+      JSON.stringify({ schemaVersion: 3, scenes: [stored, { ...stored, id: 's2' }] }),
+    );
+
+    const migrated = await scenes.list(campaign.id);
+    expect(migrated.map((scene) => scene.transition)).toEqual(['crossfade', 'crossfade']);
+  });
+
+  it('rejects a stored Scene with an unknown Transition', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'La cantina');
+    expect(parseScene({ ...scene, transition: 'wipe' }, campaign.id)).toBeUndefined();
+    expect(parseScene({ ...scene, transition: 'cut' }, campaign.id)).toEqual({
+      ...scene,
+      transition: 'cut',
+    });
   });
 
   describe('running order', () => {
@@ -421,6 +463,7 @@ describe('Scene parsing', () => {
     ambiences: [{ mediaId: 'm4', on: true, volume: 0.3 }],
     volumes: { music: 0.5, ambience: 0.7 },
     notes: notesFromPlainText('secret'),
+    transition: 'cut',
   };
 
   it('accepts a complete Scene and attaches the Campaign id', () => {
@@ -499,6 +542,7 @@ describe('copy of a Scene', () => {
       { mediaId: 'm7', on: false, volume: 1 },
     ],
     volumes: { music: 0.5, ambience: 0.8 },
+    transition: 'cut',
     notes: {
       type: 'doc',
       content: [
@@ -530,6 +574,7 @@ describe('copy of a Scene', () => {
     ambiences: 'same',
     volumes: 'same',
     notes: 'same',
+    transition: 'same',
   } as const satisfies Record<keyof Scene, string>;
 
   let ids = 0;

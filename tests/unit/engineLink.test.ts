@@ -30,6 +30,7 @@ const taverne: Scene = {
   ambiences: [],
   volumes: { music: 1, ambience: 1 },
   notes: emptyNotes(),
+  transition: 'crossfade',
 };
 
 function setup() {

@@ -346,6 +346,7 @@ describe('what of a Scene goes on air', () => {
     campaignId: 'c1',
     name: 'Embuscade des cultistes',
     title: 'Le vieux moulin',
+    transition: 'crossfade',
     backgrounds: [
       { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1.5, focus: centre, visible: true },
       { id: 'b2', mediaId: 'm2', fit: 'contain', zoom: 1, focus: { x: 0, y: 1 }, visible: false },
@@ -492,6 +493,7 @@ describe('what of a Scene the editor draws', () => {
     campaignId: 'c1',
     name: 'Embuscade des cultistes',
     title: 'Le vieux moulin',
+    transition: 'crossfade',
     backgrounds: [
       { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1, focus: centre, visible: true },
       { id: 'b2', mediaId: 'm1', fit: 'contain', zoom: 2, focus: centre, visible: false },

@@ -144,6 +144,12 @@ export interface Scene {
   volumes: SceneVolumes;
   /** Private to the Game Master: never shown in the Broadcast window. */
   notes: NotesDocument;
+  /**
+   * How the picture changes when this Scene is Activated (its entry Transition); Crossfade for
+   * a new Scene. A setting of the Scene, never on air itself: Activate puts it in
+   * OnAirState.transition.
+   */
+  transition: TransitionKind;
 }
 
 /** A text mark in Scene Notes: bold or italic, nothing else. */
