@@ -323,6 +323,19 @@ describe('on-air commands', () => {
       expect(ctx.mixes).toEqual([]);
     });
 
+    it('two Music drops sent back to back are both kept, in drop order', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Vide');
+      const add = (mediaId: string) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, { kind: 'add-music', mediaId });
+
+      // Neither awaited before the other is sent, as two drops in a row reach the main process.
+      const [, second] = await Promise.all([add(ctx.music[0].id), add(ctx.music[1].id)]);
+
+      expect(second.music).toEqual([ctx.music[0].id, ctx.music[1].id]);
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.music).toEqual(second.music);
+    });
+
     it('refuses to add an image or a missing Media to the Music list', async () => {
       const ctx = await setupWithMusic();
       const scene = await ctx.scenes.create(ctx.campaign.id, 'Vide');
