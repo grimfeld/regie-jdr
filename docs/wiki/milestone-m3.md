@@ -25,3 +25,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: #47 duplicate merged at `3814149` (896 unit, 150 app tests). No deviations.
 - 2026-11-12: #53 Notes image size merged at `828f354` (907 unit, 152 app tests).
 - 2026-11-12: #48 Crossfade merged at `5258baf` (930 unit, 155 app tests). Manual check: how the dissolve feels, large-image frames.
+- 2026-11-12: M2 CI fixed at `65e6049` (real slider-draft race; see [flaky tests](problem-flaky-app-tests.md)); #75 CI green. Backport to M1 #74 and merge-forward to M3 in progress.
