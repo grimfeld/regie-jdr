@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ErrorBoundary } from '../../src/ErrorBoundary';
+import { BROADCAST_RETRY_MS, ErrorBoundary } from '../../src/ErrorBoundary';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,6 +25,14 @@ afterEach(() => {
 
 function Crashing(): never {
   throw new Error('render failed');
+}
+
+/** Whether `Flaky` crashes when rendered. */
+let broken = true;
+
+function Flaky() {
+  if (broken) throw new Error('render failed');
+  return <span>image</span>;
 }
 
 describe('a window whose interface crashes', () => {
@@ -53,5 +61,35 @@ describe('a window whose interface crashes', () => {
     expect(container.textContent).toBe('');
     expect(container.querySelector('button, a, input, select, textarea')).toBeNull();
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('render failed'));
+  });
+
+  it('starts the Broadcast window again by itself, waiting longer after each crash', () => {
+    vi.useFakeTimers();
+    try {
+      broken = true;
+      act(() =>
+        root.render(
+          <ErrorBoundary window="broadcast">
+            <Flaky />
+          </ErrorBoundary>,
+        ),
+      );
+      // The first try again, a second later, crashes too: the next waits two seconds.
+      act(() => {
+        vi.advanceTimersByTime(BROADCAST_RETRY_MS);
+      });
+      broken = false;
+      act(() => {
+        vi.advanceTimersByTime(BROADCAST_RETRY_MS);
+      });
+      expect(container.textContent).toBe('');
+
+      act(() => {
+        vi.advanceTimersByTime(BROADCAST_RETRY_MS);
+      });
+      expect(container.textContent).toBe('image');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
