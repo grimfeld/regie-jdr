@@ -180,6 +180,42 @@ test('a Notes image is resized by its corner handle, as a share of the panel, un
   }
 });
 
+/** An image's width in % of the Notes panel's text width (its editor's content box), rounded. */
+function panelPercent(image: Locator): Promise<number> {
+  return image.evaluate((img) => {
+    const root = img.closest('.tiptap');
+    if (!root) throw new Error('not in the Notes');
+    const style = getComputedStyle(root);
+    const text = root.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return Math.round((img.getBoundingClientRect().width / text) * 100);
+  });
+}
+
+test('a Notes image in a quote is sized as a share of the panel, not of the quote', async ({
+  regie,
+}) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Embuscade');
+  const map = await picturePng(regie, 'Plan du fort.png', { width: 1600, height: 800 }, GREEN);
+  expect(await dropFiles(notes(page), [map])).toBe(true);
+  const mapImage = notesImage(page, 'Plan du fort');
+  await mapImage.click();
+  await notesPanel(page).getByRole('button', { name: 'Citation' }).click();
+  await expect(notes(page).locator('blockquote').getByRole('img')).toHaveCount(1);
+
+  await mapImage.click();
+  const handle = notesPanel(page).getByRole('button', { name: 'Redimensionner Plan du fort' });
+  await handle.focus();
+  await page.keyboard.press('ArrowLeft');
+
+  await expect.poll(() => storedImageWidths(regie.dataDir)).toEqual([expect.any(Number)]);
+  const [stored] = await storedImageWidths(regie.dataDir);
+  // The quote is narrower than the panel: the default size filled it, short of 100 %.
+  expect(stored).toBeLessThan(95);
+  await expect.poll(() => panelPercent(mapImage)).toBe(stored);
+});
+
 test('a double-clicked Notes image is shown enlarged in the Control window only', async ({
   regie,
 }) => {

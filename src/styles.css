@@ -1410,6 +1410,8 @@ button {
   cursor: default;
 }
 .scene-notes-editor .tiptap {
+  /* The Notes images' widths are % of this text width, as cqi (src/NotesImage.tsx). */
+  container-type: inline-size;
   min-height: 120px;
   padding: 8px;
   color: var(--text);

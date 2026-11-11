@@ -31,9 +31,11 @@ export const NotesImagesContext = createContext<readonly ImageMedia[] | undefine
  * width (core/notes.ts), drawn from the library like any image Media, "Média manquant" when its
  * file or Media is gone.
  *
- * Its size: by default its own width, at most the panel's. Once resized, its `width` in % of the
- * width it stands in, so it follows the panel when the panel is resized. A click selects it and
- * shows its resize handle; a double click shows it enlarged, in the Control window only.
+ * Its size: by default its own width, at most the width it stands in. Once resized, its `width`
+ * in % of the Notes panel's text width (#53), in a quote or a list too (where it is never wider
+ * than the quote or list), so it follows the panel when the panel is resized. The editor's root
+ * is a CSS size container (styles.css): the width is drawn in its `cqi` units. A click selects
+ * it and shows its resize handle; a double click shows it enlarged, in the Control window only.
  *
  * Copied and pasted inside the Notes it is an `<img data-media-id data-width>` with no address;
  * any other pasted `<img>` is not an image node (its text alone is kept, as for other markup).
@@ -101,6 +103,14 @@ function pixelWidth(element: Element): number {
   return element.getBoundingClientRect().width;
 }
 
+/** The Notes panel's text width (the editor root's content box) around `element`, in pixels. */
+function panelWidth(element: Element): number {
+  const root = element.closest('.tiptap');
+  if (!root) return 0;
+  const style = getComputedStyle(root);
+  return root.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+}
+
 function NotesImageView({ node, selected, updateAttributes }: ReactNodeViewProps) {
   const images = useContext(NotesImagesContext);
   const mediaId: unknown = node.attrs.mediaId;
@@ -119,20 +129,19 @@ function NotesImageView({ node, selected, updateAttributes }: ReactNodeViewProps
 
   /**
    * Dragging the corner handle: the image's right edge follows the pointer, its height following
-   * its width (aspect locked), from 10 to 100 % of the width it stands in.
+   * its width (aspect locked), from 10 to 100 % of the Notes panel's text width.
    */
   function startResize(event: ReactPointerEvent<HTMLButtonElement>) {
     const shown = frame.current;
-    const holder = shown?.parentElement;
-    if (event.button !== 0 || !shown || !holder || pixelWidth(holder) <= 0) return;
+    if (event.button !== 0 || !shown || panelWidth(shown) <= 0) return;
     const handle = event.currentTarget;
-    const [startX, startPixels, holderPixels] = [
+    const [startX, startPixels, panelPixels] = [
       event.clientX,
       pixelWidth(shown),
-      pixelWidth(holder),
+      panelWidth(shown),
     ];
     const widthAt = (clientX: number) =>
-      clampWidth(((startPixels + clientX - startX) / holderPixels) * 100);
+      clampWidth(((startPixels + clientX - startX) / panelPixels) * 100);
     let latest = widthAt(startX);
     handle.setPointerCapture(event.pointerId);
     setDragWidth(latest);
@@ -156,10 +165,9 @@ function NotesImageView({ node, selected, updateAttributes }: ReactNodeViewProps
   function resizeByKey(event: KeyboardEvent<HTMLButtonElement>) {
     const step = Object.hasOwn(ARROW_STEPS, event.key) ? ARROW_STEPS[event.key] : undefined;
     const shown = frame.current;
-    const holder = shown?.parentElement;
-    if (step === undefined || !shown || !holder || pixelWidth(holder) <= 0) return;
+    if (step === undefined || !shown || panelWidth(shown) <= 0) return;
     event.preventDefault();
-    resizeTo(clampWidth((width ?? (pixelWidth(shown) / pixelWidth(holder)) * 100) + step));
+    resizeTo(clampWidth((width ?? (pixelWidth(shown) / panelWidth(shown)) * 100) + step));
   }
 
   return (
@@ -167,7 +175,7 @@ function NotesImageView({ node, selected, updateAttributes }: ReactNodeViewProps
       <div
         ref={frame}
         className={width === undefined ? 'notes-image-frame' : 'notes-image-frame sized'}
-        style={width === undefined ? undefined : { width: `${String(width)}%` }}
+        style={width === undefined ? undefined : { width: `${String(width)}cqi` }}
         onDoubleClick={image ? () => setEnlarged(true) : undefined}
       >
         {images === undefined ? null : image ? (
