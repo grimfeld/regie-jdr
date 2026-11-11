@@ -469,6 +469,85 @@ test('opening a Campaign selects its last Active Scene and puts nothing on air',
   }
 });
 
+/** From a Campaign's screen, opens another Campaign through the Campaign list. */
+async function switchCampaign(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Campagnes' }).click();
+  await page
+    .getByRole('list', { name: 'Campagnes' })
+    .getByRole('button', { name, exact: true })
+    .click();
+  await page.getByRole('heading', { name, exact: true }).waitFor();
+}
+
+/** Expects `name` to be the Selected Scene, open in the editor and not on air. */
+async function expectSelectedOffAir(page: Page, name: string) {
+  await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(sceneEntry(page, name)).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor(page)).not.toContainText('EN DIRECT');
+}
+
+test('switching Campaign and restarting select each Campaign’s last Active Scene, else the first Scene', async ({
+  regie,
+}) => {
+  const { app, controlWindow, dataDir } = regie;
+  // Star Wars: Hangar was Active, Cantina is left selected.
+  await createCampaign(controlWindow, 'Star Wars');
+  await createScene(controlWindow, 'Cantina');
+  await createScene(controlWindow, 'Hangar');
+  await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
+  await expect(editor(controlWindow)).toContainText('EN DIRECT');
+  await selectScene(controlWindow, 'Cantina');
+  // Warhammer: Crypte was Active, Cathédrale is left selected.
+  await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
+  await createCampaign(controlWindow, 'Warhammer');
+  await createScene(controlWindow, 'Cathédrale');
+  await createScene(controlWindow, 'Crypte');
+  await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
+  await expect(editor(controlWindow)).toContainText('EN DIRECT');
+  await selectScene(controlWindow, 'Cathédrale');
+  // Dune: no Scene was ever Active.
+  await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
+  await createCampaign(controlWindow, 'Dune');
+  await createScene(controlWindow, 'Arrakis');
+  await createScene(controlWindow, 'Caladan');
+
+  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
+  await switchCampaign(controlWindow, 'Star Wars');
+  await expectSelectedOffAir(controlWindow, 'Hangar');
+  await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
+  await switchCampaign(controlWindow, 'Warhammer');
+  await expectSelectedOffAir(controlWindow, 'Crypte');
+  await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
+  await switchCampaign(controlWindow, 'Dune');
+  await expectSelectedOffAir(controlWindow, 'Arrakis');
+
+  // The last Active Scene deleted: Warhammer falls back to its first Scene.
+  await switchCampaign(controlWindow, 'Warhammer');
+  await expectSelectedOffAir(controlWindow, 'Crypte');
+  await deleteSelectedScene(controlWindow);
+  await expect(sceneEntry(controlWindow, 'Crypte')).toHaveCount(0);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    const page = restarted.controlWindow;
+    const reopened = await openBroadcastWindow(restarted.app, page);
+    await page
+      .getByRole('list', { name: 'Campagnes' })
+      .getByRole('button', { name: 'Star Wars', exact: true })
+      .click();
+    await expectSelectedOffAir(page, 'Hangar');
+    await expect(broadcastScreen(reopened)).toHaveAttribute('data-active-scene-id', '');
+    await switchCampaign(page, 'Warhammer');
+    await expectSelectedOffAir(page, 'Cathédrale');
+    await switchCampaign(page, 'Dune');
+    await expectSelectedOffAir(page, 'Arrakis');
+    await expect(broadcastScreen(reopened)).toHaveAttribute('data-active-scene-id', '');
+  } finally {
+    await restarted.app.close();
+  }
+});
+
 test('a Campaign with no Scenes shows an empty editor inviting the Game Master to create one', async ({
   regie,
 }) => {
