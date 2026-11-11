@@ -8,6 +8,7 @@ import type {
   ControlBridge,
 } from '../shared/contract';
 import BroadcastView from './BroadcastView';
+import { BroadcastOnTopToggle } from './BroadcastOnTop';
 import {
   CampaignList,
   errorMessage,
@@ -253,6 +254,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           >
             <Maximize size={14} /> Plein écran
           </button>
+          <BroadcastOnTopToggle control={control} />
         </div>
       </header>
       {openCampaign ? (

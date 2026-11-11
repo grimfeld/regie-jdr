@@ -2,7 +2,8 @@
  * Global Settings (one document, `<root>/settings.json`): the home page theme, the Control and
  * Broadcast window bounds, the last Active Scene of each Campaign (for highlighting only:
  * nothing goes on air after a restart), the fade duration, the Master volume, the Activate
- * duration and the Music crossfade duration. No Electron dependency.
+ * duration, the Music crossfade duration and whether the Broadcast window stays on top. No
+ * Electron dependency.
  */
 import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
@@ -43,6 +44,7 @@ export interface SettingsStore {
   setActivateDuration(activateDurationMs: number): Promise<Settings>;
   /** Throws a SettingsError for a duration outside MUSIC_CROSSFADE_MS. */
   setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
+  setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
 }
 
 /** Master volume until the Game Master changes it: full. */
@@ -67,6 +69,7 @@ function defaults(): Settings {
     masterVolume: DEFAULT_MASTER_VOLUME,
     activateDurationMs: ACTIVATE_DURATION_MS.default,
     musicCrossfadeMs: MUSIC_CROSSFADE_MS.default,
+    broadcastAlwaysOnTop: false,
   };
 }
 
@@ -90,7 +93,7 @@ export function parseWindowBounds(value: unknown): WindowBounds | undefined {
 
 const settingsDocument: DocumentType<Settings> = {
   name: 'settings',
-  version: 4,
+  version: 5,
   migrations: {
     // Version 2 adds the fade duration, at its default.
     1: (fields) => ({ ...fields, fadeDurationMs: FADE_DURATION_MS.default }),
@@ -102,6 +105,10 @@ const settingsDocument: DocumentType<Settings> = {
       activateDurationMs: ACTIVATE_DURATION_MS.default,
       musicCrossfadeMs: MUSIC_CROSSFADE_MS.default,
     }),
+    // Version 5 (Milestone 4) adds the Broadcast window always on top, off. A version 4 file
+    // written by an M4 build before the merge with M3 may hold it already: kept. Its missing
+    // durations are filled with their defaults by parse.
+    4: (fields) => ({ broadcastAlwaysOnTop: false, ...fields }),
   },
   parse({
     theme,
@@ -111,6 +118,7 @@ const settingsDocument: DocumentType<Settings> = {
     masterVolume,
     activateDurationMs,
     musicCrossfadeMs,
+    broadcastAlwaysOnTop,
   }) {
     if (!isThemeId(theme) || !isRecord(windowBounds) || !isRecord(lastActiveSceneByCampaign)) {
       return undefined;
@@ -132,6 +140,7 @@ const settingsDocument: DocumentType<Settings> = {
       masterVolume: parseVolume(masterVolume) ?? DEFAULT_MASTER_VOLUME,
       activateDurationMs: parseActivateDuration(activateDurationMs) ?? ACTIVATE_DURATION_MS.default,
       musicCrossfadeMs: parseMusicCrossfade(musicCrossfadeMs) ?? MUSIC_CROSSFADE_MS.default,
+      broadcastAlwaysOnTop: broadcastAlwaysOnTop === true,
     };
   },
 };
@@ -208,5 +217,7 @@ export function createSettingsStore(storage: Storage): SettingsStore {
       }
       return change((settings) => ({ ...settings, musicCrossfadeMs }));
     },
+    setBroadcastAlwaysOnTop: (on) =>
+      change((settings) => ({ ...settings, broadcastAlwaysOnTop: on })),
   };
 }

@@ -435,6 +435,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'settings:set-master-volume': { from: controlOnly, parse: onePayload(masterVolumeOf) },
   'settings:set-activate-duration': { from: controlOnly, parse: onePayload(activateDurationOf) },
   'settings:set-music-crossfade': { from: controlOnly, parse: onePayload(musicCrossfadeOf) },
+  'settings:set-broadcast-always-on-top': { from: controlOnly, parse: onePayload(onOffOf) },
   // The audio engine runs in the Control window (ADR-0002): the Broadcast window gets no audio.
   'audio:get-mix': { from: controlOnly, parse: noPayload },
   'audio:report': { from: controlOnly, parse: onePayload(engineReport) },

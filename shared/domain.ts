@@ -231,6 +231,11 @@ export interface Settings {
    * Active Scene's Music list crossfades (bounds in core/fades.ts).
    */
   musicCrossfadeMs: number;
+  /**
+   * Keep the Broadcast window above other windows, so a single-monitor Game Master never covers
+   * what Discord streams (ADR-0002: covered by another application, it goes silent and black).
+   */
+  broadcastAlwaysOnTop: boolean;
 }
 
 /** A visible Background as the Broadcast window draws it. */

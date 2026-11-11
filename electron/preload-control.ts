@@ -116,6 +116,7 @@ const bridge: ControlBridge = {
     invoke('settings:set-activate-duration', { activateDurationMs }),
   setMusicCrossfade: (musicCrossfadeMs) =>
     invoke('settings:set-music-crossfade', { musicCrossfadeMs }),
+  setBroadcastAlwaysOnTop: (on) => invoke('settings:set-broadcast-always-on-top', { on }),
   getSounding: () => invoke('audio:get-sounding'),
   setSilence: (on) => invoke('audio:set-silence', { on }),
   toggleSilence: () => invoke('audio:toggle-silence'),

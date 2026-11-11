@@ -59,6 +59,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'renameMedia',
     'setActivateDuration',
     'setBlackout',
+    'setBroadcastAlwaysOnTop',
     'setFadeDuration',
     'setHomeTheme',
     'setImageCategory',

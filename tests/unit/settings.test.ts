@@ -8,7 +8,7 @@ describe('settings', () => {
   const dir = useTempDir();
   const reopen = () => createSettingsStore(openStorage(dir.path));
 
-  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade, a full Master volume, a 1.5 s Activate and a 2 s Music crossfade', async () => {
+  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade, a full Master volume, a 1.5 s Activate, a 2 s Music crossfade and the Broadcast window not on top', async () => {
     expect(await reopen().get()).toEqual({
       theme: 'imperium',
       windowBounds: {},
@@ -17,6 +17,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -51,6 +52,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -74,6 +76,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -97,6 +100,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -153,6 +157,7 @@ describe('settings', () => {
       masterVolume: 0.4,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -212,6 +217,90 @@ describe('settings', () => {
     });
   });
 
+  describe('bring version 4 Settings to version 5, whichever milestone wrote them', () => {
+    const version4 = (fields: object) => ({
+      schemaVersion: 4,
+      theme: 'retro',
+      windowBounds: {},
+      lastActiveSceneByCampaign: {},
+      fadeDurationMs: 900,
+      masterVolume: 0.4,
+      ...fields,
+    });
+    const migrated = async (fields: object) => {
+      const storage = openStorage(dir.path);
+      await fs.writeFile(storage.settingsFile, JSON.stringify(version4(fields)));
+      const settings = await reopen().setTheme('retro');
+      const stored: unknown = JSON.parse(await fs.readFile(storage.settingsFile, 'utf8'));
+      return { settings, stored };
+    };
+
+    it('Milestone 3 (the durations): keeps them, the Broadcast window not on top', async () => {
+      const { settings, stored } = await migrated({
+        activateDurationMs: 3000,
+        musicCrossfadeMs: 5000,
+      });
+      expect(settings).toEqual({
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        fadeDurationMs: 900,
+        masterVolume: 0.4,
+        activateDurationMs: 3000,
+        musicCrossfadeMs: 5000,
+        broadcastAlwaysOnTop: false,
+      });
+      expect(stored).toMatchObject({ schemaVersion: 5, broadcastAlwaysOnTop: false });
+    });
+
+    it('an early Milestone 4 build (always on top only): keeps it, default durations', async () => {
+      const { settings, stored } = await migrated({ broadcastAlwaysOnTop: true });
+      expect(settings).toMatchObject({
+        activateDurationMs: 1500,
+        musicCrossfadeMs: 2000,
+        broadcastAlwaysOnTop: true,
+      });
+      expect(stored).toMatchObject({
+        schemaVersion: 5,
+        activateDurationMs: 1500,
+        musicCrossfadeMs: 2000,
+        broadcastAlwaysOnTop: true,
+      });
+    });
+  });
+
+  it('keep a stored Broadcast always-on-top choice and drop an unusable one', async () => {
+    const storage = openStorage(dir.path);
+    const write = (broadcastAlwaysOnTop: unknown) =>
+      fs.writeFile(
+        storage.settingsFile,
+        JSON.stringify({
+          schemaVersion: 5,
+          theme: 'imperium',
+          windowBounds: {},
+          lastActiveSceneByCampaign: {},
+          fadeDurationMs: 600,
+          masterVolume: 1,
+          activateDurationMs: 1500,
+          musicCrossfadeMs: 2000,
+          broadcastAlwaysOnTop,
+        }),
+      );
+    await write(true);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(true);
+    for (const unusable of ['yes', 1, null]) {
+      await write(unusable);
+      expect((await reopen().get()).broadcastAlwaysOnTop).toBe(false);
+    }
+  });
+
+  it('remember the Broadcast always-on-top choice across a restart', async () => {
+    expect((await reopen().setBroadcastAlwaysOnTop(true)).broadcastAlwaysOnTop).toBe(true);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(true);
+    expect((await reopen().setBroadcastAlwaysOnTop(false)).broadcastAlwaysOnTop).toBe(false);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(false);
+  });
+
   it('remember the global theme across a restart', async () => {
     await reopen().setTheme('fantasy');
     expect((await reopen().get()).theme).toBe('fantasy');
@@ -236,6 +325,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -282,6 +372,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -304,6 +395,7 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
     });
   });
 });

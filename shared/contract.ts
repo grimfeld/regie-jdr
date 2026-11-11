@@ -504,6 +504,12 @@ export interface InvokeChannels {
    */
   'settings:set-music-crossfade': { payload: { musicCrossfadeMs: number }; result: Settings };
   /**
+   * Keep the Broadcast window above other windows, or stop: saved, and applied to the open
+   * Broadcast window and to every one opened later. Set from the Control window only: the
+   * Broadcast window has no controls.
+   */
+  'settings:set-broadcast-always-on-top': { payload: { on: boolean }; result: Settings };
+  /**
    * The current mix, for the audio engine (on start and on every reload of the Control window,
    * when the main process forgets what the old engine reported).
    */
@@ -685,6 +691,7 @@ export interface ControlBridge extends BroadcastBridge {
   setMasterVolume(masterVolume: number): Promise<Settings>;
   setActivateDuration(activateDurationMs: number): Promise<Settings>;
   setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
+  setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
   toggleSilence(): Promise<AudioSounding>;
