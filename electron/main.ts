@@ -308,7 +308,10 @@ function startApp() {
       'scenes:undo-state': ({ campaignId, sceneId }) => commands.undoState(campaignId, sceneId),
       'scenes:undo': ({ campaignId, sceneId }) => commands.undoSceneEdit(campaignId, sceneId),
       'scenes:redo': ({ campaignId, sceneId }) => commands.redoSceneEdit(campaignId, sceneId),
-      'scenes:delete': ({ campaignId, sceneId }) => commands.deleteScene(campaignId, sceneId),
+      'scenes:delete': async ({ campaignId, sceneId }) => {
+        await commands.deleteScene(campaignId, sceneId);
+        saveSetting((store) => store.forgetScene(campaignId, sceneId));
+      },
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
       'media:list': ({ campaignId }) => library.list(campaignId),
