@@ -198,6 +198,38 @@ describe('parseNotes', () => {
     expect(parseNotes(doc(node))).toBeUndefined();
   });
 
+  it('accepts notes nested as deep as allowed, marks and all', () => {
+    let node: NotesNode = paragraph({ type: 'text', text: 'fond', marks: [{ type: 'bold' }] });
+    for (let depth = 1; depth < MAX_NOTES_DEPTH; depth++) {
+      node = { type: 'blockquote', content: [node] };
+    }
+    expect(parseNotes(doc(node))).toEqual(doc(node));
+  });
+
+  it('refuses notes nested too deep before walking them any deeper', () => {
+    // Deep enough for a recursive walk (JSON.stringify, the parser) to be a risk: what lies
+    // below the depth limit is never even looked at.
+    let looked = false;
+    let node: Record<string, unknown> = {
+      type: 'paragraph',
+      get content() {
+        looked = true;
+        return [text('fond')];
+      },
+    };
+    for (let depth = 0; depth < MAX_NOTES_DEPTH + 20; depth++) {
+      node = { type: 'blockquote', content: [node] };
+    }
+    expect(parseNotes({ type: 'doc', content: [node] })).toBeUndefined();
+    expect(looked).toBe(false);
+  });
+
+  it('refuses notes nested a million levels deep without overflowing the stack', () => {
+    let node: unknown = { type: 'paragraph' };
+    for (let depth = 0; depth < 1_000_000; depth++) node = { type: 'blockquote', content: [node] };
+    expect(parseNotes({ type: 'doc', content: [node] })).toBeUndefined();
+  });
+
   it('refuses notes too large', () => {
     expect(parseNotes(doc(paragraph(text('a'.repeat(MAX_NOTES_SIZE)))))).toBeUndefined();
   });

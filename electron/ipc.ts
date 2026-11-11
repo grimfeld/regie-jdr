@@ -1,6 +1,7 @@
 import { ipcMain, type WebContents } from 'electron';
 import { checkInvoke, invokeChannels, type WindowRole } from '../core/ipc.js';
 import type { Logger } from '../core/logger.js';
+import { messageForWindow } from '../core/windowErrors.js';
 import type {
   EventChannel,
   EventChannels,
@@ -29,7 +30,8 @@ const failurePrefix: Record<IpcFailureCode, string> = {
  * Registers every channel of the contract on ipcMain. Each message goes through the sender
  * policy and payload guards of core/ipc.ts first; rejects are logged as warnings and the
  * caller's promise fails with an error mentioning "rejected". A handler that throws is logged
- * with its stack, which stays in the main process: the caller gets the error's message only.
+ * with its stack, which stays in the main process: the caller gets a French message only, the
+ * app core's own or one standing for a system error (core/windowErrors.ts).
  * Each handler call that runs is handed to `track` (settled, never failing), so the app can
  * finish it before quitting: a window's last message, sent as it closes, still gets saved.
  */
@@ -55,8 +57,7 @@ export function registerHandlers(
       } catch (error) {
         const message = `${failurePrefix.failed}: "${channel}"`;
         log.error(message, error);
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`${message}: ${reason}`, { cause: error });
+        throw new Error(`${message}: ${messageForWindow(error)}`, { cause: error });
       }
     });
   }

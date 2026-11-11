@@ -134,9 +134,34 @@ export function notesFromPlainText(text: string): NotesDocument {
  * deeper than MAX_NOTES_DEPTH or larger than MAX_NOTES_SIZE.
  */
 export function parseNotes(value: unknown): NotesDocument | undefined {
-  if (!isRecord(value) || value.type !== 'doc' || !fitsSize(value)) return undefined;
+  if (!isRecord(value) || value.type !== 'doc') return undefined;
+  // Before anything recursive (JSON.stringify, parseBlocks): a hostile file may nest a million
+  // levels deep.
+  if (nestsDeeperThan(value, MAX_STRUCTURE_DEPTH) || !fitsSize(value)) return undefined;
   const content = parseBlocks(value.content, 1, false);
   return content && { type: 'doc', content };
+}
+
+/**
+ * How deep plain objects and arrays may nest in Notes: two levels per node (the node and its
+ * `content`), MAX_NOTES_DEPTH nodes deep, and a few more for a text node's marks and attributes.
+ */
+const MAX_STRUCTURE_DEPTH = 2 * MAX_NOTES_DEPTH + 8;
+
+/**
+ * Whether objects and arrays nest deeper than `limit` in `value`, walked without recursion and
+ * never below `limit`, so any depth is answered without overflowing the stack.
+ */
+function nestsDeeperThan(value: unknown, limit: number): boolean {
+  const pending: { value: unknown; depth: number }[] = [{ value, depth: 1 }];
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    if (typeof next.value !== 'object' || next.value === null) continue;
+    if (next.depth > limit) return true;
+    for (const child of Object.values(next.value)) {
+      pending.push({ value: child as unknown, depth: next.depth + 1 });
+    }
+  }
+  return false;
 }
 
 function fitsSize(value: unknown): boolean {

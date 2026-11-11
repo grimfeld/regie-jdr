@@ -32,6 +32,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 ## Errors
 
 - Core code throws its module's error class (`CampaignError`, `MediaError`, `SceneError`, `DocumentError`) with a French message the Game Master can read; that message reaches the window through the IPC failure.
+- Anything else a handler throws (a file system error such as `EPERM`, a stack overflow, a plain `Error`, a bug) reaches the window as a French sentence from `messageForWindow` (`core/windowErrors.ts`), applied once in `electron/ipc.ts`; the technical detail goes to the log only. A file system error the Game Master can act on gets its own sentence there.
 - Every promise is awaited, returned, or ends in `.catch` _(lint)_. `void promise` is for a call whose failure is already handled: in a window, a bridge call whose `IpcFailure` the notice handler shows (`src/notices.tsx`); in the main process, nothing (use `.catch` and log).
 - A window shows failures with `showNotice(...)`, worded in French; it never shows a stack or a technical message.
 - Every union `switch` handles every member _(lint)_, so a new `ThemeId` or Media kind fails lint where it is not handled.
