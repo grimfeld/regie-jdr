@@ -87,7 +87,7 @@ async function playerPlaying(page: Page) {
 test('listening is allowed only during Silence and stops when Silence lifts', async ({ regie }) => {
   const page = regie.controlWindow;
   await createCampaign(page, 'Star Wars');
-  await importSounds(regie, 'Musique', 6, 'Forêt');
+  await importSounds(regie, 'Musique', 30, 'Forêt');
 
   // Nothing sounds, but without Silence the players would hear it: refused.
   await expect(listenButton(page, 'Forêt')).toBeDisabled();
@@ -125,11 +125,13 @@ test('listening during Silence leaves the Scene and its Music as they are; a pad
 }) => {
   const page = regie.controlWindow;
   await createCampaign(page, 'Star Wars');
-  await importSounds(regie, 'Musique', 6, 'Auberge', 'Forêt');
+  await importSounds(regie, 'Musique', 30, 'Auberge', 'Forêt');
   await importSounds(regie, 'Bruitage', 1, 'Épée');
   const panel = page.getByRole('region', { name: 'Scènes' });
   await panel.getByLabel('Nom de la scène').fill('Taverne');
   await panel.getByRole('button', { name: 'Créer la scène' }).click();
+  // The editor must be open before dragging: a drag onto a Scene still opening drops nothing.
+  await expect(editor(page).getByRole('heading', { name: 'Taverne', exact: true })).toBeVisible();
   const musicList = editor(page).getByRole('list', { name: 'Musiques' });
   await soundInLibrary(page, 'Auberge')
     .locator('.media-audio-icon')
