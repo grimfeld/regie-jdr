@@ -1,6 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import type { CampaignDeletionSummary, CampaignTrashing } from '../shared/contract';
+import { Download, FolderOpen, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import type {
+  CampaignDeletionSummary,
+  CampaignTransferProgress,
+  CampaignTrashing,
+} from '../shared/contract';
 import type { Campaign, CampaignId } from '../shared/domain';
 import { carriesFiles, droppedFiles } from './mediaDrag';
 import { isIpcFailure, noticeFor } from './notices';
@@ -76,6 +80,17 @@ interface Props {
    * without a main process.
    */
   onImport?: (dropped?: File) => Promise<CampaignId | undefined>;
+  /** Progress of the Export or Import under way, once it has started reading; null otherwise. */
+  transfer?: CampaignTransferProgress | null;
+  /** Cancels the Export or Import under way; its call then resolves as cancelled. */
+  onCancelTransfer?: () => void;
+}
+
+/** How far an Export or Import is, for its progress bar: "1,2 Go sur 3,4 Go (35 %)". */
+export function transferText({ doneBytes, totalBytes }: CampaignTransferProgress): string {
+  if (totalBytes === 0) return '';
+  const percent = Math.min(100, Math.floor((doneBytes / totalBytes) * 100));
+  return `${formatSize(doneBytes)} sur ${formatSize(totalBytes)} (${percent} %)`;
 }
 
 /** The Game Master's notice after an Export, naming how many missing Media were left out. */
@@ -98,6 +113,8 @@ export function CampaignList({
   deletion,
   onExport,
   onImport,
+  transfer = null,
+  onCancelTransfer,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -109,6 +126,8 @@ export function CampaignList({
   const [exporting, setExporting] = useState<CampaignId | null>(null);
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<CampaignId | null>(null);
+  // One Export or Import at a time: the main process refuses a second one too.
+  const transferring = exporting !== null || importing;
 
   useEffect(() => {
     if (imported)
@@ -207,7 +226,7 @@ export function CampaignList({
       setError('Déposez une seule campagne exportée à la fois : rien n’a été importé.');
       return;
     }
-    if (!importing) void importCampaign(files[0]);
+    if (!transferring) void importCampaign(files[0]);
   }
   const drop = useDropTarget(
     (event) => importDropped(droppedFiles(event)),
@@ -233,7 +252,7 @@ export function CampaignList({
           {onImport && (
             <button
               className="secondary-button"
-              disabled={importing}
+              disabled={transferring}
               onClick={() => void importCampaign()}
             >
               <Upload size={16} aria-hidden /> Importer une campagne
@@ -267,6 +286,10 @@ export function CampaignList({
             Annuler
           </button>
         </form>
+      )}
+
+      {transfer && onCancelTransfer && (
+        <TransferProgress progress={transfer} onCancel={onCancelTransfer} />
       )}
 
       {error && (
@@ -320,7 +343,7 @@ export function CampaignList({
                   className="secondary-button"
                   aria-label={`Exporter ${campaign.name}`}
                   title="Exporter"
-                  disabled={exporting !== null}
+                  disabled={transferring}
                   onClick={() => void exportCampaign(campaign.id)}
                 >
                   <Download size={14} /> Exporter
@@ -349,6 +372,41 @@ export function CampaignList({
         ))}
       </ul>
     </section>
+  );
+}
+
+/** The Export or Import under way: its progress bar and its Cancel. */
+function TransferProgress({
+  progress,
+  onCancel,
+}: {
+  progress: CampaignTransferProgress;
+  onCancel: () => void;
+}) {
+  const [cancelling, setCancelling] = useState(false);
+  const exporting = progress.kind === 'export';
+  const label = exporting ? 'Export de la campagne' : 'Import de la campagne';
+  return (
+    <div className="campaign-transfer panel" role="group" aria-label={label}>
+      <span>{exporting ? 'Export en cours…' : 'Import en cours…'}</span>
+      <progress
+        aria-label={`Progression : ${label.toLowerCase()}`}
+        max={progress.totalBytes || undefined}
+        value={progress.totalBytes ? progress.doneBytes : undefined}
+      />
+      <span className="campaign-transfer-amount">{transferText(progress)}</span>
+      <button
+        className="secondary-button"
+        aria-label={exporting ? 'Annuler l’export' : 'Annuler l’import'}
+        disabled={cancelling}
+        onClick={() => {
+          setCancelling(true);
+          onCancel();
+        }}
+      >
+        <X size={14} aria-hidden /> {cancelling ? 'Annulation…' : 'Annuler'}
+      </button>
+    </div>
   );
 }
 

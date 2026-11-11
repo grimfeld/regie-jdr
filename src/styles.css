@@ -666,6 +666,23 @@ button {
   flex-basis: 100%;
   margin-top: 0;
 }
+/* The Export or Import under way: what it does, a progress bar, how far, and its Cancel. */
+.campaign-transfer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+}
+.campaign-transfer progress {
+  flex: 1 1 200px;
+  accent-color: var(--accent);
+}
+.campaign-transfer-amount {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 .campaign-open:hover strong {
   color: var(--accent-strong);
 }

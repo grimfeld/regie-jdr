@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
-import type { CampaignChanges, ControlBridge } from '../shared/contract';
+import type {
+  CampaignChanges,
+  CampaignImportResult,
+  CampaignTransferProgress,
+  ControlBridge,
+} from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import {
   CampaignList,
@@ -47,6 +52,9 @@ function byName(a: Campaign, b: Campaign) {
 function ControlApp({ control }: { control: ControlBridge | undefined }) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [openId, setOpenId] = useState<CampaignId | null>(null);
+  // The Export or Import under way, shown with its Cancel on the Campaign list.
+  const [transfer, setTransfer] = useState<CampaignTransferProgress | null>(null);
+  useEffect(() => control?.onCampaignTransferProgress(setTransfer), [control]);
   // Messages from the main process, e.g. a corrupt file recovered from its backup.
   const collectNotices = useCallback(async () => {
     if (!control) return;
@@ -149,8 +157,13 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
 
   async function exportCampaign(id: CampaignId) {
     if (!control) return;
-    const result = await control.exportCampaign(id);
-    if (result.saved) showNotice(exportNotice(result.missingMedia));
+    try {
+      const result = await control.exportCampaign(id);
+      if (result.saved) showNotice(exportNotice(result.missingMedia));
+      else if (result.cancelled) showNotice('Export annulé : aucun fichier n’a été enregistré.');
+    } finally {
+      setTransfer(null);
+    }
   }
 
   /**
@@ -159,10 +172,18 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
    */
   async function importCampaign(dropped?: File): Promise<CampaignId | undefined> {
     if (!control) return undefined;
-    const result = dropped
-      ? await control.importDroppedCampaign(dropped)
-      : await control.importCampaign();
-    if (!result.imported) return undefined;
+    let result: CampaignImportResult;
+    try {
+      result = dropped
+        ? await control.importDroppedCampaign(dropped)
+        : await control.importCampaign();
+    } finally {
+      setTransfer(null);
+    }
+    if (!result.imported) {
+      if (result.cancelled) showNotice('Import annulé : aucune campagne n’a été ajoutée.');
+      return undefined;
+    }
     const { campaign } = result;
     setCampaigns((current) => [...(current ?? []), campaign].sort(byName));
     showNotice(`Campagne « ${campaign.name} » importée.`);
@@ -253,6 +274,8 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
             deletion={deletion}
             onExport={exportCampaign}
             onImport={control && importCampaign}
+            transfer={transfer}
+            onCancelTransfer={() => void control?.cancelCampaignTransfer()}
           />
         )
       )}
