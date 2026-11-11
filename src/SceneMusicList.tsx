@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ArrowDown, ArrowUp, Music2, Trash2 } from 'lucide-react';
 import type { DragEvent } from 'react';
 import type { MusicLevel, SceneEdit } from '../shared/contract';
 import type { AudioMedia, MediaId, Scene } from '../shared/domain';
 import { LevelSlider } from './LevelSlider';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
+import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { useDropTarget } from './PlacementLists';
 import { createTransientSender, type TransientSender } from './transientUpdates';
 
@@ -51,6 +52,11 @@ export function SceneMusicList(props: {
   const nameOf = (mediaId: MediaId) =>
     sounds.find((sound) => sound.id === mediaId)?.name ?? 'Média inconnu';
   const count = scene.music.length;
+  const listed = useMemo(
+    () => sounds.filter((sound) => scene.music.includes(sound.id)),
+    [sounds, scene.music],
+  );
+  const missing = useMissingMedia(listed);
   return (
     <div className={`placement-list scene-music${drop.over ? ' drop-ready' : ''}`} {...drop.props}>
       <div className="scene-music-heading">
@@ -87,6 +93,7 @@ export function SceneMusicList(props: {
               ) : (
                 <span className="placement-name">{name}</span>
               )}
+              {missing.has(mediaId) && <MissingMediaBadge name={name} />}
               {index === 0 && <small> · jouée à l’activation</small>}
               <button
                 className="placement-move"

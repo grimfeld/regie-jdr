@@ -15,6 +15,7 @@ import { carriesFiles, droppedFiles, startAudioDrag, startMediaDrag } from './me
 import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
+import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { gridColumns, gridWindow } from './virtualGrid';
 
 const categoryLabels: Record<ImageCategory, string> = {
@@ -88,6 +89,7 @@ export function MediaLibrary({
   );
   const hasImages = media.some((item) => item.kind === 'image');
   const hasSounds = media.some((item) => item.kind === 'audio');
+  const missingSounds = useMissingMedia(sounds);
 
   useEffect(() => {
     if (!control) return;
@@ -345,6 +347,7 @@ export function MediaLibrary({
             <MediaName item={item} onRename={(name) => void rename(item, name)} />
             <span className="media-sound-facts">
               <span className="media-role">{roleLabels[item.role]}</span>
+              {missingSounds.has(item.id) && <MissingMediaBadge name={item.name} />}
               <span
                 className="media-duration"
                 title={item.durationSeconds === null ? 'Durée inconnue' : 'Durée'}

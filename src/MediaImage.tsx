@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ImageOff } from 'lucide-react';
+import { MISSING_MEDIA_TITLE } from './MissingMedia';
 
 interface Props {
   /** The image's Media address (`mediaAddress` in core/mediaAddress.ts). */
@@ -36,7 +37,7 @@ export function MediaImage(props: Props) {
         className={['media-missing', className].filter(Boolean).join(' ')}
         role="img"
         aria-label={alt ? `Média manquant : ${alt}` : 'Média manquant'}
-        title="Le fichier de ce média a été supprimé ou déplacé hors de l’application."
+        title={MISSING_MEDIA_TITLE}
       >
         <ImageOff size={18} aria-hidden="true" />
         <span aria-hidden="true">Média manquant</span>

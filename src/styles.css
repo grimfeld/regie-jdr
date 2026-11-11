@@ -401,6 +401,17 @@ button {
   height: 100%;
   object-fit: cover;
 }
+/* A listed Media (audio) whose file is missing (src/MissingMedia.tsx). */
+.media-missing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  color: var(--accent2);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 /* A Media whose file is missing, in the Control window (src/MediaImage.tsx). */
 .media-missing {
   display: flex;
