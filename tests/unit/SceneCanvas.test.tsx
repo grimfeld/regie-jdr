@@ -247,9 +247,15 @@ describe('a Transition on the broadcast', () => {
     });
   }
 
-  it('draws what is on air when it opens, with no dissolve', () => {
-    onAir(cantina, 3);
+  it('draws what is on air when it opens, with no dissolve and no fade', async () => {
+    onAir(cantina, 3, true);
     expect(layers()).toEqual([{ phase: 'shown', srcs: [SRC] }]);
+    await loadImages();
+    expect(drawn('.canvas-layer [data-fade]').map(({ fade }) => fade)).toEqual([
+      'steady',
+      'steady',
+    ]);
+    expect(drawn('.canvas-blackout')).toEqual([{ fade: 'steady', text: '' }]);
   });
 
   it('crossfades: the incoming Scene waits for its images, dissolves in, then is drawn alone', async () => {
@@ -287,8 +293,9 @@ describe('a Transition on the broadcast', () => {
     onAir(cantina, 1);
     await loadImages();
     onAir(hangar, 2);
+    // Cantina was on air when the renderer started: drawn at once, steady too.
     expect(drawn('.canvas-title')).toEqual([
-      { fade: 'shown', text: 'Cantina' },
+      { fade: 'steady', text: 'Cantina' },
       { fade: 'steady', text: 'Hangar' },
     ]);
     await loadImages();
@@ -351,7 +358,8 @@ describe('a Transition on the broadcast', () => {
     expect(stage?.lastElementChild?.className).toBe('canvas-blackout');
     dissolve();
     expect(layers()).toEqual([{ phase: 'shown', srcs: [OTHER] }]);
-    expect(drawn('.canvas-blackout')).toEqual([{ fade: 'shown', text: '' }]);
+    // On when the renderer started: drawn at once, as it was on air already.
+    expect(drawn('.canvas-blackout')).toEqual([{ fade: 'steady', text: '' }]);
   });
 
   it('fades an edit of the Active Scene item by item, with no Transition', async () => {

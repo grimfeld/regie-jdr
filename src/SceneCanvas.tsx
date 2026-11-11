@@ -424,7 +424,13 @@ export function SceneCanvas({
   }, []);
 
   const [layers, onReady] = useTransitionLayers(picture, transition);
-  const blackouts = useFading(blackout ? ['blackout'] : [], asText, fadeDurationMs);
+  // On air, what is drawn when the renderer starts (a window opened or reloaded mid-session) is
+  // shown at once, as it is on air already: no fade of its own, Blackout included.
+  const [openedOnAir] = useState(() => ({
+    on: transition !== undefined,
+    key: layers.at(-1)?.key,
+  }));
+  const blackouts = useFading(blackout ? ['blackout'] : [], asText, fadeDurationMs, openedOnAir.on);
 
   const { canvas, scale } = layOutCanvas(size, { backgrounds: [], overlays: [] });
   const [imageSize] = useState(
@@ -451,7 +457,7 @@ export function SceneCanvas({
           <CanvasLayer
             key={layer.key}
             layer={layer}
-            steady={layer.phase === 'waiting'}
+            steady={layer.phase === 'waiting' || (openedOnAir.on && layer.key === openedOnAir.key)}
             size={size}
             imageSizes={imageSizes}
             onImageSize={imageSize}

@@ -289,3 +289,34 @@ test('Shift+click on Activate forces a Cut once and leaves the Scene’s Crossfa
   await editor.getByRole('button', { name: 'Activer', exact: true }).click();
   await expect.poll(dissolves).toContain(`${hangar.background} over 1500ms`);
 });
+
+test('a Broadcast window reloaded mid-session shows what is on air at once, with no Transition replayed', async ({
+  regie,
+}) => {
+  const { cantina, broadcastWindow, activate } = await twoScenes(regie);
+  await activate(cantina.id);
+  const broadcast = onAirViews(regie.controlWindow, broadcastWindow)[1];
+  await expect
+    .poll(() => layers(broadcast))
+    .toEqual([{ phase: 'shown', backgrounds: [cantina.background] }]);
+
+  // Every Transition phase the reloaded window ever draws, from its first frame.
+  await broadcastWindow.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { phases: string[] }).phases = seen;
+    new MutationObserver(() => {
+      for (const layer of document.querySelectorAll('.canvas-layer')) {
+        seen.push(layer.getAttribute('data-transition') ?? '');
+      }
+    }).observe(document, { subtree: true, childList: true, attributes: true });
+  });
+  await broadcastWindow.reload();
+
+  await expect
+    .poll(() => layers(broadcast))
+    .toEqual([{ phase: 'shown', backgrounds: [cantina.background] }]);
+  const phases = await broadcastWindow.evaluate(
+    () => (window as unknown as { phases: string[] }).phases,
+  );
+  expect(new Set(phases)).toEqual(new Set(['shown']));
+});

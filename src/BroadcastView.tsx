@@ -7,6 +7,9 @@ import { useOnAir } from './useOnAir';
  * on the letterboxed 16:9 canvas, and nothing else. No buttons or other interactive elements,
  * no cursor, no theme (its fullscreen is toggled from the Control window). Which Scene is on
  * air is also exposed as data attributes.
+ *
+ * The renderer starts once the first snapshot is known, so a window opened or reloaded
+ * mid-session draws what is on air at once, rather than black then the last Transition again.
  */
 export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | undefined }) {
   const onAir = useOnAir(bridge);
@@ -18,13 +21,15 @@ export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | un
       data-active-scene-id={onAir ? (onAir.activeSceneId ?? '') : undefined}
       data-version={onAir?.version}
     >
-      <SceneCanvas
-        picture={onAir?.scene ?? null}
-        blackout={onAir?.blackout}
-        window="broadcast"
-        fadeDurationMs={onAir?.fadeDurationMs}
-        transition={onAir?.transition}
-      />
+      {onAir && (
+        <SceneCanvas
+          picture={onAir.scene}
+          blackout={onAir.blackout}
+          window="broadcast"
+          fadeDurationMs={onAir.fadeDurationMs}
+          transition={onAir.transition}
+        />
+      )}
     </main>
   );
 }
