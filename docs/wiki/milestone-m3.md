@@ -32,3 +32,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: slider-draft fix backported to M1 (`7fbc29f`, #74 CI green), merged into M2 (`3f6b9bc`, #75 CI green) and M3 (`16e5e3c`).
 - 2026-11-12: #55 merged at `d19af19` (941 unit, 158 app tests): no app change needed, M1 #24 already met it; added a three-Campaign + restart whole-app test (proven to fail when the stored Scene is ignored).
 - 2026-11-12: #49 Cut and forced Cut merged at `7924e22` (964 unit, 160 app tests). scenes.json now v4 (Crossfade migration). #56 must call `src/activate.ts`. Manual check: no click on a Cut's 0.1 s audio switch.
+- 2026-11-12: #49 Cut merged at `d30b310` (964 unit, 159 app tests). Manual check: 0.1 s audio switch on a Cut does not click.

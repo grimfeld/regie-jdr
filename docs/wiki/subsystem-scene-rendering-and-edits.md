@@ -112,3 +112,10 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Audio: `AudioOnAir.activateScene(..., kind)` fades over `AUDIO_FADE_MS.cut` (100 ms) on a Cut, `activate` otherwise. #50 replaces only the Crossfade duration.
 - Channel `onAir:activate-scene` takes optional `forceCut`; bridge `activateScene(sceneId, {forceCut})`.
 - UI: "TRANSITION" menu under the Scene title (`src/SceneTransitionField.tsx`). Shift+click on Activer forces a Cut (`title` hint). `src/activate.ts`: `activateScene(control, sceneId, options)` + `activateOptionsOf(press)` (Shift = forced Cut). #56 shortcuts call these two with their KeyboardEvent.
+
+## Cut and forced Cut (#49, 2026-11-12, `d30b310`)
+
+- Scene field Transition (Crossfade/Cut), changed by `SceneEdit` `set-transition` (undo-covered), never on air, copied by duplicate. `scenes.json` v4 (migration sets Crossfade).
+- `transitionOnActivate` (`core/onAir.ts`) decides; Cut goes on air with duration 0 (renderer unchanged). Cut audio uses `AUDIO_FADE_MS.cut` (100 ms); Crossfade audio keeps the Activate duration.
+- Shared activation path for button and shortcuts: `activateScene` + `activateOptionsOf(event)` in `src/activate.ts`; Shift forces Cut.
+- UI: "TRANSITION" menu (Fondu enchaîné / Cut) under the Scene title; Activer hints "Maj+clic : activer en Cut".
