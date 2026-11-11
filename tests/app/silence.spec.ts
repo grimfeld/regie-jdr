@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dragOnScreen,
   expect,
   launchApp,
   stubFilePicker,
@@ -146,9 +147,9 @@ test('a pad pressed during Silence sounds and Silence stays; switching Campaign 
   const page = regie.controlWindow;
   await taverneOnAir(regie);
   await importSounds(regie, 'Bruitage', 1, 'Épée');
-  await soundInLibrary(page, 'Épée')
-    .locator('.media-audio-icon')
-    .dragTo(soundboard(page), { targetPosition: { x: 40, y: 20 } });
+  await dragOnScreen(soundInLibrary(page, 'Épée').locator('.media-audio-icon'), soundboard(page), {
+    targetPosition: { x: 40, y: 20 },
+  });
   const pad = soundboard(page).getByRole('button', { name: 'Jouer Épée' });
   await expect(pad).toBeVisible();
 

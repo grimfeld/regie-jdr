@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { Campaign, Scene } from '../../shared/domain';
 import {
   createCampaign,
+  dragOnScreen,
   expect,
   fixture,
   launchApp,
@@ -49,7 +50,7 @@ async function createScene(page: Page, name: string) {
 /** Places the image as one more Overlay (at the canvas centre), drawn once loaded. */
 async function placeOverlay(page: Page) {
   const count = await overlayList(page).getByRole('listitem').count();
-  await thumbnail(page).dragTo(overlayList(page).locator('xpath=..'));
+  await dragOnScreen(thumbnail(page), overlayList(page).locator('xpath=..'));
   await expect(overlayList(page).getByRole('listitem')).toHaveCount(count + 1);
   await expect(editorCanvas(page).locator('.canvas-overlay img:not([hidden])')).toHaveCount(
     count + 1,
@@ -71,6 +72,8 @@ async function boxOn(canvas: Locator, overlay: Locator) {
 
 /** Presses the mouse on `overlay`'s centre and moves it by fractions `dx`, `dy` of the canvas. */
 async function pressAndMove(page: Page, overlay: Locator, dx: number, dy: number) {
+  // Mouse positions are on screen: bring the canvas there first.
+  await editorCanvas(page).scrollIntoViewIfNeeded();
   const stage = await editorCanvas(page).locator('.scene-canvas-stage').boundingBox();
   const box = await overlay.boundingBox();
   if (!stage || !box) throw new Error('The canvas or the Overlay is not shown.');

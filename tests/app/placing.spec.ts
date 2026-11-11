@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dragOnScreen,
   expect,
   fixture,
   launchApp,
@@ -61,7 +62,7 @@ async function createScene(page: Page, name: string) {
 async function dropOnCanvas(page: Page, x: number, y: number) {
   const box = await editorCanvas(page).locator('.scene-canvas').boundingBox();
   if (!box) throw new Error('The editor canvas is not shown.');
-  await thumbnail(page).dragTo(editorCanvas(page).locator('.scene-canvas'), {
+  await dragOnScreen(thumbnail(page), editorCanvas(page).locator('.scene-canvas'), {
     targetPosition: { x: box.width * x, y: box.height * y },
   });
 }
