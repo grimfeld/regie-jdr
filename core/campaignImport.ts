@@ -23,6 +23,8 @@
  *   must have exactly the size the manifest gives and the content hash its name gives, documents
  *   and the manifest are capped, and the whole is capped relative to the zip's own size (a zip
  *   bomb is refused before it fills the disk).
+ * - The Media the manifest lists must fit in the free space of the drive they are unpacked to,
+ *   checked before the first one is.
  * - Every document parses as its type. A `schemaVersion` newer than this app reads is refused;
  *   older ones go through the type's migrations, and documents are written back at the current
  *   version.
@@ -67,6 +69,31 @@ const TOO_NEW =
   'Cette campagne a été exportée par une version plus récente de l’application : ' +
   'mettez l’application à jour pour l’importer.';
 const TOO_BIG = 'Cette exportation est anormalement volumineuse : rien n’a été importé.';
+
+const sizeFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+
+/** A size on disk the way Windows Explorer shows it in French: "2,5 Go". */
+function sizeText(bytes: number): string {
+  const units = ['octets', 'Ko', 'Mo', 'Go', 'To'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${sizeFormat.format(value)} ${units[unit]}`;
+}
+
+function notEnoughSpace(neededBytes: number, freeBytes: number): ImportError {
+  return new ImportError(
+    'Il n’y a pas assez d’espace libre sur le disque pour importer cette campagne ' +
+      `(il faut ${sizeText(neededBytes)}, il en reste ${sizeText(freeBytes)}) : ` +
+      'libérez de la place, puis recommencez. Rien n’a été importé.',
+  );
+}
+
+/** Free space of a drive as `fs.statfs` reports it: blocks available to this user, and their size. */
+export type Statfs = (folder: string) => Promise<{ bavail: number; bsize: number }>;
 
 function refusedEntry(entryPath: string): ImportError {
   // The name comes from the zip: shown short and without control characters.
@@ -377,10 +404,15 @@ async function unpackMedia(
   }
 }
 
-/** Unpacks and checks every entry into `staging`; returns the documents' texts to store. */
+/**
+ * Unpacks and checks every entry into `staging`; returns the documents' texts to store. Refuses
+ * the zip before unpacking a Media file when the manifest's Media do not fit in the free space
+ * `statfs` reports for `staging`'s drive.
+ */
 async function unpack(
   archive: ReadArchive,
   staging: string,
+  statfs: Statfs,
   signal: AbortSignal | undefined,
   onProgress: ((progress: ImportProgress) => void) | undefined,
 ): Promise<Map<string, string>> {
@@ -404,6 +436,9 @@ async function unpack(
       );
       totalBytes = manifest.media.reduce((sum, file) => sum + file.size, 0);
       if (totalBytes > unpackLimit(archive.archiveBytes)) throw new ImportError(TOO_BIG);
+      // Before unpacking: a disk filled half-way through fails late and slows the whole computer.
+      const { bavail, bsize } = await statfs(staging);
+      if (totalBytes > bavail * bsize) throw notEnoughSpace(totalBytes, bavail * bsize);
       checker = createEntryChecker(manifest);
       onProgress?.({ doneBytes, totalBytes });
       continue;
@@ -452,8 +487,9 @@ async function exists(file: string): Promise<boolean> {
  * Imports the zip `openArchive` opens as a new Campaign in `campaignsFolder`, and returns it.
  * The zip is unpacked and checked in a staging folder under `importsFolder` (on the same disk,
  * so the final move is one rename). `existingNames` are the Campaigns' names, for the
- * " (importée)" suffix. Progress is in Media bytes unpacked; `signal` cancels. On any failure,
- * nothing is left behind.
+ * " (importée)" suffix. An Export whose Media do not fit in the drive's free space is refused
+ * before anything is unpacked. Progress is in Media bytes unpacked; `signal` cancels. On any
+ * failure, nothing is left behind.
  */
 export async function importCampaign(input: {
   openArchive: OpenArchive;
@@ -461,6 +497,8 @@ export async function importCampaign(input: {
   importsFolder: string;
   existingNames: readonly string[];
   newId?: () => CampaignId;
+  /** Free space of a drive; Node's `fs.statfs` by default. Tests pass a fake. */
+  statfs?: Statfs;
   signal?: AbortSignal;
   onProgress?: (progress: ImportProgress) => void;
 }): Promise<{ id: CampaignId; name: string }> {
@@ -474,7 +512,13 @@ export async function importCampaign(input: {
     const archive = await input.openArchive();
     let documents: Map<string, string>;
     try {
-      documents = await unpack(archive, staging, signal, input.onProgress);
+      documents = await unpack(
+        archive,
+        staging,
+        input.statfs ?? ((folder) => fsp.statfs(folder)),
+        signal,
+        input.onProgress,
+      );
     } finally {
       archive.close();
     }

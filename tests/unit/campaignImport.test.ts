@@ -607,6 +607,72 @@ describe('importCampaign', () => {
     expect(await filesUnder(folders().importsFolder)).toEqual([]);
   });
 
+  describe('free disk space', () => {
+    /** A statfs reporting `freeBytes` available, recording the folders it is asked about. */
+    function fakeStatfs(freeBytes: number) {
+      const asked: string[] = [];
+      const statfs = (folder: string) => {
+        asked.push(folder);
+        return Promise.resolve({ bavail: freeBytes / 512, bsize: 512 });
+      };
+      return { asked, statfs };
+    }
+
+    it('refuses, before unpacking anything, an Export larger than the free space of its drive', async () => {
+      const { statfs, asked } = fakeStatfs(0);
+      const { campaignsFolder, importsFolder } = folders();
+      const archive = fakeArchive(exportEntries());
+
+      await expect(
+        importCampaign({
+          openArchive: archive.open,
+          campaignsFolder,
+          importsFolder,
+          existingNames: [],
+          statfs,
+        }),
+      ).rejects.toThrow(
+        'Il n’y a pas assez d’espace libre sur le disque pour importer cette campagne ' +
+          `(il faut ${PIXELS.byteLength} octets, il en reste 0 octets) : libérez de la place, ` +
+          'puis recommencez. Rien n’a été importé.',
+      );
+      // Asked about the staging folder, on the drive the Campaign is unpacked to.
+      expect(asked).toHaveLength(1);
+      expect(path.dirname(asked[0])).toBe(importsFolder);
+      expect(archive.state.closed).toBe(true);
+      expect(await filesUnder(campaignsFolder)).toEqual([]);
+      expect(await filesUnder(importsFolder)).toEqual([]);
+    });
+
+    it('gives the sizes as Windows Explorer does, in Go for a large Export', async () => {
+      const large = 2.5 * 1024 ** 3;
+      const entries = exportEntries();
+      entries[0].content = manifestText(manifest({ media: [{ path: MEDIA_PATH, size: large }] }));
+      const { statfs } = fakeStatfs(1024 ** 3);
+      await expect(
+        importCampaign({
+          openArchive: fakeArchive(entries, { archiveBytes: large }).open,
+          ...folders(),
+          existingNames: [],
+          statfs,
+        }),
+      ).rejects.toThrow('(il faut 2,5 Go, il en reste 1 Go)');
+    });
+
+    it('imports an Export that just fits in the free space', async () => {
+      const { statfs } = fakeStatfs(PIXELS.byteLength);
+      const { id } = await importCampaign({
+        openArchive: fakeArchive(exportEntries()).open,
+        ...folders(),
+        existingNames: [],
+        statfs,
+      });
+      expect(await fs.readdir(path.join(folders().campaignsFolder, id, 'media'))).toEqual([
+        `${HASH}.png`,
+      ]);
+    });
+  });
+
   it('never overwrites a Campaign folder already there', async () => {
     const { campaignsFolder, importsFolder } = folders();
     await fs.mkdir(path.join(campaignsFolder, 'taken'), { recursive: true });
