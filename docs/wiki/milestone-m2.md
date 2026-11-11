@@ -24,6 +24,7 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - Deleting a Media silently removes its Soundboard pads; M0 #15 warns for Scene uses. Decide per spec #33 whether pads count as uses. Source: #39 report.
 - Manual check: 8 pads at once over Music and Ambiences. Source: #39 report.
 - Pressing a pad whose file is missing gives no notice. Source: #42 report.
+- Listening ignores the Master volume and is not listed in "En cours", though players hear it. Source: #43 report.
 - Loop gap: `<audio loop>` is not gapless and short loops show "chargement…" at each loop. Ambiences must loop cleanly; consider buffer-based looping for short files, and ignore `waiting` at loop points. Source: #38 report.
 - Manual check: listen for clicks and gaps on fades, Activate and loops. Source: #35, #38.
 - Live audio while dragging Ambience and pad volume sliders; unify `VolumeSlider` (#37) with `LevelSlider` (#36). Source: #37 report.
@@ -38,3 +39,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - 2026-11-12: M1 fix `9a0c2ab` (framing slider after undo) merged forward, clean merge; gates run by the next slice.
 - 2026-11-12: #38 Activate fades merged at `1808490` (126 app tests). Ran gates after the M1 fix merge-forward.
 - 2026-11-12: #41 shortcuts merged at `2879653` (753 unit, 128 app tests). See [shortcuts](subsystem-keyboard-shortcuts.md). Silence key S is the agent's choice: flag in PR.
+- 2026-11-12: #43 private listening merged at `67d47e3` (130 app tests). Built the ADR-0002 fallback branch: "Écouter" only during Silence with nothing sounding, warning "Écoute audible par les joueurs". Name the branch in the PR. Manual Discord check pending.
