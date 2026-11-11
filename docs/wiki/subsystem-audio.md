@@ -64,3 +64,10 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - ADR-0002 branch: no private listening. "Écouter" on each library sound is enabled only while `listeningAllowed(sounding)` (`core/audioMix.ts`): Silence on, no voice `playing`, no pad. A warning "Écoute audible par les joueurs" shows while allowed. Missing files: disabled.
 - `useListening` (`src/Listening.tsx`) plays through its own hidden `<audio class="listening-player">`, not the engine: mix, Scene and "En cours" untouched; it stops when the rule stops holding (Silence lifted, Activate, pad).
 - Gaps: the "En cours" strip does not list a sound being listened to; listening plays at full element volume, not the Master volume. Manual Discord check (acceptance criterion) still to do by hand.
+
+## Gapless loops (2026-11-12, `f9f5dc9`)
+
+- Supersedes the "Known issue" in the #38 section above. Sounds of 60 s or less are decoded and looped by an `AudioBufferSourceNode` (seamless; pause keeps position). Longer ones stream via `<audio loop>`; a `waiting` during that loop restart is no longer shown as "chargement…" (the engine never seeks).
+- 60 s threshold: ~23 MB per decoded stereo minute at 48 kHz; Web Audio spec and MDN advise streaming beyond about a minute.
+- Test: 2 s Music and Ambience play 7 s and the strip shows only "playing" (`tests/app/ambiences.spec.ts`).
+- Open: audible seam on long streamed loops (manual check); no automated test of resume position for short sounds.
