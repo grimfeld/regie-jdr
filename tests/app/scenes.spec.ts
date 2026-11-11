@@ -339,6 +339,82 @@ test('Scenes are dragged into their running order, new ones go last, and the ord
   }
 });
 
+test('a duplicated Scene is a private copy right after its source, edited on its own, and kept after a restart', async ({
+  regie,
+}) => {
+  const { app, controlWindow: page, dataDir } = regie;
+  const names = (window: Page) =>
+    scenesPanel(window).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
+  const title = (window: Page) => editor(window).getByLabel('Titre affiché');
+  const notes = (window: Page) =>
+    window
+      .getByRole('region', { name: 'Notes', exact: true })
+      .getByRole('textbox', { name: 'Notes de la scène' });
+  const history = (window: Page) =>
+    editor(window).getByRole('toolbar', { name: 'Historique de la scène' });
+  await createCampaign(page, 'Star Wars');
+  await importImage(regie);
+  await createScene(page, 'Cantina');
+  await addBackground(page);
+  await title(page).fill('Le vieux moulin');
+  await title(page).press('Enter');
+  await createScene(page, 'Hangar');
+  await selectScene(page, 'Cantina');
+  await editor(page).getByRole('button', { name: 'Activer' }).click();
+  await expect(editor(page)).toContainText('EN DIRECT');
+  const broadcastWindow = await openBroadcastWindow(app, page);
+  const activeId = await broadcastScreen(broadcastWindow).getAttribute('data-active-scene-id');
+  expect(activeId).not.toBe('');
+  // Notes typed just before duplicating are in the copy.
+  await notes(page).click();
+  await page.keyboard.type('Le traître');
+
+  await editor(page).getByRole('button', { name: 'Dupliquer' }).click();
+
+  await expect(editor(page).getByRole('heading', { name: 'Cantina (copie)' })).toBeVisible();
+  await expect(names(page)).toHaveText(['Cantina', 'Cantina (copie)', 'Hangar']);
+  await expect(editor(page)).not.toContainText('EN DIRECT');
+  await expect(broadcastScreen(broadcastWindow)).toHaveAttribute(
+    'data-active-scene-id',
+    activeId ?? '',
+  );
+  await expect(backgroundToggle(page)).not.toBeChecked();
+  await expect(title(page)).toHaveValue('Le vieux moulin');
+  await expect(notes(page)).toHaveText('Le traître');
+  // Not an undo step: the copy starts with nothing to undo.
+  await expect(history(page).getByRole('button', { name: 'Rien à annuler' })).toBeDisabled();
+
+  await backgroundToggle(page).check();
+  await title(page).fill('Après le combat');
+  await title(page).press('Enter');
+  await expect(history(page).getByRole('button', { name: /^Annuler : / })).toBeVisible();
+
+  // The source is unchanged, still on air, and its own history is untouched.
+  await selectScene(page, 'Cantina');
+  await expect(backgroundToggle(page)).not.toBeChecked();
+  await expect(title(page)).toHaveValue('Le vieux moulin');
+  await expect(history(page).getByRole('button', { name: /^Annuler : / })).toHaveText(
+    'Annuler : modifier le titre affiché',
+  );
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    const window = restarted.controlWindow;
+    await expect(names(window)).toHaveText(['Cantina', 'Cantina (copie)', 'Hangar']);
+    await selectScene(window, 'Cantina (copie)');
+    await expect(backgroundToggle(window)).toBeChecked();
+    await expect(title(window)).toHaveValue('Après le combat');
+    await expect(notes(window)).toHaveText('Le traître');
+    await selectScene(window, 'Cantina');
+    await expect(backgroundToggle(window)).not.toBeChecked();
+    await expect(title(window)).toHaveValue('Le vieux moulin');
+  } finally {
+    await restarted.app.close();
+  }
+});
+
 test('the editor draws the Selected Scene, Hidden placements included; "EN DIRECT" only when it is the Active Scene', async ({
   regie,
 }) => {

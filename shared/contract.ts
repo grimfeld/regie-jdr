@@ -283,6 +283,12 @@ export interface InvokeChannels {
     payload: { campaignId: CampaignId; sceneId: SceneId; toIndex: number };
     result: Scene[];
   };
+  /**
+   * Save an independent copy of a Scene, named "<name> (copie)", right after it in the running
+   * order, and get the copy. It reuses the same Media, never goes on air by itself, and is not
+   * an undo step (the copy starts with an empty undo history).
+   */
+  'scenes:duplicate': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
   /**
@@ -497,6 +503,7 @@ export interface ControlBridge extends BroadcastBridge {
   redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   moveScene(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
+  duplicateScene(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;

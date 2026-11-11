@@ -903,6 +903,77 @@ describe('on-air commands', () => {
     });
   });
 
+  describe('duplicating a Scene', () => {
+    /** Every file in the Campaign's folder except its Scenes document, which a copy changes. */
+    async function campaignFiles(ctx: Awaited<ReturnType<typeof setup>>) {
+      const folder = ctx.storage.campaignFolder(ctx.campaign.id);
+      const entries = await fs.readdir(folder, { recursive: true, withFileTypes: true });
+      return entries
+        .filter((entry) => entry.isFile() && entry.name !== 'scenes.json')
+        .map((entry) => path.join(entry.parentPath, entry.name))
+        .sort();
+    }
+
+    it('copies the Active Scene without putting the copy on air, and copies no Media file', async () => {
+      const ctx = await setup();
+      const active = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(active.id);
+      const sent = ctx.broadcast.length;
+      const mixes = ctx.mixes.length;
+      const files = await campaignFiles(ctx);
+
+      const copy = await ctx.commands.duplicateScene(ctx.campaign.id, active.id);
+
+      expect(copy.name).toBe('Cantina (copie)');
+      expect(copy.backgrounds.map((item) => item.mediaId)).toEqual([ctx.image.id]);
+      expect(ctx.broadcast.length).toBe(sent);
+      expect(ctx.broadcast.at(-1)?.activeSceneId).toBe(active.id);
+      expect(ctx.mixes.length).toBe(mixes);
+      expect(await campaignFiles(ctx)).toEqual(files);
+      expect(await ctx.library.list(ctx.campaign.id)).toHaveLength(1);
+    });
+
+    it('gives the copy an empty undo history and keeps the history of its source', async () => {
+      const ctx = await setup();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'set-title',
+        title: 'Moulin',
+      });
+      const sourceUndo = await ctx.commands.undoState(ctx.campaign.id, scene.id);
+
+      const copy = await ctx.commands.duplicateScene(ctx.campaign.id, scene.id);
+
+      expect(await ctx.commands.undoState(ctx.campaign.id, copy.id)).toEqual({
+        undo: null,
+        redo: null,
+      });
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual(sourceUndo);
+      await ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id);
+      expect((await ctx.scenes.get(ctx.campaign.id, copy.id))?.title).toBe('Moulin');
+    });
+
+    it('editing the copy leaves the source unchanged', async () => {
+      const ctx = await setup();
+      const source = await sceneShowing(ctx, 'Cantina');
+      const copy = await ctx.commands.duplicateScene(ctx.campaign.id, source.id);
+
+      await ctx.commands.editScene(ctx.campaign.id, copy.id, {
+        kind: 'set-visible',
+        placementId: copy.backgrounds[0].id,
+        visible: false,
+      });
+      await ctx.commands.editScene(ctx.campaign.id, copy.id, {
+        kind: 'set-notes',
+        notes: notesFromPlainText('Embuscade'),
+      });
+
+      expect(await ctx.scenes.get(ctx.campaign.id, source.id)).toEqual(source);
+    });
+  });
+
   describe('deleting Media', () => {
     const mediaFiles = (ctx: Awaited<ReturnType<typeof setup>>) =>
       fs.readdir(path.join(ctx.storage.campaignFolder(ctx.campaign.id), 'media'));

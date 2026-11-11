@@ -414,6 +414,7 @@ function startApp() {
       },
       'scenes:move': ({ campaignId, sceneId, toIndex }) =>
         scenes.move(campaignId, sceneId, toIndex),
+      'scenes:duplicate': ({ campaignId, sceneId }) => commands.duplicateScene(campaignId, sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
       'media:list': ({ campaignId }) => library.list(campaignId),

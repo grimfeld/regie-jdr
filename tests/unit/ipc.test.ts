@@ -419,6 +419,7 @@ describe('Scene channels', () => {
       ['scenes:edit', [edit]],
       ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:move', [{ campaignId, sceneId: 'cantina', toIndex: 0 }]],
+      ['scenes:duplicate', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:show-transient', [transient]],
       ['scenes:undo-state', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:undo', [{ campaignId, sceneId: 'cantina' }]],
@@ -491,9 +492,14 @@ describe('Scene channels', () => {
     });
   });
 
-  it('accept a Scene to undo or redo on, keeping only contract fields', () => {
+  it('accept a Scene to undo or redo on, or to duplicate, keeping only contract fields', () => {
     const target = { campaignId, sceneId: 'cantina' };
-    for (const channel of ['scenes:undo-state', 'scenes:undo', 'scenes:redo'] as const) {
+    for (const channel of [
+      'scenes:undo-state',
+      'scenes:undo',
+      'scenes:redo',
+      'scenes:duplicate',
+    ] as const) {
       expect(checkInvoke(channel, 'control', [{ ...target, edit: {} }])).toEqual({
         ok: true,
         payload: target,
@@ -521,6 +527,7 @@ describe('Scene channels', () => {
       [{ campaignId, sceneId: 'cantina', toIndex: 0.5 }],
     ],
     ['a move with no Scene', 'scenes:move', [{ campaignId, toIndex: 0 }]],
+    ['a duplicate with no Scene', 'scenes:duplicate', [{ campaignId }]],
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],
     ['an unknown edit', 'scenes:edit', [{ ...edit, edit: { kind: 'replace-scene' } }]],

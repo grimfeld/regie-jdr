@@ -101,6 +101,14 @@ export interface OnAirCommands {
    */
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /**
+   * Saves an independent copy of a Scene right after it in the running order and returns it
+   * (`copyOfScene`, core/scenes.ts). The copy is private: it never goes on air by itself, even
+   * when the source is the Active Scene. Not an undo step: the copy starts with an empty undo
+   * history (an undo can never turn it back into its source) and the source's history stays.
+   * Queued behind the edits already sent, so it copies the Scene as last saved (Notes included).
+   */
+  duplicateScene(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
+  /**
    * Renames a Media of a Campaign; returns it as saved. A Media sounding on the Active Scene
    * keeps playing as it was, under its new name (the "En cours" strip shows it).
    */
@@ -374,6 +382,9 @@ export function createOnAirCommands(deps: {
         if (onAir.current().campaignId !== campaignId) return;
         if (onAir.clearActiveScene(sceneId)) audio.clear();
       }),
+
+    duplicateScene: (campaignId, sceneId) =>
+      serialized(() => scenes.duplicate(campaignId, sceneId)),
 
     renameMedia: (campaignId, mediaId, name) =>
       serialized(async () => {

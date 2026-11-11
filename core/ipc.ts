@@ -350,6 +350,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'scenes:redo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:move': { from: controlOnly, parse: onePayload(sceneMove) },
+  'scenes:duplicate': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },

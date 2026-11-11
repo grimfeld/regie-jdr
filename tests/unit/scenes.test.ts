@@ -3,7 +3,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { emptyNotes, notesFromPlainText } from '../../core/notes';
-import { createSceneLibrary, parseScene, SceneError } from '../../core/scenes';
+import { copyOfScene, createSceneLibrary, parseScene, SceneError } from '../../core/scenes';
+import { MAX_SCENE_NAME_LENGTH } from '../../core/sceneEdits';
 import { openStorage } from '../../core/storage';
 import type { Scene } from '../../shared/domain';
 import { useTempDir } from './tempDir';
@@ -329,6 +330,51 @@ describe('scene library', () => {
     const listed = await scenes.list(campaign.id);
     expect(listed.map((s) => s.notes)).toEqual(['n-A', 'n-B', 'n-C'].map(notesFromPlainText));
   });
+
+  describe('duplicating a Scene', () => {
+    const names = (list: Scene[]) => list.map((scene) => scene.name);
+
+    it('inserts the copy right after its source and keeps it after a restart', async () => {
+      const { campaign, scenes } = await setup();
+      const a = await scenes.create(campaign.id, 'A');
+      const b = await scenes.create(campaign.id, 'B');
+      await scenes.save({ ...b, title: 'Le vieux moulin' });
+
+      const copy = await scenes.duplicate(campaign.id, a.id);
+
+      expect(copy).toEqual({ ...a, id: expect.any(String), name: 'A (copie)' });
+      expect(copy.id).not.toBe(a.id);
+      expect(names(await scenes.list(campaign.id))).toEqual(['A', 'A (copie)', 'B']);
+      const reopened = createSceneLibrary(openStorage(root()));
+      expect(await reopened.get(campaign.id, copy.id)).toEqual(copy);
+      expect(await reopened.get(campaign.id, a.id)).toEqual(a);
+    });
+
+    it('copies the last Scene to the end, and a copy of a copy right after that copy', async () => {
+      const { campaign, scenes } = await setup();
+      const a = await scenes.create(campaign.id, 'A');
+      const b = await scenes.create(campaign.id, 'B');
+      const copy = await scenes.duplicate(campaign.id, a.id);
+
+      await scenes.duplicate(campaign.id, copy.id);
+      await scenes.duplicate(campaign.id, b.id);
+
+      expect(names(await scenes.list(campaign.id))).toEqual([
+        'A',
+        'A (copie)',
+        'A (copie) (copie)',
+        'B',
+        'B (copie)',
+      ]);
+    });
+
+    it('refuses to duplicate a Scene that no longer exists', async () => {
+      const { campaign, scenes } = await setup();
+      await expect(scenes.duplicate(campaign.id, 'inconnue')).rejects.toThrow(
+        'Cette scène n’existe plus.',
+      );
+    });
+  });
 });
 
 describe('Scene parsing', () => {
@@ -400,5 +446,123 @@ describe('Scene parsing', () => {
     ],
   ])('rejects %s', (_case, value) => {
     expect(parseScene(value, 'c1')).toBeUndefined();
+  });
+});
+
+describe('copy of a Scene', () => {
+  /** A Scene with every field set to something other than a new Scene's default. */
+  const source: Scene = {
+    id: 'cantina',
+    campaignId: 'c1',
+    name: 'La cantina',
+    title: 'Le vieux moulin',
+    backgrounds: [
+      { id: 'b1', mediaId: 'm1', fit: 'contain', zoom: 2, focus: { x: 0, y: 1 }, visible: true },
+      { id: 'b2', mediaId: 'm2', fit: 'cover', zoom: 1, focus: { x: 0.5, y: 0.5 }, visible: false },
+    ],
+    overlays: [
+      {
+        id: 'o1',
+        mediaId: 'm3',
+        position: { x: 0.25, y: 0.75 },
+        height: 0.4,
+        visible: false,
+        label: { text: 'Garde', visible: true },
+      },
+      { id: 'o2', mediaId: 'm3', position: { x: 0.5, y: 0.5 }, height: 0.2, visible: true },
+    ],
+    music: ['m4', 'm5'],
+    ambiences: [
+      { mediaId: 'm6', on: true, volume: 0.3 },
+      { mediaId: 'm7', on: false, volume: 1 },
+    ],
+    volumes: { music: 0.5, ambience: 0.8 },
+    notes: {
+      type: 'doc',
+      content: [
+        { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Indices' }] },
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'Le traître', marks: [{ type: 'bold' }] }],
+        },
+      ],
+    },
+  };
+
+  /**
+   * How a copy gets each Scene field. The compiler checks that every field is named, so a new
+   * Scene field fails typecheck here until someone decides; the tests below then check the copy
+   * has it and shares no object with the source through it.
+   */
+  const sceneFieldInCopy = {
+    id: 'new',
+    campaignId: 'same',
+    name: 'named as a copy',
+    title: 'same',
+    backgrounds: 'same but new placement ids',
+    overlays: 'same but new placement ids',
+    music: 'same',
+    ambiences: 'same',
+    volumes: 'same',
+    notes: 'same',
+  } as const satisfies Record<keyof Scene, string>;
+
+  let ids = 0;
+  const copy = copyOfScene(source, () => `new-${++ids}`);
+
+  /** Every object and array inside a value, the value included. */
+  function objectsIn(value: unknown, found: object[] = []): object[] {
+    if (typeof value !== 'object' || value === null) return found;
+    found.push(value);
+    for (const item of Object.values(value)) objectsIn(item, found);
+    return found;
+  }
+
+  it('decides how a copy gets every Scene field, and copies every field', () => {
+    expect(Object.keys(copy).sort()).toEqual(Object.keys(source).sort());
+    expect(Object.keys(sceneFieldInCopy).sort()).toEqual(Object.keys(source).sort());
+    for (const [field, rule] of Object.entries(sceneFieldInCopy)) {
+      const key = field as keyof Scene;
+      if (rule === 'same') expect(copy[key], field).toEqual(source[key]);
+    }
+  });
+
+  it('shares no object or array with its source, at any depth', () => {
+    const sourceObjects = new Set(objectsIn(source));
+    for (const field of Object.keys(source) as (keyof Scene)[]) {
+      for (const object of objectsIn(copy[field])) {
+        expect(sourceObjects.has(object), `${field} shares an object with the source`).toBe(false);
+      }
+    }
+  });
+
+  it('gets a new Scene id and new placement ids, keeping the same Media', () => {
+    expect(copy.id).not.toBe(source.id);
+    const placementIds = [...copy.backgrounds, ...copy.overlays].map((item) => item.id);
+    const sourceIds = [...source.backgrounds, ...source.overlays].map((item) => item.id);
+    expect(new Set([copy.id, ...placementIds]).size).toBe(placementIds.length + 1);
+    for (const id of placementIds) expect(sourceIds).not.toContain(id);
+    const withoutId = ({ id: _id, ...placement }: { id: string }) => placement;
+    expect(copy.backgrounds.map(withoutId)).toEqual(source.backgrounds.map(withoutId));
+    expect(copy.overlays.map(withoutId)).toEqual(source.overlays.map(withoutId));
+  });
+
+  it('is named "<name> (copie)", shortening a long name to fit the name limit', () => {
+    expect(copy.name).toBe('La cantina (copie)');
+    const long = copyOfScene({ ...source, name: 'x'.repeat(MAX_SCENE_NAME_LENGTH) }, () => 'n');
+    expect(long.name).toHaveLength(MAX_SCENE_NAME_LENGTH);
+    expect(long.name.endsWith('x (copie)')).toBe(true);
+  });
+
+  it('leaves the source unchanged when the copy is edited', () => {
+    const before = structuredClone(source);
+    const edited = copyOfScene(source, () => 'n');
+    edited.backgrounds[0].focus.x = 1;
+    edited.overlays[0].label = { text: 'Autre', visible: false };
+    edited.music.push('m9');
+    edited.ambiences[0].on = false;
+    edited.volumes.music = 0;
+    edited.notes.content.pop();
+    expect(source).toEqual(before);
   });
 });

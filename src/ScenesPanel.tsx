@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Clapperboard, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { Clapperboard, Copy, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
 import type {
   AudioMedia,
   CampaignId,
@@ -335,6 +335,25 @@ export function ScenesPanel({
     }
   }
 
+  /**
+   * Duplicates a Scene: the copy, saved right after it in the running order, opens as the
+   * Selected Scene. It stays private, even when the source is the Active Scene.
+   */
+  async function duplicate(scene: Scene) {
+    if (!control) return;
+    try {
+      const copy = await control.duplicateScene(campaignId, scene.id);
+      setScenes((current) => {
+        const index = current.findIndex((item) => item.id === scene.id);
+        return [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
+      });
+      setSelectedId(copy.id);
+    } catch (error) {
+      showNotice(errorMessage(error));
+      setScenes(await control.listScenes(campaignId));
+    }
+  }
+
   async function remove(scene: Scene) {
     if (!control) return;
     try {
@@ -410,6 +429,7 @@ export function ScenesPanel({
           }}
           onAddNotesImages={imagesForNotes}
           onActivate={() => void activate(selected)}
+          onDuplicate={() => void duplicate(selected)}
           onDelete={() => void remove(selected)}
         />
       ) : (
@@ -460,13 +480,15 @@ interface EditorProps {
   /** The images to insert into the Notes for something pasted or dropped there. */
   onAddNotesImages: (source: NotesImageSource) => Promise<ImageMedia[]>;
   onActivate: () => void;
+  /** Duplicates the Scene; the copy opens in the editor. */
+  onDuplicate: () => void;
   /** Deletes the Scene, once the Game Master has confirmed. */
   onDelete: () => void;
 }
 
 /**
  * The editor of the Selected Scene: its name (rename), "EN DIRECT" when it is the Active
- * Scene, Activate and delete (after confirmation), its Scene title, its full composition drawn by the shared
+ * Scene, Activate, duplicate and delete (after confirmation), its Scene title, its full composition drawn by the shared
  * renderer with Hidden placements in the GM-only style, and its Background and Overlay lists.
  * Library images dropped on the canvas or on a list are placed there. Overlays are moved,
  * resized and nudged on the canvas (useOverlayTransforms); a Background's framing sliders show
@@ -532,6 +554,9 @@ function SceneEditor(props: EditorProps) {
             }}
           >
             <Pencil size={14} /> Renommer
+          </button>
+          <button className="secondary-button" onClick={props.onDuplicate}>
+            <Copy size={14} /> Dupliquer
           </button>
           <button className="secondary-button" onClick={() => setConfirmingDelete(true)}>
             <Trash2 size={14} /> Supprimer

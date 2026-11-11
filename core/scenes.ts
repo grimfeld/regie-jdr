@@ -26,7 +26,7 @@ import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
 import { emptyNotes, notesFromPlainText, parseNotes } from './notes.js';
 import { moveInRunningOrder } from './runningOrder.js';
-import { cleanSceneName, SceneError } from './sceneEdits.js';
+import { cleanSceneName, MAX_SCENE_NAME_LENGTH, SceneError } from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
 export { SceneError };
@@ -53,6 +53,11 @@ export interface SceneLibrary {
    * does not exist.
    */
   move(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
+  /**
+   * Saves a copy of a Scene (`copyOfScene`) right after it in the running order and returns
+   * the copy. Throws a SceneError when the Scene does not exist.
+   */
+  duplicate(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
 }
 
 const SCENES_FILE = 'scenes.json';
@@ -174,6 +179,28 @@ function withoutMedia(scene: Scene, mediaId: MediaId): Scene {
     overlays: scene.overlays.filter((item) => item.mediaId !== mediaId),
     music: scene.music.filter((item) => item !== mediaId),
     ambiences: scene.ambiences.filter((item) => item.mediaId !== mediaId),
+  };
+}
+
+// Copies -------------------------------------------------------------------
+
+const COPY_SUFFIX = ' (copie)';
+
+/**
+ * An independent copy of a Scene: every field deep-copied, so editing the copy never changes
+ * the source; a new Scene id and new placement ids (from `newId`); the same Media references,
+ * so no Media file is copied; named "<name> (copie)", the name shortened to fit the limit.
+ * tests/unit/scenes.test.ts lists every Scene field, so a new one is a decision there.
+ */
+export function copyOfScene(source: Scene, newId: () => string): Scene {
+  const copy = structuredClone(source);
+  const base = copy.name.slice(0, MAX_SCENE_NAME_LENGTH - COPY_SUFFIX.length).trimEnd();
+  return {
+    ...copy,
+    id: newId(),
+    name: `${base}${COPY_SUFFIX}`,
+    backgrounds: copy.backgrounds.map((item) => ({ ...item, id: newId() })),
+    overlays: copy.overlays.map((item) => ({ ...item, id: newId() })),
   };
 }
 
@@ -347,6 +374,18 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
         const moved = moveInRunningOrder(scenes, sceneId, toIndex);
         await write(file, moved);
         return moved;
+      });
+    },
+
+    duplicate(campaignId, sceneId) {
+      return serialized(campaignId, async () => {
+        const file = await fileOf(campaignId);
+        const scenes = await read(file, campaignId);
+        const index = scenes.findIndex((scene) => scene.id === sceneId);
+        if (index < 0) throw new SceneError('Cette scène n’existe plus.');
+        const copy = copyOfScene(scenes[index], randomUUID);
+        await write(file, [...scenes.slice(0, index + 1), copy, ...scenes.slice(index + 1)]);
+        return copy;
       });
     },
   };

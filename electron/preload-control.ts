@@ -64,6 +64,7 @@ const bridge: ControlBridge = {
   deleteScene: (campaignId, sceneId) => invoke('scenes:delete', { campaignId, sceneId }),
   moveScene: (campaignId, sceneId, toIndex) =>
     invoke('scenes:move', { campaignId, sceneId, toIndex }),
+  duplicateScene: (campaignId, sceneId) => invoke('scenes:duplicate', { campaignId, sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
   toggleBroadcastFullscreen: () => invoke('broadcast:toggle-fullscreen'),
   listMedia: (campaignId) => invoke('media:list', { campaignId }),
