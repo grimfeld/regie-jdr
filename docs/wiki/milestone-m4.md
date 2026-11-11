@@ -26,3 +26,4 @@ Read first: ADR-0005 (Campaign export as plain zip), [carry-forward](carry-forwa
 - Manual check: Export/Import of a multi-gigabyte real Campaign with progress and Cancel. Source: #63 report.
 - 2026-11-12: M3 merged forward at `7bf3e5f` (real merges `0a86ca2`, `5b9b63d`, `7bf3e5f`; 193 app tests). Final schemas: scenes 4, Settings 5 (3→4 M3 durations, 4→5 always on top; dev-only M4 v4 files handled), Media index 4, campaign 1, soundboard 1. Import accepts every migratable version; refuses a `scenes.json` with unreadable Notes as damaged. Wiki home moves to the M4 branch.
 - 2026-11-12: #66 Rétro SF merged at `6521557` (1392 unit, 196 app tests).
+- 2026-11-12: #68 Fantasy merged at `73e7ea8` (1392 unit, 199 app tests).

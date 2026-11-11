@@ -16,3 +16,10 @@
 - Assets register `docs/theme-assets.md` with a review checklist; #67/#68 add rows.
 - Tests `tests/app/retro-theme.spec.ts` (font loads with no CSP violation; scanlines off panels; cursor stops under reduced motion), failed against the old theme.
 - Screenshots live outside worktrees (Playwright wipes `test-results/`): scratchpad `shots/`. Chief of staff looked at `retro-campaign-after.png` on 2026-11-12: readable, top bar fits at ~1420 px.
+
+## Fantasy (#68, 2026-11-12, `73e7ea8`)
+
+- Dark wood planks and candlelight page, stitched leather title bar with iron edge, iron-banded panels (border/shadow only; panels stay solid), stone inputs, parchment text/buttons/sliders. No animation. Body text Georgia (system) for reading; old-style numerals show in "100 %".
+- Font: IM Fell English SC (Igino Marini), SIL OFL 1.1, no Reserved Font Name, Fontsource 5.3.0 Latin woff2; single weight, so fake bold is off.
+- Gotcha (2026-11-12): no SVG or small image files for ornaments: Vite inlines them as `data:` URIs, blocked by CSP `img-src 'self'`. CSS only.
+- Test `tests/app/fantasy-theme.spec.ts`. Chief of staff looked at `fantasy-campaign-after.png`: readable, distinct, top bar fits at 1420 px.
