@@ -23,3 +23,9 @@
 - Font: IM Fell English SC (Igino Marini), SIL OFL 1.1, no Reserved Font Name, Fontsource 5.3.0 Latin woff2; single weight, so fake bold is off.
 - Gotcha (2026-11-12): no SVG or small image files for ornaments: Vite inlines them as `data:` URIs, blocked by CSP `img-src 'self'`. CSS only.
 - Test `tests/app/fantasy-theme.spec.ts`. Chief of staff looked at `fantasy-campaign-after.png`: readable, distinct, top bar fits at 1420 px.
+
+## Imperium (#67, 2026-11-12, `870eec4`)
+
+- Crimson, gold, parchment; crimson banner and gold lozenge diaper on the window frame only; gold double rule under the title bar; crimson-and-gold panel top rules; shield brand mark; square corners; dark-gold native controls. CSS only. No animation. Body text Arial. Theme file also styles `.topbar`, `.brand-mark`, `.panel`, headings, scoped to `[data-theme='imperium']`.
+- Font: Cinzel (The Cinzel Project Authors), SIL OFL 1.1, no Reserved Font Name; variable woff2 400–900 Latin from `@fontsource-variable/cinzel` 5.3.0 (`src/themes/fonts/cinzel-latin-wght.woff2`).
+- Test `tests/app/imperium-theme.spec.ts`. All three finished themes now merged.

@@ -59,3 +59,7 @@ Merged SHA; gate results; every deviation from the issue's acceptance criteria a
 
 
 Correction 2026-11-12 (#36 report): step 2 used a relative path, which put the worktree inside MAIN's own `.claude/worktrees` when MAIN is itself a worktree. Step 2 now gives the absolute repo-root path.
+
+Correction 2026-11-12 (#67 report: three ~7 min gate re-runs caused only by wiki-log commits): after a rebase, re-run the gates only if it brought in changes outside `docs/wiki/`. Check with `git diff --stat <old-base> <new-base> -- . ':!docs/wiki'`; empty output means the code is unchanged and the earlier green gates still hold. Any other change: re-run all six gates before the fast-forward.
+
+Correction 2026-11-12 (#66, #67): save screenshots and other evidence outside the worktree (Playwright wipes `test-results/` at every run, and the worktree is removed at the end): use the scratchpad `shots/` folder named in your prompt.
