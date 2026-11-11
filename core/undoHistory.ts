@@ -7,11 +7,14 @@
  *
  * Each step carries a short French label for the undo and redo buttons ("masquer Orc").
  *
+ * Scene Notes are outside the history (spec #45: the Notes editor has its own undo and redo):
+ * editing them records nothing, and undo or redo keeps the Notes as they are (`withNotesOf`).
+ *
  * Every recorded edit is one step, never merged with the next: the editor already sends a whole
  * drag, resize or burst of arrow-key nudges as one edit (src/useOverlayTransforms.ts), so
  * merging here could only join separate gestures (a drag then a resize).
  */
-import type { SceneEdit, UndoState } from '../shared/contract.js';
+import type { SceneHistoryEdit, UndoState } from '../shared/contract.js';
 import type { CampaignId, MediaId, Scene, SceneId } from '../shared/domain.js';
 
 export type { UndoState };
@@ -135,7 +138,7 @@ export function createUndoHistories(options: { depth?: number } = {}): UndoHisto
  */
 export function undoLabel(
   scene: Scene,
-  edit: SceneEdit,
+  edit: SceneHistoryEdit,
   mediaName: (mediaId: MediaId) => string | undefined,
 ): string {
   const placed = (placementId: string) => {
@@ -191,6 +194,11 @@ export function undoLabel(
     case 'set-music-level':
       return 'régler le niveau des musiques';
   }
+}
+
+/** `scene` with the Notes of `current`: what undo or redo saves, and compares, Notes aside. */
+export function withNotesOf(scene: Scene, current: Scene): Scene {
+  return { ...scene, notes: current.notes };
 }
 
 /** Whether two JSON values (saved Scenes) are equal, whatever their keys' order. */

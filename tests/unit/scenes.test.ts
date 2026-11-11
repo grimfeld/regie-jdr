@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
+import { emptyNotes, notesFromPlainText } from '../../core/notes';
 import { createSceneLibrary, parseScene } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { Scene } from '../../shared/domain';
@@ -32,7 +33,7 @@ describe('scene library', () => {
       music: [],
       ambiences: [],
       volumes: { music: 1, ambience: 1 },
-      notes: '',
+      notes: emptyNotes(),
     });
     expect(await scenes.list(campaign.id)).toEqual([scene]);
   });
@@ -217,9 +218,36 @@ describe('scene library', () => {
         music: [],
         ambiences: [],
         volumes: { music: 1, ambience: 1 },
-        notes: 'secret',
+        notes: notesFromPlainText('secret'),
       },
     ]);
+  });
+
+  it('upgrades plain-text Notes (version 2) to rich text, one paragraph per line', async () => {
+    const { storage, campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'La cantina');
+    const { campaignId: _campaignId, ...stored } = scene;
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'scenes.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        scenes: [
+          { ...stored, notes: 'Le traître\n\nest le capitaine' },
+          { ...stored, id: 's2', notes: '' },
+        ],
+      }),
+    );
+
+    const [migrated, empty] = await scenes.list(campaign.id);
+    expect(migrated.notes).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Le traître' }] },
+        { type: 'paragraph' },
+        { type: 'paragraph', content: [{ type: 'text', text: 'est le capitaine' }] },
+      ],
+    });
+    expect(empty.notes).toEqual(emptyNotes());
   });
 
   it('keeps every Scene when saves run at the same time', async () => {
@@ -227,9 +255,13 @@ describe('scene library', () => {
     const created = await Promise.all(
       ['A', 'B', 'C'].map((name) => scenes.create(campaign.id, name)),
     );
-    await Promise.all(created.map((scene) => scenes.save({ ...scene, notes: `n-${scene.name}` })));
+    await Promise.all(
+      created.map((scene) =>
+        scenes.save({ ...scene, notes: notesFromPlainText(`n-${scene.name}`) }),
+      ),
+    );
     const listed = await scenes.list(campaign.id);
-    expect(listed.map((s) => s.notes).sort()).toEqual(['n-A', 'n-B', 'n-C']);
+    expect(listed.map((s) => s.notes)).toEqual(['n-A', 'n-B', 'n-C'].map(notesFromPlainText));
   });
 });
 
@@ -254,7 +286,7 @@ describe('Scene parsing', () => {
     music: ['m3'],
     ambiences: [{ mediaId: 'm4', on: true, volume: 0.3 }],
     volumes: { music: 0.5, ambience: 0.7 },
-    notes: 'secret',
+    notes: notesFromPlainText('secret'),
   };
 
   it('accepts a complete Scene and attaches the Campaign id', () => {
@@ -280,6 +312,22 @@ describe('Scene parsing', () => {
     ['a Label that is bare text', { ...valid, overlays: [{ ...valid.overlays[0], label: 'X' }] }],
     ['a volume above 1', { ...valid, volumes: { music: 2, ambience: 0 } }],
     ['missing notes', { ...valid, notes: undefined }],
+    ['plain-text notes', { ...valid, notes: 'secret' }],
+    [
+      'notes with a link',
+      {
+        ...valid,
+        notes: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: 'a', marks: [{ type: 'link' }] }],
+            },
+          ],
+        },
+      },
+    ],
     [
       'a visibility that is not a boolean',
       { ...valid, backgrounds: [{ ...valid.backgrounds[0], visible: 'yes' }] },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createAudioOnAir } from '../../core/audioOnAir';
 import { AUDIO_FADE_MS } from '../../core/fades';
 import type { AudioMedia, AudioMix, Media, Scene } from '../../shared/domain';
+import { emptyNotes } from '../../core/notes';
 
 function audio(id: string, role: AudioMedia['role']): AudioMedia {
   return {
@@ -35,7 +36,7 @@ function scene(id: string, changes: Partial<Scene> = {}): Scene {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: '',
+    notes: emptyNotes(),
     ...changes,
   };
 }

@@ -23,6 +23,7 @@ import { CampaignError } from './campaigns.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
+import { emptyNotes, notesFromPlainText, parseNotes } from './notes.js';
 import { cleanSceneName, SceneError } from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
@@ -117,8 +118,9 @@ function parseList<T>(value: unknown, parse: (item: unknown) => T | undefined): 
  */
 export function parseScene(value: unknown, campaignId: CampaignId): Scene | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, name, title, notes, volumes } = value;
-  if (!isId(id) || typeof name !== 'string' || typeof notes !== 'string') return undefined;
+  const { id, name, title, volumes } = value;
+  const notes = parseNotes(value.notes);
+  if (!isId(id) || typeof name !== 'string' || !notes) return undefined;
   if (typeof title !== 'string') return undefined;
   if (!isRecord(volumes) || !isUnit(volumes.music) || !isUnit(volumes.ambience)) return undefined;
   const backgrounds = parseList(value.backgrounds, parseBackground);
@@ -210,14 +212,28 @@ function migrateScenesV1(fields: Record<string, unknown>): Record<string, unknow
   return { ...fields, scenes };
 }
 
+/**
+ * Version 2 (Milestones 1 and 2) to 3 (Milestone 3): plain-text Notes become rich text, one
+ * paragraph per line (ADR-0004).
+ */
+function migrateScenesV2(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.scenes)) return fields;
+  const scenes = fields.scenes.map((scene: unknown) =>
+    isRecord(scene) && typeof scene.notes === 'string'
+      ? { ...scene, notes: notesFromPlainText(scene.notes) }
+      : scene,
+  );
+  return { ...fields, scenes };
+}
+
 function zIndexOf(item: unknown): number {
   return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
 }
 
 const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
   name: 'scenes',
-  version: 2,
-  migrations: { 1: migrateScenesV1 },
+  version: 3,
+  migrations: { 1: migrateScenesV1, 2: migrateScenesV2 },
   parse({ scenes }) {
     const parsed = parseList(scenes, (item) => parseScene(item, ''));
     return parsed && { scenes: parsed.map(stored) };
@@ -267,7 +283,7 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
           music: [],
           ambiences: [],
           volumes: { music: 1, ambience: 1 },
-          notes: '',
+          notes: emptyNotes(),
         };
         await write(file, [...scenes, scene]);
         return scene;

@@ -3,6 +3,7 @@ import { createOnAir, editorPictureOf, latestOnAir, onAirSceneOf } from '../../c
 import { applySceneEdit } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { Media, OnAirScene, Scene } from '../../shared/domain';
+import { notesFromPlainText } from '../../core/notes';
 
 const cantina: OnAirScene = {
   backgrounds: [
@@ -293,7 +294,7 @@ describe('what of a Scene goes on air', () => {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: 'Notes privées',
+    notes: notesFromPlainText('Notes privées'),
   };
 
   it('keeps only visible placements of known images, bottom to top, with their addresses', () => {
@@ -438,7 +439,7 @@ describe('what of a Scene the editor draws', () => {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: 'Notes privées',
+    notes: notesFromPlainText('Notes privées'),
   };
 
   it('draws every placement of a known image, marking Hidden ones and Hidden Labels', () => {

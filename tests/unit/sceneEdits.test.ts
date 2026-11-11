@@ -12,6 +12,7 @@ import {
 } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { ImageCategory, ImageMedia, Scene } from '../../shared/domain';
+import { emptyNotes, notesFromPlainText } from '../../core/notes';
 
 const empty: Scene = {
   id: 's1',
@@ -23,7 +24,7 @@ const empty: Scene = {
   music: [],
   ambiences: [],
   volumes: { music: 1, ambience: 1 },
-  notes: '',
+  notes: emptyNotes(),
 };
 
 /** Applies edits in order, naming new placements p1, p2, ... */
@@ -197,6 +198,33 @@ describe('Scene edit commands', () => {
     expect(() => applyAll(empty, { kind: 'set-title', title: 'x'.repeat(101) })).toThrow(
       'Le titre affiché est trop long (100 caractères au plus).',
     );
+  });
+});
+
+describe('Scene Notes', () => {
+  const notes = notesFromPlainText('Le traître\nest le capitaine');
+
+  it('replaces the Notes, leaving the rest of the Scene', () => {
+    expect(applyAll(empty, { kind: 'set-notes', notes })).toEqual({ ...empty, notes });
+  });
+
+  it('reads Notes from a window message, keeping only allowed content', () => {
+    expect(parseSceneEdit({ kind: 'set-notes', notes, x: 1 })).toEqual({
+      kind: 'set-notes',
+      notes,
+    });
+    expect(parseSceneEdit({ kind: 'set-notes', notes: 'texte' })).toBeUndefined();
+    expect(parseSceneEdit({ kind: 'set-notes' })).toBeUndefined();
+    expect(
+      parseSceneEdit({
+        kind: 'set-notes',
+        notes: { type: 'doc', content: [{ type: 'table', content: [] }] },
+      }),
+    ).toBeUndefined();
+  });
+
+  it('is never a transient update', () => {
+    expect(parseTransientEdit({ kind: 'set-notes', notes })).toBeUndefined();
   });
 });
 

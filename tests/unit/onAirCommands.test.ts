@@ -8,6 +8,7 @@ import { createMediaLibrary } from '../../core/media';
 import { mediaFileName } from '../../core/mediaAddress';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
+import { notesFromPlainText } from '../../core/notes';
 import { createSceneLibrary } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
@@ -1154,14 +1155,51 @@ describe('on-air commands', () => {
       await expect(redo()).rejects.toThrow('Rien à rétablir.');
     });
 
+    describe('Notes', () => {
+      const notes = notesFromPlainText('Le traître est le capitaine');
+
+      it('saves Notes without an undo step and without touching what is on air', async () => {
+        const ctx = await setup();
+        const { scene, edit, state } = await editing(ctx);
+        const shownBefore = ctx.broadcast.length;
+        const mixesBefore = ctx.mixes.length;
+
+        const saved = await edit({ kind: 'set-notes', notes });
+
+        expect(saved.notes).toEqual(notes);
+        expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.notes).toEqual(notes);
+        expect(await state()).toEqual({ undo: 'placer Cantina en superposition', redo: null });
+        expect(ctx.broadcast).toHaveLength(shownBefore);
+        expect(ctx.mixes).toHaveLength(mixesBefore);
+        expect(JSON.stringify(ctx.broadcast)).not.toContain('traître');
+      });
+
+      it('undoes and redoes Scene edits around Notes, keeping the Notes as typed', async () => {
+        const ctx = await setup();
+        const { scene, placed, edit, undo, redo, state } = await editing(ctx);
+        await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+        await edit({ kind: 'set-notes', notes });
+
+        expect(await undo()).toEqual({ ...placed, notes });
+        const later = notesFromPlainText('Plus tard');
+        await edit({ kind: 'set-notes', notes: later });
+        const redone = await redo();
+
+        expect(redone.overlays[0]?.visible).toBe(true);
+        expect(redone.notes).toEqual(later);
+        expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.notes).toEqual(later);
+        expect(await state()).toEqual({ undo: 'afficher Cantina', redo: null });
+      });
+    });
+
     it('refuses an undo once the Scene changed outside its history, and clears it', async () => {
       const ctx = await setup();
       const { scene, placed, undo, state } = await editing(ctx);
-      await ctx.scenes.save({ ...placed, notes: 'changed elsewhere' });
+      await ctx.scenes.save({ ...placed, title: 'changed elsewhere' });
 
       await expect(undo()).rejects.toThrow('La scène a changé entre-temps');
       expect(await state()).toEqual({ undo: null, redo: null });
-      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.notes).toBe('changed elsewhere');
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.title).toBe('changed elsewhere');
     });
   });
 

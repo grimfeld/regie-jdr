@@ -14,6 +14,7 @@ import { openStorage } from '../../core/storage';
 import type { AudioMedia, AudioMix, OnAirState, Scene } from '../../shared/domain';
 import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
+import { emptyNotes } from '../../core/notes';
 
 function audio(id: string, role: AudioMedia['role']): AudioMedia {
   return {
@@ -43,7 +44,7 @@ const taverne: Scene = {
   music: ['m1'],
   ambiences: [{ mediaId: 'a1', on: true, volume: 0.5 }],
   volumes: { music: 1, ambience: 1 },
-  notes: '',
+  notes: emptyNotes(),
 };
 
 const heard: MixInput = {

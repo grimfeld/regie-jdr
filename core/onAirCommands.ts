@@ -34,6 +34,7 @@ import {
   undoLabel,
   type UndoHistories,
   type UndoMove,
+  withNotesOf,
 } from './undoHistory.js';
 import type { AudioChange } from './fades.js';
 import type { CampaignRepository } from './storage/index.js';
@@ -178,6 +179,9 @@ export function createOnAirCommands(deps: {
   async function applyEdit(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit) {
     const scene = await scenes.get(campaignId, sceneId);
     if (!scene) throw new SceneError('Cette scène n’existe plus.');
+    // Notes: saved only. Never on air, and outside the Scene undo history (their editor has its
+    // own undo and redo).
+    if (edit.kind === 'set-notes') return scenes.save(applySceneEdit(scene, edit, newId));
     const media = await library.list(campaignId);
     checkAdded(edit, media);
     const saved = await saveScene(applySceneEdit(scene, edit, newId), audioChangeOf(edit));
@@ -212,7 +216,8 @@ export function createOnAirCommands(deps: {
     if (!move) throw new SceneError(nothing);
     const scene = await scenes.get(campaignId, sceneId);
     if (!scene) throw new SceneError('Cette scène n’existe plus.');
-    if (!isSameValue(scene, move.expected)) {
+    // Notes are outside the history: compared and kept as they are now.
+    if (!isSameValue(scene, withNotesOf(move.expected, scene))) {
       histories.clear(campaignId, sceneId);
       throw new SceneError('La scène a changé entre-temps : son historique est effacé.');
     }
@@ -223,7 +228,7 @@ export function createOnAirCommands(deps: {
         'Un média de cette étape a été supprimé de la bibliothèque : l’historique de la scène est effacé.',
       );
     }
-    return saveScene(move.restore, 'undo');
+    return saveScene(withNotesOf(move.restore, scene), 'undo');
   }
 
   return {

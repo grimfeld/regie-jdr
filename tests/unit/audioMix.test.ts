@@ -14,6 +14,7 @@ import {
 import { AUDIO_FADE_MS } from '../../core/fades';
 import type { SceneEdit } from '../../shared/contract';
 import type { AudioMedia, AudioMix, Media, Scene, SoundingState } from '../../shared/domain';
+import { emptyNotes } from '../../core/notes';
 
 function audio(id: string, role: AudioMedia['role']): AudioMedia {
   return {
@@ -47,7 +48,7 @@ function scene(changes: Partial<Scene> = {}): Scene {
     music: ['m1', 'm2'],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: '',
+    notes: emptyNotes(),
     ...changes,
   };
 }

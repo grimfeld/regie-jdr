@@ -140,7 +140,31 @@ export interface Scene {
   ambiences: SceneAmbience[];
   volumes: SceneVolumes;
   /** Private to the Game Master: never shown in the Broadcast window. */
-  notes: string;
+  notes: NotesDocument;
+}
+
+/** A text mark in Scene Notes: bold or italic, nothing else. */
+export interface NotesMark {
+  type: 'bold' | 'italic';
+}
+
+/**
+ * One node of Scene Notes, as the Notes editor (TipTap, ProseMirror) saves it (ADR-0004). Which
+ * types, attributes and nestings are allowed is checked by `parseNotes` (core/notes.ts).
+ */
+export interface NotesNode {
+  type: string;
+  attrs?: Record<string, string | number | boolean | null>;
+  content?: NotesNode[];
+  marks?: NotesMark[];
+  /** Only on a `text` node, never empty. */
+  text?: string;
+}
+
+/** Scene Notes: rich text, a ProseMirror JSON document (ADR-0004). */
+export interface NotesDocument {
+  type: 'doc';
+  content: NotesNode[];
 }
 
 /** One pad of a Soundboard, triggering a Sound effect once (pads never loop). */

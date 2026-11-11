@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { SceneEdit } from '../../shared/contract';
+import type { SceneHistoryEdit } from '../../shared/contract';
 import type { Scene } from '../../shared/domain';
 import { UNDO_DEPTH, createUndoHistories, undoLabel } from '../../core/undoHistory';
+import { emptyNotes } from '../../core/notes';
 
 function scene(id: string, name = id, campaignId = 'c1'): Scene {
   return {
@@ -14,7 +15,7 @@ function scene(id: string, name = id, campaignId = 'c1'): Scene {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: '',
+    notes: emptyNotes(),
   };
 }
 
@@ -131,7 +132,7 @@ describe('undo histories', () => {
 });
 
 describe('undo labels', () => {
-  const cases: [SceneEdit, string][] = [
+  const cases: [SceneHistoryEdit, string][] = [
     [{ kind: 'place-background', mediaId: 'm-map' }, 'placer Port en arrière-plan'],
     [{ kind: 'place-overlay', mediaId: 'm-orc' }, 'placer Orc en superposition'],
     [{ kind: 'set-visible', placementId: 'ov', visible: false }, 'masquer Orc'],

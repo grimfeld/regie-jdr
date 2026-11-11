@@ -19,6 +19,7 @@ import type {
 } from '../shared/domain.js';
 import { CANVAS, clampZoom } from './canvas.js';
 import { isRecord } from './guards.js';
+import { parseNotes } from './notes.js';
 
 /** A Scene error the Game Master can read (French message). */
 export class SceneError extends Error {}
@@ -377,6 +378,8 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
       return withAmbience(scene, edit.mediaId, (item) => ({ ...item, volume: edit.volume }));
     case 'set-ambience-level':
       return { ...scene, volumes: { ...scene.volumes, ambience: edit.level } };
+    case 'set-notes':
+      return { ...scene, notes: edit.notes };
   }
 }
 
@@ -550,6 +553,10 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
       return isId(value.mediaId) ? { kind: 'remove-music', mediaId: value.mediaId } : undefined;
     case 'set-music-level':
       return isUnit(value.level) ? { kind: 'set-music-level', level: value.level } : undefined;
+    case 'set-notes': {
+      const notes = parseNotes(value.notes);
+      return notes && { kind: 'set-notes', notes };
+    }
     default:
       return undefined;
   }

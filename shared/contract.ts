@@ -18,6 +18,7 @@ import type {
   MediaId,
   MusicPlayback,
   NormalizedPoint,
+  NotesDocument,
   OnAirState,
   PadCommand,
   PadReport,
@@ -116,7 +117,15 @@ export type SceneEdit =
   /** Sets an Ambience's own volume (0..1). */
   | { kind: 'set-ambience-volume'; mediaId: MediaId; volume: number }
   /** Sets the Scene's Ambience level (0..1), which applies to all its Ambiences. */
-  | { kind: 'set-ambience-level'; level: number };
+  | { kind: 'set-ambience-level'; level: number }
+  /**
+   * Replaces the Scene's Notes (sent as the Game Master types). Never on air, and never in the
+   * Scene undo history: the Notes editor has its own undo and redo.
+   */
+  | { kind: 'set-notes'; notes: NotesDocument };
+
+/** An edit the Scene undo history records: every Scene edit but Notes. */
+export type SceneHistoryEdit = Exclude<SceneEdit, { kind: 'set-notes' }>;
 
 /**
  * One edit of a Campaign's Soundboard (core/soundboard.ts), saved at once. Never in an undo

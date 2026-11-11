@@ -188,6 +188,7 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
     case 'set-title':
     case 'set-label-text':
     case 'set-label-visible':
+    case 'set-notes': // Never on air: editScene does not show Notes.
       return 'volume';
   }
 }

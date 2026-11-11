@@ -11,6 +11,7 @@ import type {
   Overlay,
   Scene,
 } from '../../shared/domain';
+import { notesFromPlainText } from '../../core/notes';
 
 /*
  * Allow-lists for the broadcast projection. tests/unit/onAir.test.ts checks what one Scene
@@ -110,7 +111,7 @@ describe('the broadcast projection allow-list', () => {
     music: ['m2'],
     ambiences: [{ mediaId: 'm3', on: true, volume: 1 }],
     volumes: { music: 1, ambience: 1 },
-    notes: 'Notes',
+    notes: notesFromPlainText('Notes'),
   };
   const projected = onAirSceneOf(scene, library);
 
