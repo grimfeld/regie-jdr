@@ -15,3 +15,4 @@ On 2026-11-10 the user asked to implement specs #21 (M1 Visual MVP), #33 (M2 Aud
 - 2026-11-12: M2 PR opened as #75, stacked on #74 (base `m1-visual-mvp`).
 - 2026-11-12: M4 PR opened as #77, stacked on #76. All four PRs open: #74 (M1 → main), #75 (M2 → m1), #76 (M3 → m2), #77 (M4 → m3). Goal reached pending CI on #77 and the user's review. Left open for the user: #44 (Discord audio acceptance), #57 (MVP mock session).
 - 2026-11-12: M3 PR opened as #76, stacked on #75 (base `m2-audio-mvp`).
+- 2026-11-12: user said "Merge them". #74 merged into main (`53f1f5b`); #75–#77 merged into their stacked bases by mistake (see [problem](problem-gh-pr-edit-base.md)); repair PR #78 opened from `m3-transitions-closeout` into main.
