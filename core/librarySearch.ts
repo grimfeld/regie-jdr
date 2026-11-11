@@ -1,12 +1,15 @@
 /**
- * What the image library shows: images only (audio stays out of it), filtered by Image
- * category and searched by Media name. Pure (no Node or Electron import): the Control window
- * imports it.
+ * What the library shows: the images, filtered by Image category, and the sounds, filtered by
+ * audio role, both searched by Media name; and how a sound's duration reads. Pure (no Node or
+ * Electron import): the Control window imports it.
  */
-import type { ImageCategory, ImageMedia, Media } from '../shared/domain.js';
+import type { AudioMedia, AudioRole, ImageCategory, ImageMedia, Media } from '../shared/domain.js';
 
-/** The library filter: every image, or one Image category. */
+/** The image library filter: every image, or one Image category. */
 export type LibraryFilter = 'all' | ImageCategory;
+
+/** The audio library filter: every sound, or one role (Music, Ambience, Sound effect). */
+export type AudioFilter = 'all' | AudioRole;
 
 /** Letters a search treats as the same: no case, no accents, ligatures spelled out. */
 export function searchKey(text: string): string {
@@ -32,4 +35,25 @@ export function imageLibrary(media: readonly Media[], filter: LibraryFilter, que
       (filter === 'all' || item.category === filter) &&
       matchesSearch(item.name, query),
   );
+}
+
+/** The sounds the library shows for a filter and a search, in library order. */
+export function audioLibrary(media: readonly Media[], filter: AudioFilter, query: string) {
+  return media.filter(
+    (item): item is AudioMedia =>
+      item.kind === 'audio' &&
+      (filter === 'all' || item.role === filter) &&
+      matchesSearch(item.name, query),
+  );
+}
+
+/** A duration as the library shows it: `2:05`, `1:02:05`; a dash when it is unknown. */
+export function formatDuration(seconds: number | null): string {
+  if (seconds === null) return '–';
+  const total = Math.round(seconds);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = pad(total % 60);
+  return hours > 0 ? `${hours}:${pad(minutes)}:${rest}` : `${minutes}:${rest}`;
 }

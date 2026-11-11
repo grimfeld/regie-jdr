@@ -39,6 +39,17 @@ export function extensionsOf(kind: Media['kind']): string[] {
     .map(([extension]) => extension.slice(1));
 }
 
+/**
+ * The kind of Media a file would be, from its name's extension (any case), or undefined for a
+ * type that is not allowlisted. The library uses it to ask for a role only when sounds are
+ * dropped; the import checks the type again.
+ */
+export function mediaKindOfFileName(fileName: string): Media['kind'] | undefined {
+  const dot = fileName.lastIndexOf('.');
+  const extension = dot < 0 ? '' : fileName.slice(dot).toLowerCase();
+  return isMediaExtension(extension) ? MEDIA_FILE_TYPES[extension].kind : undefined;
+}
+
 /** Name of a Media's file in its Campaign's media folder. */
 export function mediaFileName(media: Pick<Media, 'contentHash' | 'extension'>): string {
   return `${media.contentHash}${media.extension}`;
