@@ -17,3 +17,9 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - #40 Silence: a flag zeroing targets in `mixOf`.
 - #42 missing audio: engine already reports `failed`; leave missing Media out in `audioOf`.
 - #36, #37, #39, #40 add controls to `src/NowPlaying.tsx`.
+
+## Ambiences (#37, 2026-11-12, `4e88616`)
+
+- Five `SceneEdit`s: add, remove, on/off, own volume, Scene Ambience level (one undo step each). `audioChangeOf`: on/off and removal fade 1 s, volume short ramp, add silent. Mix unchanged.
+- UI `src/SceneAmbienceList.tsx` beside the Music list. Unit tests in `tests/unit/ambiences.test.ts`.
+- Gap: volume sliders commit on release and are silent while dragging (no audio transient path yet).
