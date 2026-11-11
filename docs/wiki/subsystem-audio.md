@@ -44,3 +44,11 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - One notice per missing or engine-`failed` sound, raised from the "En cours" strip (moved there so #39's Soundboard didn't duplicate it).
 - Badges via `MissingMediaBadge` / `useMissingMedia` (`src/MissingMedia.tsx`) in library, Music/Ambience lists, pads; re-checked on change and window focus. New list views reuse them.
 - Gaps: pressing a pad whose file is missing gives no notice. #36's level drag checks for missing files on every live update (watch cost).
+
+## Silence (#40, 2026-11-12, `310287b`)
+
+- Supersedes the #40 plug-in note: Silence is `MixInput.silence` (optional), not an `AudioOnAir` state field. In `mixOf` it sets every voice to gain 0 and paused, so lifting it restores the same mix with Music where it was.
+- Starting Silence cuts sounding pads (`padVoices.clear('silence')`); pads pressed during Silence play normally. Activate and `clear()` lift it; never saved.
+- State reaches the strip as `AudioSounding.silence` (Broadcast gets nothing). Control-only `audio:set-silence` / `ControlBridge.setSilence`.
+- #41 hook: `setSilence(control, on)` exported from `src/NowPlaying.tsx`; current state `useSounding(control)?.silence`.
+- During Silence the strip labels voices "silence" and hides pause/stop. Gap: a track or Ambience started during Silence shows "silence", not loading.

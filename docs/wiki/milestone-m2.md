@@ -32,3 +32,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - 2026-11-12: #39 Soundboard merged at `6b99c61` (674 unit, 114 app tests). Smoke test now expects 2 sliders.
 - 2026-11-12: #36 Music controls merged at `5a330db` (708 unit, 118 app tests).
 - 2026-11-12: #42 missing audio merged at `13a1384` (717 unit, 122 app tests). No deviations.
+- 2026-11-12: #40 Silence merged at `310287b` (733 unit, 124 app tests).
