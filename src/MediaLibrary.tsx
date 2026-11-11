@@ -32,32 +32,38 @@ const filterLabels: Record<LibraryFilter, string> = {
   reference: 'Références',
 };
 
-/**
- * What deleting a used Media takes with it, for the confirmation: the Scenes it is placed in
- * (and the broadcast, if shown there) and the Soundboard pads playing it.
- */
-function deletionWarning({
-  media,
-  scenes,
-  pads,
-}: {
+/** A Media in use, and the names of what uses it, waiting for the Game Master's confirmation. */
+interface PendingDeletion {
   media: Media;
+  /** Scenes placing it. */
   scenes: string[];
   pads: string[];
-}) {
+  /** Scenes whose Notes show it. */
+  notes: string[];
+}
+
+/**
+ * What deleting a used Media takes with it, for the confirmation: the Scenes it is placed in
+ * (and the broadcast, if shown there), its images in Scene Notes and the Soundboard pads playing
+ * it.
+ */
+function deletionWarning({ media, scenes, pads, notes }: PendingDeletion) {
   const inScenes = scenes.length > 1 ? 'ces scènes' : 'cette scène';
   const byPads = pads.length > 1 ? 'ces pads' : 'ce pad';
   const uses = [
     scenes.length > 0 && `dans ${inScenes}`,
+    notes.length > 0 && `dans les notes de ${notes.length > 1 ? 'ces scènes' : 'cette scène'}`,
     pads.length > 0 && `par ${byPads} de la table de bruitages`,
-  ].filter(Boolean);
+  ].filter((use) => use !== false);
   const removed = [
     scenes.length > 0 &&
       `Le supprimer le retire aussi de ${inScenes}, et de la diffusion s’il y est affiché.`,
+    notes.length > 0 && 'Son image est retirée de ces notes.',
     pads.length > 0 &&
       (pads.length > 1 ? 'Ces pads sont retirés de la table.' : 'Ce pad est retiré de la table.'),
   ].filter(Boolean);
-  return `« ${media.name} » est utilisé ${uses.join(' et ')}. ${removed.join(' ')}`;
+  const listed = uses.length > 1 ? `${uses.slice(0, -1).join(', ')} et ${uses.at(-1)}` : uses[0];
+  return `« ${media.name} » est utilisé ${listed}. ${removed.join(' ')}`;
 }
 
 const roleLabels: Record<AudioRole, string> = {
@@ -117,10 +123,8 @@ export function MediaLibrary({
   /** Questions about sounds' roles, asked one at a time in order: a drop never replaces one. */
   const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
   const nextRoleRequest = useRef(0);
-  /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
-  const [pending, setPending] = useState<{ media: Media; scenes: string[]; pads: string[] } | null>(
-    null,
-  );
+  /** A Media in use, waiting for the Game Master to confirm its deletion. */
+  const [pending, setPending] = useState<PendingDeletion | null>(null);
 
   const images = useMemo(() => imageLibrary(media, filter, query), [media, filter, query]);
   const sounds = useMemo(
@@ -258,6 +262,7 @@ export function MediaLibrary({
           media: item,
           scenes: deletion.affectedScenes.map((scene) => scene.name),
           pads: deletion.affectedPads.map((pad) => pad.name),
+          notes: deletion.affectedNotes.map((scene) => scene.name),
         });
       }
     } catch (error) {
@@ -430,6 +435,13 @@ export function MediaLibrary({
           {pending.scenes.length > 0 && (
             <ul aria-label="Scènes concernées">
               {pending.scenes.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
+          {pending.notes.length > 0 && (
+            <ul aria-label="Notes concernées">
+              {pending.notes.map((name, index) => (
                 <li key={index}>{name}</li>
               ))}
             </ul>

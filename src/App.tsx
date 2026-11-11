@@ -267,6 +267,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
    * names may have changed).
    */
   const [mediaRevision, setMediaRevision] = useState(0);
+  /** Bumped when a deleted Media's images were removed from Scene Notes: the Notes editor reloads. */
+  const [notesRevision, setNotesRevision] = useState(0);
   /** Bumped when Media were dropped on the Scene editor and imported: the library reloads. */
   const [importRevision, setImportRevision] = useState(0);
   // Where the Scenes panel shows the Selected Scene's Notes.
@@ -298,6 +300,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             campaignId={campaign.id}
             control={control}
             mediaRevision={mediaRevision}
+            notesRevision={notesRevision}
             onMediaImported={() => setImportRevision((revision) => revision + 1)}
             notesSlot={notesSlot}
           />
@@ -305,7 +308,10 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
           <MediaLibrary
             campaignId={campaign.id}
             control={control}
-            onMediaDeleted={() => setMediaRevision((revision) => revision + 1)}
+            onMediaDeleted={(deletion) => {
+              setMediaRevision((revision) => revision + 1);
+              if (deletion.affectedNotes.length > 0) setNotesRevision((revision) => revision + 1);
+            }}
             onMediaRenamed={() => setMediaRevision((revision) => revision + 1)}
             importRevision={importRevision}
             listening={listening}

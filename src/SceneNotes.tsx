@@ -85,7 +85,9 @@ function pastedImages(data: DataTransfer | null): File[] {
  * separate from the Scene undo history, which Notes never enter (core/undoHistory.ts). Typing
  * groups into undo steps as the editor's history does (a pause starts a new step).
  *
- * The editor owns its text once open: a saved Scene coming back does not reset it.
+ * The editor owns its text once open: a saved Scene coming back does not reset it. Deleting a
+ * Media shown in these Notes does: the Scenes panel opens the editor again (ScenesPanel's
+ * `notesRevision`), so neither the editor nor its undo history keeps the deleted Media.
  */
 export function SceneNotes(props: {
   /** The Selected Scene's name, shown in the heading. */

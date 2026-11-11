@@ -272,3 +272,59 @@ test('the library filters Reference images, and a Reference image can change cat
     .poll(async () => (await storedMedia(regie.dataDir)).map((m) => m.category))
     .toEqual(['scenery', 'scenery']);
 });
+
+test('deleting an image used in Notes lists their Scene; confirming removes it from the Notes', async ({
+  regie,
+}) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Embuscade');
+  await notes(page).click();
+  await page.keyboard.type('Le plan :');
+  const map = await picturePng(regie, 'Plan du fort.png', { width: 80, height: 45 }, GREEN);
+  expect(await dropFiles(notes(page), [map])).toBe(true);
+  await expect(notesImage(page, 'Plan du fort')).toBeVisible();
+  await expect.poll(() => storedNotesImages(regie.dataDir)).toHaveLength(1);
+
+  await libraryFilter(page, 'Références').click();
+  await libraryItem(page, 'Plan du fort')
+    .getByRole('button', { name: 'Supprimer Plan du fort' })
+    .click();
+  const dialog = page.getByRole('alertdialog', { name: 'Supprimer le média' });
+  await expect(dialog).toContainText('« Plan du fort » est utilisé dans les notes de cette scène.');
+  await expect(dialog.getByRole('list', { name: 'Notes concernées' })).toHaveText('Embuscade');
+  await dialog.getByRole('button', { name: 'Supprimer quand même' }).click();
+
+  await expect(library(page).getByRole('listitem')).toHaveCount(0);
+  await expect(notes(page).getByRole('img')).toHaveCount(0);
+  await expect(notes(page)).toContainText('Le plan :');
+  expect(await storedNotesImages(regie.dataDir)).toEqual([]);
+  expect(await storedNotes(regie.dataDir)).toContain('Le plan :');
+  // The Notes undo starts again: it cannot bring the deleted image back.
+  await expect(page.getByRole('button', { name: 'Annuler dans les notes' })).toBeDisabled();
+});
+
+test('a Notes image whose file is missing on disk shows the missing-Media placeholder', async ({
+  regie,
+}) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Embuscade');
+  const map = await picturePng(regie, 'Plan du fort.png', { width: 80, height: 45 }, GREEN);
+  expect(await dropFiles(notes(page), [map])).toBe(true);
+  await expect(notesImage(page, 'Plan du fort')).toBeVisible();
+  await expect.poll(() => storedNotesImages(regie.dataDir)).toHaveLength(1);
+  await regie.app.close();
+
+  // The file goes outside the app; the Media stays in the library.
+  const folder = path.join(await campaignFolder(regie.dataDir), 'media');
+  for (const file of await fs.readdir(folder)) await fs.rm(path.join(folder, file));
+  const restarted = await launchApp(regie.dataDir);
+  try {
+    await expect(
+      notes(restarted.controlWindow).getByRole('img', { name: 'Média manquant : Plan du fort' }),
+    ).toBeVisible();
+  } finally {
+    await restarted.app.close();
+  }
+});

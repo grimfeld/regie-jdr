@@ -43,6 +43,12 @@ interface Props {
   /** Changes when a Media was deleted: Scenes and images are read again. */
   mediaRevision: number;
   /**
+   * Changes when a deleted Media's images were removed from Scene Notes: once the Scenes are read
+   * again, the Notes editor starts again on the cleaned Notes, its own undo history with it (the
+   * history could bring the deleted Media back).
+   */
+  notesRevision: number;
+  /**
    * Image files dropped on the editor, or pasted or dropped into the Notes, were imported: the
    * library reads its Media again.
    */
@@ -67,10 +73,13 @@ export function ScenesPanel({
   campaignId,
   control,
   mediaRevision,
+  notesRevision,
   onMediaImported,
   notesSlot,
 }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
+  /** The `notesRevision` the Scenes were last read for: the Notes editor's key. */
+  const [notesRead, setNotesRead] = useState(notesRevision);
   /** The Scene the Game Master opened; undefined until they open one (see `selected`). */
   const [selectedId, setSelectedId] = useState<SceneId | undefined>(undefined);
   // Which Scene is on air.
@@ -88,7 +97,10 @@ export function ScenesPanel({
     control
       .listScenes(campaignId)
       .then((list) => {
-        if (!cancelled) setScenes(list);
+        if (cancelled) return;
+        // Together, so the Notes editor starts again on the Notes just read, never older ones.
+        setScenes(list);
+        setNotesRead(notesRevision);
       })
       .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
@@ -96,7 +108,7 @@ export function ScenesPanel({
     return () => {
       cancelled = true;
     };
-  }, [control, campaignId, mediaRevision]);
+  }, [control, campaignId, mediaRevision, notesRevision]);
 
   // The library's images, to draw and to place, and its sounds, to name. Read again whenever a
   // Scene is opened, when the picker gets focus and when a sound is dropped, so Media imported
@@ -411,6 +423,7 @@ export function ScenesPanel({
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
           notesSlot={notesSlot}
+          notesRevision={notesRead}
           undoState={undoState}
           onTravel={(shortcut) => void travel(selected, shortcut)}
           onRefreshImages={refreshImages}
@@ -459,6 +472,8 @@ interface EditorProps {
   fadeDurationMs: number | undefined;
   /** Where the Scene's Notes are shown (see Props). */
   notesSlot: HTMLElement | null;
+  /** Changes when the Notes editor must start again on the Scene's saved Notes (see Props). */
+  notesRevision: number;
   /** What can be undone and redone on the Scene. */
   undoState: UndoState;
   /** Undoes or redoes the last edit of the Scene. */
@@ -692,6 +707,7 @@ function SceneEditor(props: EditorProps) {
       {props.notesSlot &&
         createPortal(
           <SceneNotes
+            key={props.notesRevision}
             sceneName={scene.name}
             notes={scene.notes}
             onSave={(notes) => onEditShowingFailure({ kind: 'set-notes', notes })}
