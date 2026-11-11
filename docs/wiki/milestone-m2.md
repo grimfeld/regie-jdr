@@ -33,3 +33,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - 2026-11-12: #36 Music controls merged at `5a330db` (708 unit, 118 app tests).
 - 2026-11-12: #42 missing audio merged at `13a1384` (717 unit, 122 app tests). No deviations.
 - 2026-11-12: #40 Silence merged at `310287b` (733 unit, 124 app tests).
+- 2026-11-12: M1 fix `9a0c2ab` (framing slider after undo) merged forward, clean merge; gates run by the next slice.
