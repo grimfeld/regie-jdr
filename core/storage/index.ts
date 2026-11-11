@@ -48,6 +48,15 @@ export function isCampaignId(value: unknown): value is CampaignId {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 }
 
+/**
+ * Whether two Campaign ids name the same Campaign folder. Letter case is ignored: Windows'
+ * folders ignore it, so `ABC` and `abc` are one Campaign there. Elsewhere this errs towards
+ * refusing (the open Campaign check) and the app's ids are lowercase UUIDs anyway.
+ */
+export function isSameCampaignId(a: CampaignId | null, b: CampaignId | null): boolean {
+  return a !== null && b !== null && a.toLowerCase() === b.toLowerCase();
+}
+
 export function openStorage(root: string, options: StorageOptions = {}): Storage {
   const notify = options.notify ?? (() => undefined);
   const documents = createDocumentStore({

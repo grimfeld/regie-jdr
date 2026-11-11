@@ -14,7 +14,7 @@ import type {
   WindowBounds,
 } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
-import type { DocumentType, Storage } from './storage/index.js';
+import { isSameCampaignId, type DocumentType, type Storage } from './storage/index.js';
 import { MASTER_VOLUME } from './audioMix.js';
 import {
   ACTIVATE_DURATION_MS,
@@ -193,11 +193,13 @@ export function createSettingsStore(storage: Storage): SettingsStore {
         const { [campaignId]: _forgotten, ...kept } = settings.lastActiveSceneByCampaign;
         return { ...settings, lastActiveSceneByCampaign: kept };
       }),
+    // Every entry naming that Campaign's folder, whatever its letter case (isSameCampaignId).
     forgetCampaign: (campaignId) =>
       change((settings) => {
-        if (!Object.hasOwn(settings.lastActiveSceneByCampaign, campaignId)) return settings;
-        const { [campaignId]: _forgotten, ...kept } = settings.lastActiveSceneByCampaign;
-        return { ...settings, lastActiveSceneByCampaign: kept };
+        const entries = Object.entries(settings.lastActiveSceneByCampaign);
+        const kept = entries.filter(([id]) => !isSameCampaignId(id, campaignId));
+        if (kept.length === entries.length) return settings;
+        return { ...settings, lastActiveSceneByCampaign: Object.fromEntries(kept) };
       }),
     setFadeDuration: (fadeDurationMs) => {
       if (parseFadeDuration(fadeDurationMs) === undefined) {

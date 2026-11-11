@@ -169,4 +169,22 @@ test('delete is never offered inside a Campaign, and the open Campaign cannot be
   );
   expect(outcome).toBe('refused');
   await expect(fs.stat(path.join(dataDir, 'campaigns', id, 'campaign.json'))).resolves.toBeTruthy();
+
+  // Named with other letter cases, it is the same folder on Windows: refused too, for delete
+  // and Export alike (a cancelled save dialog would answer instead of a refusal).
+  await app.evaluate(({ dialog }) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: true, filePath: '' });
+  });
+  for (const method of ['moveCampaignToTrash', 'exportCampaign']) {
+    const shouted = await page.evaluate(
+      ([name, campaignId]) =>
+        (window as unknown as { regie: Bridge }).regie[name](campaignId).then(
+          () => 'done',
+          () => 'refused',
+        ),
+      [method, id.toUpperCase()] as const,
+    );
+    expect(shouted, method).toBe('refused');
+  }
+  await expect(fs.stat(path.join(dataDir, 'campaigns', id, 'campaign.json'))).resolves.toBeTruthy();
 });

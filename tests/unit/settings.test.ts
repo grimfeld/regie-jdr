@@ -433,6 +433,16 @@ describe('settings', () => {
     expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
   });
 
+  it('forget a Campaign named with other letter cases (one folder on Windows)', async () => {
+    const settings = reopen();
+    await settings.setLastActiveScene('star-wars', 'cantina');
+    await settings.setLastActiveScene('warhammer', 'cathedral');
+
+    await settings.forgetCampaign('Star-Wars');
+
+    expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
+  });
+
   it('lose no change made at the same time', async () => {
     const settings = reopen();
     await Promise.all([

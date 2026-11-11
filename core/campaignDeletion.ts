@@ -16,7 +16,7 @@ import type { Campaign, CampaignId } from '../shared/domain.js';
 import { CampaignError } from './campaigns.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
 import type { SettingsStore } from './settings.js';
-import { isCampaignId, type Storage } from './storage/index.js';
+import { isCampaignId, isSameCampaignId, type Storage } from './storage/index.js';
 
 /** The system's recycle bin. */
 export interface Trash {
@@ -80,8 +80,10 @@ async function sizeOf(folder: string): Promise<number> {
 export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDeletion {
   const { storage, settings, trash } = deps;
   /** Campaigns the Recycle Bin refused last time: the only ones that may be deleted for good. */
-  const refusedByTrash = new Set<CampaignId>();
-  const serialized = createKeyedSerialQueue<CampaignId>();
+  /** Keyed by lowercase id, like the queue: `ABC` and `abc` are one folder on Windows. */
+  const refusedByTrash = new Set<string>();
+  const queue = createKeyedSerialQueue<string>();
+  const serialized = <T>(id: CampaignId, task: () => Promise<T>) => queue(id.toLowerCase(), task);
 
   /**
    * The Campaign and its folder, once checked: a closed Campaign, whose folder is a real folder
@@ -89,7 +91,7 @@ export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDele
    */
   async function checked(id: unknown): Promise<{ campaign: Campaign; folder: string }> {
     if (!isCampaignId(id)) throw new CampaignError(NOT_A_CAMPAIGN);
-    if (deps.openCampaignId() === id) {
+    if (isSameCampaignId(deps.openCampaignId(), id)) {
       throw new CampaignError('Fermez cette campagne avant de la supprimer.');
     }
     const folder = storage.campaignFolder(id);
@@ -142,7 +144,7 @@ export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDele
         }
         // A Recycle Bin that answered but left the folder has not taken it either.
         if (refused || (await exists(folder))) {
-          refusedByTrash.add(id);
+          refusedByTrash.add(id.toLowerCase());
           return {
             deleted: false,
             reason:
@@ -150,7 +152,7 @@ export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDele
               '(lecteur réseau, fichier ouvert dans un autre programme…). Rien n’a été supprimé.',
           };
         }
-        refusedByTrash.delete(id);
+        refusedByTrash.delete(id.toLowerCase());
         await settings.forgetCampaign(id);
         return { deleted: true };
       }),
@@ -158,13 +160,13 @@ export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDele
     deletePermanently: (id) =>
       serialized(id, async () => {
         await checked(id);
-        if (!refusedByTrash.has(id)) {
+        if (!refusedByTrash.has(id.toLowerCase())) {
           throw new CampaignError(
             'Une campagne n’est supprimée définitivement que si la corbeille l’a refusée.',
           );
         }
         await storage.campaigns.delete(id);
-        refusedByTrash.delete(id);
+        refusedByTrash.delete(id.toLowerCase());
         await settings.forgetCampaign(id);
       }),
   };

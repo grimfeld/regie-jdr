@@ -209,6 +209,38 @@ describe('deleting a Campaign', () => {
     expect(await exists(folder)).toBe(true);
   });
 
+  it.runIf(process.platform === 'win32')(
+    'refuses the open Campaign named with other letter cases (one folder on Windows)',
+    async () => {
+      const { deletion, campaign, received, folder, setOpen } = await setup({
+        refusal: new Error('locked'),
+      });
+      const shouted = campaign.id.toUpperCase();
+      await deletion.moveToTrash(shouted);
+      setOpen(campaign.id);
+
+      await expect(deletion.summary(shouted)).rejects.toThrow(/Fermez/);
+      await expect(deletion.moveToTrash(shouted)).rejects.toThrow(/Fermez/);
+      await expect(deletion.deletePermanently(shouted)).rejects.toThrow(/Fermez/);
+      setOpen(shouted);
+      await expect(deletion.moveToTrash(campaign.id)).rejects.toThrow(/Fermez/);
+      expect(received).toHaveLength(1);
+      expect(await exists(folder)).toBe(true);
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'forgets the Campaign’s Settings entry when it is deleted under another letter case',
+    async () => {
+      const { deletion, campaign, settings } = await setup();
+      await settings.setLastActiveScene(campaign.id, 'cantina');
+
+      expect(await deletion.moveToTrash(campaign.id.toUpperCase())).toEqual({ deleted: true });
+
+      expect((await settings.get()).lastActiveSceneByCampaign).toEqual({});
+    },
+  );
+
   it('refuses ids that are not a Campaign of the campaigns folder, touching nothing', async () => {
     const { deletion, received, root } = await setup();
     await fs.mkdir(path.join(root, 'campaigns', 'not-a-campaign'), { recursive: true });

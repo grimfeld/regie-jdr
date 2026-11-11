@@ -22,7 +22,7 @@ import { createPadVoices } from '../core/padVoices.js';
 import { createSoundboardStore, SoundboardError } from '../core/soundboard.js';
 import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
-import { openStorage } from '../core/storage/index.js';
+import { isSameCampaignId, openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import { openZipArchive, writeZipArchive } from './zipArchive.js';
 import type { CampaignImportResult, MediaImportKind, SoundboardEdit } from '../shared/contract.js';
@@ -600,7 +600,7 @@ function startApp() {
       'campaigns:delete-permanently': ({ id }) => campaignDeletion.deletePermanently(id),
       // Offered on the Campaign list only (ADR-0005): the Campaign is closed, nothing writes to it.
       'campaigns:export': async ({ id: campaignId }) => {
-        if (onAir.current().campaignId === campaignId) {
+        if (isSameCampaignId(onAir.current().campaignId, campaignId)) {
           throw new CampaignError('Revenez à la liste des campagnes pour exporter celle-ci.');
         }
         const campaign = await storage.campaigns.get(campaignId);
