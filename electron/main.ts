@@ -10,8 +10,8 @@ import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { mediaFileResponse } from '../core/mediaResponse.js';
-import { soundingOf } from '../core/audioMix.js';
 import { createAudioOnAir } from '../core/audioOnAir.js';
+import { createEngineLink } from '../core/engineLink.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
 import { createPadVoices } from '../core/padVoices.js';
@@ -21,7 +21,7 @@ import { createSettingsStore, type SettingsStore, type SettingsWindow } from '..
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import type { MediaImportKind } from '../shared/contract.js';
-import type { AudioEngineReport, PadCommand } from '../shared/domain.js';
+import type { PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
@@ -36,7 +36,7 @@ const audio = createAudioOnAir();
 // What the Soundboard's pads play: in memory only, like the mix.
 const padVoices = createPadVoices();
 // What the audio engine (in the Control window, ADR-0002) last reported sounding.
-let engineReport: AudioEngineReport = { voices: [] };
+const engine = createEngineLink(audio, padVoices);
 
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
@@ -307,8 +307,7 @@ function startApp() {
     .catch((error: unknown) => {
       log.error('Reading the fade duration and the Master volume failed', error);
     });
-  const currentSounding = () =>
-    soundingOf(audio.mix(), engineReport, padVoices.sounding(), audio.silence());
+  const currentSounding = () => engine.sounding();
   // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
   // Broadcast window gets no audio data.
   const sendSounding = () =>
@@ -431,15 +430,15 @@ function startApp() {
         return saved;
       },
       // The engine reads the mix as it starts (or restarts, with the Control window): it holds
-      // no pad sounds then.
+      // nothing then, so its last report and its pad sounds are stale.
       'audio:get-mix': () => {
-        padVoices.forget();
+        engine.engineStarted();
         sendSounding();
         preloadPads();
         return audio.mix();
       },
       'audio:report': (report) => {
-        engineReport = report;
+        engine.engineReported(report);
         sendSounding();
       },
       'audio:get-sounding': () => currentSounding(),
