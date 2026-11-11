@@ -90,6 +90,16 @@ describe('payload guards', () => {
     expect(checkInvoke('onAir:activate-scene', 'control', args)).toMatchObject({ ok: false });
   });
 
+  it('takes a forced Cut on Activate, and nothing else of that kind', () => {
+    expect(checkInvoke('onAir:activate-scene', 'control', [{ ...scene, forceCut: true }])).toEqual({
+      ok: true,
+      payload: { ...scene, forceCut: true },
+    });
+    expect(
+      checkInvoke('onAir:activate-scene', 'control', [{ ...scene, forceCut: 'yes' }]),
+    ).toMatchObject({ ok: false });
+  });
+
   it('rejects an argument on a channel that takes none', () => {
     expect(checkInvoke('broadcast:open', 'control', [{}])).toMatchObject({ ok: false });
     expect(checkInvoke('onAir:close-campaign', 'control', [campaign])).toMatchObject({

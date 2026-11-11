@@ -7,7 +7,14 @@
  * volume comes from Settings. Every change to what should sound gives a new mix with a higher
  * version; a change that alters nothing heard (a picture edit) gives none.
  */
-import type { AudioMix, Media, MediaId, MusicPlayback, Scene } from '../shared/domain.js';
+import type {
+  AudioMix,
+  Media,
+  MediaId,
+  MusicPlayback,
+  Scene,
+  TransitionKind,
+} from '../shared/domain.js';
 import {
   activatedMusic,
   MASTER_VOLUME,
@@ -24,9 +31,16 @@ export interface AudioOnAir {
   mix(): AudioMix;
   /**
    * A Scene is Activated: its first Music plays, with its switched-on Ambiences. Lifts Silence.
-   * `missing`: the audio Media whose file is missing, left out (here and below).
+   * `missing`: the audio Media whose file is missing, left out (here and below). `kind`: the
+   * Transition, which sets the fade: the Activate duration for a Crossfade, a very short one
+   * for a Cut.
    */
-  activateScene(scene: Scene, library: readonly Media[], missing: ReadonlySet<MediaId>): AudioMix;
+  activateScene(
+    scene: Scene,
+    library: readonly Media[],
+    missing: ReadonlySet<MediaId>,
+    kind?: TransitionKind,
+  ): AudioMix;
   /**
    * The Active Scene changed (an edit, an undo, a deleted Media): it plays on as it now is;
    * the current Music stays while still in its Music list. `change` sets the fade.
@@ -97,7 +111,7 @@ export function createAudioOnAir(): AudioOnAir {
 
   return {
     mix: () => structuredClone(mix),
-    activateScene: (scene, library, missing) =>
+    activateScene: (scene, library, missing, kind = 'crossfade') =>
       change(
         {
           ...input,
@@ -107,7 +121,7 @@ export function createAudioOnAir(): AudioOnAir {
           audio: { music: activatedMusic(scene, input.audio.music) },
           silence: false,
         },
-        'activate',
+        kind === 'cut' ? 'cut' : 'activate',
       ),
     showActiveScene: (scene, library, kind, missing) =>
       change(

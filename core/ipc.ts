@@ -12,6 +12,7 @@
  *     subscription), plus the bridge interface in shared/contract.ts.
  */
 import type {
+  ActivateOptions,
   CampaignChanges,
   InvokeChannel,
   InvokeChannels,
@@ -130,6 +131,14 @@ function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
 function masterVolumeOf(value: unknown): Parsed<{ masterVolume: number }> {
   const masterVolume = isRecord(value) ? parseVolume(value.masterVolume) : undefined;
   return masterVolume === undefined ? INVALID : { masterVolume };
+}
+
+function activation(value: unknown): Parsed<{ sceneId: SceneId } & ActivateOptions> {
+  const scene = idOf('sceneId')(value);
+  if (scene === INVALID || !isRecord(value)) return INVALID;
+  const { forceCut } = value;
+  if (forceCut === undefined) return scene;
+  return typeof forceCut === 'boolean' ? { ...scene, forceCut } : INVALID;
 }
 
 function engineReport(value: unknown): Parsed<AudioEngineReport> {
@@ -339,7 +348,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:get': { from: anyWindow, parse: noPayload },
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
-  'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
+  'onAir:activate-scene': { from: controlOnly, parse: onePayload(activation) },
   'onAir:set-blackout': { from: controlOnly, parse: onePayload(onOffOf) },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },

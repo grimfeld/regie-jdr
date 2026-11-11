@@ -391,8 +391,8 @@ function startApp() {
         preloadPads();
         return state;
       },
-      'onAir:activate-scene': async ({ sceneId }) => {
-        const state = await commands.activateScene(sceneId);
+      'onAir:activate-scene': async ({ sceneId, forceCut }) => {
+        const state = await commands.activateScene(sceneId, { forceCut });
         // Remembered for highlighting only: nothing goes on air after a restart.
         const { campaignId } = state;
         if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));

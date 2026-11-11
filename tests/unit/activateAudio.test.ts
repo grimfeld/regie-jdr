@@ -71,6 +71,36 @@ describe('Activating a Scene changes the mix', () => {
     expect(AUDIO_FADE_MS.activate).toBe(1500);
   });
 
+  it('switches the audio over a very short fade (0.1 s) on a Cut, so nothing clicks', () => {
+    const audioOnAir = createAudioOnAir();
+    audioOnAir.activateScene(scene('jour', { music: ['m1'] }), library, none);
+
+    const mix = audioOnAir.activateScene(scene('nuit', { music: ['m2'] }), library, none, 'cut');
+
+    expect(voices(mix)).toEqual([{ mediaId: 'm2', gain: 1, playing: true }]);
+    expect(mix.fadeMs).toBe(AUDIO_FADE_MS.cut);
+    expect(AUDIO_FADE_MS.cut).toBe(100);
+  });
+
+  it('keeps a shared Music playing through a Cut, as through a Crossfade', () => {
+    const audioOnAir = createAudioOnAir();
+    const before = audioOnAir.activateScene(scene('jour', { music: ['m1'] }), library, none);
+
+    const after = audioOnAir.activateScene(scene('nuit', { music: ['m1'] }), library, none, 'cut');
+
+    expect(after.voices[0]?.take).toBe(before.voices[0]?.take);
+  });
+
+  it('fades over the Activate duration on a Crossfade', () => {
+    const mix = createAudioOnAir().activateScene(
+      scene('jour', { music: ['m1'] }),
+      library,
+      none,
+      'crossfade',
+    );
+    expect(mix.fadeMs).toBe(AUDIO_FADE_MS.activate);
+  });
+
   it('keeps a shared Ambience as the same voice, only changing its gain', () => {
     const audioOnAir = createAudioOnAir();
     const before = audioOnAir.activateScene(

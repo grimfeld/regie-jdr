@@ -29,6 +29,11 @@ export const ACTIVATE_DURATION_MS = 1500;
 export const AUDIO_FADE_MS = {
   /** Activating a Scene: the outgoing Scene's audio fades out, the new one's fades in. */
   activate: ACTIVATE_DURATION_MS,
+  /**
+   * Activating a Scene with a Cut: the picture changes at once, the audio switches over this
+   * very short fade so nothing clicks.
+   */
+  cut: 100,
   /** Picking another track of the Active Scene's Music list. */
   crossfade: 2000,
   /** Switching an Ambience on or off. */

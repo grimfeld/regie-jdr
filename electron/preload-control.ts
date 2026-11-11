@@ -51,7 +51,8 @@ const bridge: ControlBridge = {
   onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
   openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
   closeCampaign: () => invoke('onAir:close-campaign'),
-  activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
+  activateScene: (sceneId, options) =>
+    invoke('onAir:activate-scene', { sceneId, ...(options?.forceCut && { forceCut: true }) }),
   setBlackout: (on) => invoke('onAir:set-blackout', { on }),
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
   createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),

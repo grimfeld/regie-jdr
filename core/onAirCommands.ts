@@ -8,7 +8,12 @@
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
-import type { MediaDeletion, TransientEdit, UndoState } from '../shared/contract.js';
+import type {
+  ActivateOptions,
+  MediaDeletion,
+  TransientEdit,
+  UndoState,
+} from '../shared/contract.js';
 import { randomUUID } from 'node:crypto';
 import type {
   CampaignId,
@@ -25,7 +30,7 @@ import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { mediaAddress } from './mediaAddress.js';
 import { notesKeepingImages } from './notes.js';
-import { onAirSceneOf, type OnAir } from './onAir.js';
+import { onAirSceneOf, transitionOnActivate, type OnAir } from './onAir.js';
 import { addedMedia, applySceneEdit, type SceneEdit } from './sceneEdits.js';
 import {
   mediaOfScene,
@@ -52,8 +57,11 @@ export interface OnAirCommands {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   /** Back to the Campaign list: stops audio, nothing is on air. */
   closeCampaign(): Promise<OnAirState>;
-  /** Puts a Scene of the open Campaign on air, as the Active Scene. */
-  activateScene(sceneId: SceneId): Promise<OnAirState>;
+  /**
+   * Puts a Scene of the open Campaign on air, as the Active Scene, picture and sound changing
+   * over with its Transition, or a Cut when `options.forceCut` (the Scene stays as it is).
+   */
+  activateScene(sceneId: SceneId, options?: ActivateOptions): Promise<OnAirState>;
   /**
    * Starts or ends Blackout in the open Campaign: the broadcast fades to black, the Active
    * Scene and its edits stay as they are. Never saved: opening, switching or closing a
@@ -299,7 +307,7 @@ export function createOnAirCommands(deps: {
         return onAir.closeCampaign();
       }),
 
-    activateScene: (sceneId) =>
+    activateScene: (sceneId, options) =>
       serialized(async () => {
         const { campaignId } = onAir.current();
         if (campaignId === null) {
@@ -308,8 +316,9 @@ export function createOnAirCommands(deps: {
         const scene = await scenes.get(campaignId, sceneId);
         if (!scene) throw new SceneError('Cette scène n’existe plus.');
         const media = await library.list(campaignId);
-        audio.activateScene(scene, media, await missingAudio(scene, media));
-        return onAir.activateScene(scene.id, onAirSceneOf(scene, media));
+        const kind = transitionOnActivate(scene, options);
+        audio.activateScene(scene, media, await missingAudio(scene, media), kind);
+        return onAir.activateScene(scene.id, onAirSceneOf(scene, media), kind);
       }),
 
     setBlackout: (on) =>
