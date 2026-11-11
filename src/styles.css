@@ -1168,3 +1168,37 @@ button {
   align-items: center;
   gap: 6px;
 }
+/* The Scene's Ambience level, and each Ambience's own volume on a line under it. */
+.ambience-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* The Ambience level sits on the heading's line, so the list is no taller than the Music's. */
+.scene-ambiences-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.scene-ambiences-heading h4 {
+  margin: 0;
+}
+.scene-ambiences-heading .ambience-volume {
+  flex: 1;
+}
+.scene-ambiences li .ambience-volume {
+  order: 1;
+  flex-basis: 100%;
+  padding-left: 22px;
+}
+.ambience-volume input {
+  flex: 1;
+  min-width: 0;
+}
+.ambience-volume output {
+  min-width: 4ch;
+  text-align: right;
+}

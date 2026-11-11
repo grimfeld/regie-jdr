@@ -17,6 +17,7 @@ import { editShortcutOf, type EditShortcut } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
+import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
 import { showNotice } from './notices';
@@ -133,11 +134,15 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
 
   /**
    * Sends an edit command and shows the Scene as saved; on failure, reloads the Scenes and
-   * rethrows. Showing or hiding (a placement or a Label) shows at once (a checkbox must follow the click), then the saved
-   * Scene replaces it.
+   * rethrows. Showing or hiding (a placement or a Label) and switching an Ambience on or off
+   * show at once (a checkbox must follow the click), then the saved Scene replaces it.
    */
   async function edit(scene: Scene, command: SceneEdit) {
-    if (command.kind === 'set-visible' || command.kind === 'set-label-visible') {
+    if (
+      command.kind === 'set-visible' ||
+      command.kind === 'set-label-visible' ||
+      command.kind === 'set-ambience-on'
+    ) {
       const shownAtOnce = applySceneEdit(scene, command, () => '');
       setScenes((current) => current.map((item) => (item.id === scene.id ? shownAtOnce : item)));
     }
@@ -563,6 +568,15 @@ function SceneEditor(props: EditorProps) {
             if (!props.sounds.some((sound) => sound.id === mediaId)) onRefreshImages();
             onEditShowingFailure({ kind: 'add-music', mediaId });
           }}
+        />
+        <SceneAmbienceList
+          scene={scene}
+          sounds={props.sounds}
+          onAdd={(mediaId) => {
+            if (!props.sounds.some((sound) => sound.id === mediaId)) onRefreshImages();
+            onEditShowingFailure({ kind: 'add-ambience', mediaId });
+          }}
+          onEdit={onEditShowingFailure}
         />
       </div>
     </section>
