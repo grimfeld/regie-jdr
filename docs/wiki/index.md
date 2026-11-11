@@ -17,6 +17,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Scene rendering and Scene edits](subsystem-scene-rendering-and-edits.md): shared renderer, broadcast projection, how to add a SceneEdit.
 
 - [Audio engine and mix](subsystem-audio.md): where audio plays, the pure mix, plug-in points for #36 to #43.
+- [Campaign management](subsystem-campaign-management.md): delete to Recycle Bin, Export/Import zip.
 - [Rich Notes](subsystem-notes.md): TipTap editor, storage v3, undo split, #52 extension point.
 - [Keyboard shortcuts](subsystem-keyboard-shortcuts.md): one `KEY_MAP`, ready for M3 #56 and M4 #71.
 - [Media library](subsystem-media-library.md): thumbnails, search, rename, WebP caveat.
