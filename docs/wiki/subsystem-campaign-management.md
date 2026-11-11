@@ -28,3 +28,9 @@
 - Staging `<root>/imports/`, renamed atomically to a new id, never over an existing folder; failure/cancel removes it; main clears leftovers at startup. AbortSignal + Media-byte progress ready for #63.
 - Choices: name clash check ignores case; a Media in the manifest but absent from the zip is allowed (shows missing). Highlight: outline + "Importée" badge, not saved.
 - Hooks: #62 reuses `importCampaign` with `openZipArchive(path)` after main checks the dropped path. Gaps: no free-disk-space check; older-version migration covered by unit tests only.
+
+## Drop a zip to Import (#62, 2026-11-12, `m4-campaign-themes-qol@8178fda`)
+
+- Control-only `campaigns:import-dropped { file }`; bridge reads the path with `webUtils.getPathForFile`; `core/ipc.ts` checks it with the existing `isDroppedPath` (one path check). Dialog and drop share main-side `importCampaignFrom` (`importCampaign` + `openZipArchive`).
+- Drop anywhere on the Campaign list page. Non-`.zip` refused with a French notice; a renamed non-zip gets Import's "n’a pas pu être lu"; several files refused in the page. Broadcast window still refuses all drops (app test).
+- #63 adds progress/cancel through `importCampaignFrom`.
