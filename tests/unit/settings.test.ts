@@ -165,6 +165,17 @@ describe('settings', () => {
     expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
   });
 
+  it('forget a deleted Campaign entirely, keeping the other Campaigns', async () => {
+    const settings = reopen();
+    await settings.setLastActiveScene('star-wars', 'cantina');
+    await settings.setLastActiveScene('warhammer', 'cathedral');
+
+    await settings.forgetCampaign('star-wars');
+    await settings.forgetCampaign('never-seen');
+
+    expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
+  });
+
   it('lose no change made at the same time', async () => {
     const settings = reopen();
     await Promise.all([

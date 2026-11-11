@@ -117,6 +117,11 @@ function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: Campa
   return { id: value.id, changes };
 }
 
+function campaignIdOf(value: unknown): Parsed<{ id: CampaignId }> {
+  if (!isRecord(value) || !isCampaignId(value.id)) return INVALID;
+  return { id: value.id };
+}
+
 function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
   if (!isRecord(value) || !isThemeId(value.theme)) return INVALID;
   return { theme: value.theme };
@@ -363,6 +368,9 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'campaigns:list': { from: controlOnly, parse: noPayload },
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
   'campaigns:update': { from: controlOnly, parse: onePayload(campaignUpdate) },
+  'campaigns:deletion-summary': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:move-to-trash': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:delete-permanently': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },

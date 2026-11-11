@@ -117,6 +117,9 @@ describe('Campaign channels', () => {
       ['campaigns:list', []],
       ['campaigns:create', [{ name: 'Star Wars' }]],
       ['campaigns:update', [{ id, changes: { name: 'Star Wars' } }]],
+      ['campaigns:deletion-summary', [{ id }]],
+      ['campaigns:move-to-trash', [{ id }]],
+      ['campaigns:delete-permanently', [{ id }]],
       ['notices:take', []],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -142,6 +145,19 @@ describe('Campaign channels', () => {
     ).toEqual({ ok: true, payload: { id, changes: { theme: 'fantasy' } } });
   });
 
+  it('accept a Campaign id to delete, keeping only that field', () => {
+    for (const channel of [
+      'campaigns:deletion-summary',
+      'campaigns:move-to-trash',
+      'campaigns:delete-permanently',
+    ] as const) {
+      expect(checkInvoke(channel, 'control', [{ id, permanently: true }])).toEqual({
+        ok: true,
+        payload: { id },
+      });
+    }
+  });
+
   it.each([
     ['no name', 'campaigns:create', [{}]],
     ['a name that is not text', 'campaigns:create', [{ name: 42 }]],
@@ -150,6 +166,11 @@ describe('Campaign channels', () => {
     ['an unknown theme', 'campaigns:update', [{ id, changes: { theme: 'neon' } }]],
     ['no changes object', 'campaigns:update', [{ id }]],
     ['a name of the wrong type', 'campaigns:update', [{ id, changes: { name: null } }]],
+    ['a path to move to the Recycle Bin', 'campaigns:move-to-trash', [{ id: '..' }]],
+    ['an absolute path to delete', 'campaigns:delete-permanently', [{ id: 'C:\\Windows' }]],
+    ['a nested path to summarise', 'campaigns:deletion-summary', [{ id: 'a/../b' }]],
+    ['no id to delete', 'campaigns:move-to-trash', [{}]],
+    ['two payloads to delete', 'campaigns:move-to-trash', [{ id }, { id }]],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });

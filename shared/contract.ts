@@ -223,6 +223,23 @@ export interface CampaignChanges {
   theme?: ThemeId;
 }
 
+/** What deleting a Campaign takes away, for the Game Master's confirmation. */
+export interface CampaignDeletionSummary {
+  id: CampaignId;
+  name: string;
+  sceneCount: number;
+  mediaCount: number;
+  /** Size of the Campaign's folder on disk, in bytes. */
+  sizeBytes: number;
+}
+
+/**
+ * Outcome of moving a Campaign to the Recycle Bin. When the Recycle Bin refuses it (network
+ * drive, locked file), nothing is deleted and `reason` says why, in French; only then may the
+ * Game Master ask for a permanent delete.
+ */
+export type CampaignTrashing = { deleted: true } | { deleted: false; reason: string };
+
 /**
  * Request/response channels (`ipcRenderer.invoke`). `payload: void` means the call takes no
  * argument. Which window may call each one is in core/ipc.ts.
@@ -357,6 +374,21 @@ export interface InvokeChannels {
   'campaigns:create': { payload: { name: string }; result: Campaign };
   /** Rename a Campaign or change its theme. */
   'campaigns:update': { payload: { id: CampaignId; changes: CampaignChanges }; result: Campaign };
+  /**
+   * What deleting a closed Campaign would take away: its name, Scene and Media counts and size on
+   * disk. Fails for the open Campaign or anything that is not a Campaign.
+   */
+  'campaigns:deletion-summary': { payload: { id: CampaignId }; result: CampaignDeletionSummary };
+  /**
+   * Move a closed Campaign's folder to the Windows Recycle Bin and forget its Settings entries.
+   * The window asks the Game Master to confirm first. Never deletes permanently by itself.
+   */
+  'campaigns:move-to-trash': { payload: { id: CampaignId }; result: CampaignTrashing };
+  /**
+   * Delete a closed Campaign's folder for good, after the Recycle Bin refused it and the Game
+   * Master confirmed a second time. Fails unless the Recycle Bin refused that Campaign.
+   */
+  'campaigns:delete-permanently': { payload: { id: CampaignId }; result: void };
   /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
@@ -536,6 +568,9 @@ export interface ControlBridge extends BroadcastBridge {
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;
   updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;
+  getCampaignDeletionSummary(id: CampaignId): Promise<CampaignDeletionSummary>;
+  moveCampaignToTrash(id: CampaignId): Promise<CampaignTrashing>;
+  deleteCampaignPermanently(id: CampaignId): Promise<void>;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;

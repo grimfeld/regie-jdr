@@ -26,6 +26,8 @@ export interface SettingsStore {
   setLastActiveScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
   /** A deleted Scene: no longer its Campaign's last Active Scene, if it was. */
   forgetScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
+  /** A deleted Campaign: every entry kept for it (its last Active Scene) is removed. */
+  forgetCampaign(campaignId: CampaignId): Promise<Settings>;
   /** Throws a SettingsError for a duration outside FADE_DURATION_MS. */
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   /** Throws a SettingsError for a volume outside 0..1. */
@@ -128,6 +130,12 @@ export function createSettingsStore(storage: Storage): SettingsStore {
     forgetScene: (campaignId, sceneId) =>
       change((settings) => {
         if (settings.lastActiveSceneByCampaign[campaignId] !== sceneId) return settings;
+        const { [campaignId]: _forgotten, ...kept } = settings.lastActiveSceneByCampaign;
+        return { ...settings, lastActiveSceneByCampaign: kept };
+      }),
+    forgetCampaign: (campaignId) =>
+      change((settings) => {
+        if (!Object.hasOwn(settings.lastActiveSceneByCampaign, campaignId)) return settings;
         const { [campaignId]: _forgotten, ...kept } = settings.lastActiveSceneByCampaign;
         return { ...settings, lastActiveSceneByCampaign: kept };
       }),

@@ -32,6 +32,8 @@ export interface Storage {
   /** Generic document store, for documents other than Campaigns (Media, Scenes, Settings). */
   documents: DocumentStore;
   campaigns: CampaignRepository;
+  /** Folder holding every Campaign's folder. */
+  campaignsFolder: string;
   /** Folder of a Campaign. Throws for an id that is not a plain folder name. */
   campaignFolder(id: CampaignId): string;
   /** File of the global settings document. */
@@ -59,6 +61,7 @@ export function openStorage(root: string, options: StorageOptions = {}): Storage
     root,
     documents,
     campaigns: createCampaignRepository({ documents, campaignsFolder, campaignFolder, notify }),
+    campaignsFolder,
     campaignFolder,
     settingsFile: path.join(root, 'settings.json'),
   };

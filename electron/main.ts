@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, protocol, screen, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, protocol, screen, shell, type WebContents } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isAppPage } from './navigation.js';
@@ -6,6 +6,7 @@ import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
@@ -272,6 +273,22 @@ async function pickMediaFiles(kind: MediaImportKind): Promise<string[]> {
   return result.canceled ? [] : result.filePaths;
 }
 
+/**
+ * The Windows Recycle Bin. `shell.trashItem` is looked up at each call, so whole-app tests can
+ * replace it and never reach the real Recycle Bin. A refusal is logged with its technical cause;
+ * the Game Master gets a French reason from the app core.
+ */
+const recycleBin: Trash = {
+  async moveToTrash(folder) {
+    try {
+      await shell.trashItem(folder);
+    } catch (error) {
+      log.warn(`The Recycle Bin refused ${folder}`, error);
+      throw error;
+    }
+  },
+};
+
 /** A second launch of the app brings the existing Control window forward. */
 function focusControlWindow() {
   if (!controlWindow || controlWindow.isDestroyed()) return;
@@ -295,6 +312,14 @@ function startApp() {
   const scenes = createSceneLibrary(storage);
   const soundboards = createSoundboardStore({ storage, library });
   registerMediaProtocol(library);
+  const campaignDeletion = createCampaignDeletion({
+    storage,
+    countScenes: async (id) => (await scenes.list(id)).length,
+    countMedia: async (id) => (await library.list(id)).length,
+    settings: settingsStore,
+    trash: recycleBin,
+    openCampaignId: () => onAir.current().campaignId,
+  });
   const commands = createOnAirCommands({
     campaigns: storage.campaigns,
     library,
@@ -450,6 +475,9 @@ function startApp() {
       'campaigns:list': () => storage.campaigns.list(),
       'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
+      'campaigns:deletion-summary': ({ id }) => campaignDeletion.summary(id),
+      'campaigns:move-to-trash': ({ id }) => campaignDeletion.moveToTrash(id),
+      'campaigns:delete-permanently': ({ id }) => campaignDeletion.deletePermanently(id),
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
       'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),
