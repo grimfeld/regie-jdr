@@ -1249,6 +1249,10 @@ button {
   font-size: 11px;
   color: var(--muted);
 }
+.now-playing .panel-heading button kbd {
+  font-size: 11px;
+  opacity: 0.75;
+}
 .soundboard-pad.is-sounding {
   background: color-mix(in srgb, var(--accent) 35%, var(--panel2));
   border-color: var(--accent2);

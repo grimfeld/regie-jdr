@@ -6,10 +6,11 @@ import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
-import { NowPlaying } from './NowPlaying';
+import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboard';
+import { NowPlaying, setSilence, useSounding } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
-import { SoundboardPanel, useSoundboard } from './Soundboard';
+import { SoundboardPanel, useSoundboard, type SoundboardControls } from './Soundboard';
 import { showNotice } from './notices';
 
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
@@ -248,6 +249,16 @@ interface CampaignScreenProps {
   onThemeChange: (theme: ThemeId) => void;
 }
 
+/** The number keys play the first nine pads; the Silence key starts or lifts Silence. */
+function useAudioShortcuts(control: ControlBridge | undefined, soundboard: SoundboardControls) {
+  const silence = useSounding(control)?.silence ?? false;
+  const handlers: ShortcutHandlers = { silence: () => void setSilence(control, !silence) };
+  for (const position of PAD_KEY_POSITIONS) {
+    handlers[`pad-${position}`] = () => soundboard.pressPosition(position);
+  }
+  useShortcuts(handlers);
+}
+
 /** The screen of the open Campaign: its Scenes, its Media library and its theme. */
 function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProps) {
   const theme = campaign.theme;
@@ -262,6 +273,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
   // Per Campaign, whichever Scene is active. Read again when a Media is deleted (its pads go).
   const soundboard = useSoundboard(control, campaign.id, mediaRevision);
+  useAudioShortcuts(control, soundboard);
 
   return (
     <>

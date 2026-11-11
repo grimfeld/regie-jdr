@@ -4,6 +4,7 @@ import type { ControlBridge, SoundboardEdit } from '../shared/contract';
 import type { AudioMedia, CampaignId, Soundboard, SoundboardPad } from '../shared/domain';
 import { errorMessage } from './CampaignList';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
+import { keyLabelOf, PAD_KEY_POSITIONS } from './keyboard';
 import { useSounding } from './NowPlaying';
 import { showNotice } from './notices';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
@@ -18,7 +19,7 @@ export interface SoundboardControls {
   edit: (edit: SoundboardEdit) => Promise<void>;
   /** Plays a pad's Sound effect once. */
   press: (padId: string) => void;
-  /** Plays the `position`th pad (1 is the first), if there is one: for the number keys (#41). */
+  /** Plays the `position`th pad (1 is the first), if there is one: for the number keys. */
   pressPosition: (position: number) => void;
 }
 
@@ -161,16 +162,18 @@ export function SoundboardPanel(props: {
         {pads.map((pad, index) => {
           const name = nameOf(pad);
           const isLit = lit.has(pad.id);
+          const key = padKeyLabel(index);
           return (
             <li key={pad.id} data-sounding={isLit}>
               <button
                 className={`soundboard-pad${isLit ? ' is-sounding' : ''}`}
                 aria-label={`Jouer ${name}`}
                 aria-pressed={isLit}
-                title={index < 9 ? `Touche ${index + 1}` : undefined}
+                title={key === undefined ? undefined : `Touche ${key}`}
+                aria-keyshortcuts={key}
                 onClick={() => press(pad.id)}
               >
-                {index < 9 && <kbd>{index + 1}</kbd>}
+                {key !== undefined && <kbd>{key}</kbd>}
                 <span className="placement-name">{name}</span>
                 {missing.has(pad.mediaId) && <MissingMediaBadge name={name} />}
               </button>
@@ -187,6 +190,12 @@ export function SoundboardPanel(props: {
       <Level label="Niveau de la table" volume={soundboard?.volume ?? null} onChange={setLevel} />
     </section>
   );
+}
+
+/** The key that plays the pad at `index` (0 is the first), if one does. */
+function padKeyLabel(index: number): string | undefined {
+  const position = PAD_KEY_POSITIONS.find((candidate) => candidate === index + 1);
+  return position === undefined ? undefined : keyLabelOf(`pad-${position}`);
 }
 
 /** A pad's name, place, volume and removal. */

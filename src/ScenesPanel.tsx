@@ -14,7 +14,7 @@ import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
-import { editShortcutOf, type EditShortcut } from './keyboard';
+import { useShortcuts, type EditShortcut } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
@@ -414,20 +414,7 @@ function SceneEditor(props: EditorProps) {
     props.onTravel(shortcut);
   }
   // Ctrl+Z / Ctrl+Y anywhere in the window, except while typing in a field.
-  const latestTravel = useRef(travel);
-  useEffect(() => {
-    latestTravel.current = travel;
-  });
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const shortcut = editShortcutOf(event);
-      if (!shortcut) return;
-      event.preventDefault();
-      latestTravel.current(shortcut);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  useShortcuts({ undo: () => travel('undo'), redo: () => travel('redo') });
 
   async function submitRename(event: FormEvent) {
     event.preventDefault();

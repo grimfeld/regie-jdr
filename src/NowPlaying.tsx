@@ -20,6 +20,7 @@ import type {
 import { MASTER_VOLUME, newlyUnplayable } from '../core/audioMix';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
+import { keyLabelOf } from './keyboard';
 import { createTransientSender } from './transientUpdates';
 
 const stateLabels: Record<SoundingState, string> = {
@@ -67,6 +68,7 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
   const voices = sounding?.voices ?? [];
   const pads = sounding?.pads ?? [];
   const silence = sounding?.silence ?? false;
+  const silenceKey = keyLabelOf('silence');
   return (
     <section className="panel now-playing" aria-label="En cours" data-silence={silence}>
       <div className="panel-heading">
@@ -79,10 +81,11 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
         <button
           className={silence ? 'primary-button' : 'secondary-button'}
           aria-pressed={silence}
-          title="Couper tout le son en fondu, ou le rétablir tel qu’il était"
+          title={`Couper tout le son en fondu, ou le rétablir tel qu’il était (touche ${silenceKey})`}
+          aria-keyshortcuts={silenceKey}
           onClick={() => void setSilence(control, !silence)}
         >
-          <VolumeX size={14} /> Silence
+          <VolumeX size={14} /> Silence {silenceKey && <kbd aria-hidden>{silenceKey}</kbd>}
         </button>
       </div>
       {voices.length === 0 && pads.length === 0 ? (
@@ -154,7 +157,8 @@ function MusicPlayback({
 
 /**
  * Starts (`on`) or lifts Silence, telling the Game Master if that fails. For the Silence
- * button, and for a keyboard shortcut (#41), which reads the current state from useSounding.
+ * button, and for its key (`useAudioShortcuts` in App.tsx), which reads the current state from
+ * useSounding.
  */
 export async function setSilence(control: ControlBridge | undefined, on: boolean) {
   if (!control) return;
