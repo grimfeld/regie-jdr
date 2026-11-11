@@ -23,3 +23,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: #52 Notes images merged at `f936525` (851 unit, 140 app tests). `ambiences.spec.ts:116` failed once under load (drag test, see flaky-tests rule).
 - 2026-11-12: M2 merged forward into M3 at `ea75a13` (884 unit, 149 app tests). Final schemas: scenes v3, Media index v3, Settings v3, Soundboard v1, campaign v1. Wiki home moves to the M3 branch. M2 CI failure on `background-fit.spec.ts:241` under investigation (passes locally).
 - 2026-11-12: #47 duplicate merged at `3814149` (896 unit, 150 app tests). No deviations.
+- 2026-11-12: #53 Notes image size merged at `828f354` (907 unit, 152 app tests).

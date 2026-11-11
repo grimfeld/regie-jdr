@@ -15,3 +15,10 @@ Source: #51 report, 2026-11-12. True as of `m3-transitions-closeout@30645d0`. De
 - Reference image dropped on the canvas becomes an Overlay at the drop point.
 - Media index schema 3 (empty migration) so older builds refuse libraries with Reference images.
 - Hooks: #53 adds a width attribute to the image row in `core/notes.ts` and `src/NotesImage.tsx`. #54 must count Notes images as Media uses (today deleting one shows "Média manquant" in Notes).
+
+## Notes image size and enlarge (#53, 2026-11-12, `828f354`)
+
+- Supersedes the #53 hook note above. Optional image `width`, whole % 10–100, validated in `parseNotes` (null → none); no `scenes.json` bump (older builds drop it).
+- Corner handle (bottom-right) drags with locked aspect, written once on release (one Notes undo step); arrows on the handle resize by 5 %. Width is relative to the containing block. Duplicate copies it.
+- Double-click opens a modal `<dialog>` in the Control window body; nothing reaches the Broadcast window (tested).
+- Gotcha: the handle must stay an empty `<button>`: TipTap's `NodeView.stopEvent` leaves button events to the node view, and cancelling mousedown stops ProseMirror from dragging the node away (commit `828f354`).
