@@ -10,6 +10,7 @@ import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { createPadVoices } from '../../core/padVoices';
 import { createSceneLibrary } from '../../core/scenes';
+import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { AudioMedia, AudioMix, OnAirState, Scene } from '../../shared/domain';
 import { fakeResizer } from './fakeResizer';
@@ -221,6 +222,7 @@ describe('Silence and Blackout stay apart', () => {
       scenes,
       onAir,
       audio: audioOnAir,
+      soundboards: createSoundboardStore({ storage, library: media }),
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const file = path.join(dir.path, 'Auberge.ogg');

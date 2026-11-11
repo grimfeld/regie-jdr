@@ -9,6 +9,7 @@ import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { createSceneLibrary } from '../../core/scenes';
+import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
 import type { AudioMix, AudioRole } from '../../shared/domain';
@@ -32,6 +33,7 @@ describe('Scene Ambiences on air', () => {
       scenes,
       onAir: createOnAir(),
       audio,
+      soundboards: createSoundboardStore({ storage, library }),
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const importSounds = async (role: AudioRole, ...names: string[]) => {

@@ -30,6 +30,34 @@ const filterLabels: Record<LibraryFilter, string> = {
   character: 'Personnages',
 };
 
+/**
+ * What deleting a used Media takes with it, for the confirmation: the Scenes it is placed in
+ * (and the broadcast, if shown there) and the Soundboard pads playing it.
+ */
+function deletionWarning({
+  media,
+  scenes,
+  pads,
+}: {
+  media: Media;
+  scenes: string[];
+  pads: string[];
+}) {
+  const inScenes = scenes.length > 1 ? 'ces scènes' : 'cette scène';
+  const byPads = pads.length > 1 ? 'ces pads' : 'ce pad';
+  const uses = [
+    scenes.length > 0 && `dans ${inScenes}`,
+    pads.length > 0 && `par ${byPads} de la table de bruitages`,
+  ].filter(Boolean);
+  const removed = [
+    scenes.length > 0 &&
+      `Le supprimer le retire aussi de ${inScenes}, et de la diffusion s’il y est affiché.`,
+    pads.length > 0 &&
+      (pads.length > 1 ? 'Ces pads sont retirés de la table.' : 'Ce pad est retiré de la table.'),
+  ].filter(Boolean);
+  return `« ${media.name} » est utilisé ${uses.join(' et ')}. ${removed.join(' ')}`;
+}
+
 const roleLabels: Record<AudioRole, string> = {
   music: 'Musique',
   ambience: 'Ambiance',
@@ -85,7 +113,9 @@ export function MediaLibrary({
   const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
   const nextRoleRequest = useRef(0);
   /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
-  const [pending, setPending] = useState<{ media: Media; scenes: string[] } | null>(null);
+  const [pending, setPending] = useState<{ media: Media; scenes: string[]; pads: string[] } | null>(
+    null,
+  );
 
   const images = useMemo(() => imageLibrary(media, filter, query), [media, filter, query]);
   const sounds = useMemo(
@@ -207,7 +237,10 @@ export function MediaLibrary({
     }
   }
 
-  /** Deletes at once when no Scene uses the Media; otherwise asks first, listing the Scenes. */
+  /**
+   * Deletes at once when no Scene nor pad uses the Media; otherwise asks first, listing the
+   * Scenes and the pads.
+   */
   async function remove(item: Media, confirmed: boolean) {
     if (!control) return;
     try {
@@ -217,7 +250,11 @@ export function MediaLibrary({
         setMedia((current) => current.filter((m) => m.id !== item.id));
         onMediaDeleted(deletion);
       } else {
-        setPending({ media: item, scenes: deletion.affectedScenes.map((scene) => scene.name) });
+        setPending({
+          media: item,
+          scenes: deletion.affectedScenes.map((scene) => scene.name),
+          pads: deletion.affectedPads.map((pad) => pad.name),
+        });
       }
     } catch (error) {
       setPending(null);
@@ -385,17 +422,21 @@ export function MediaLibrary({
           aria-label="Supprimer le média"
           aria-describedby="media-delete-message"
         >
-          <p id="media-delete-message">
-            « {pending.media.name} » est utilisé dans{' '}
-            {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}. Le supprimer le retire aussi
-            de {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}, et de la diffusion s’il y
-            est affiché.
-          </p>
-          <ul aria-label="Scènes concernées">
-            {pending.scenes.map((name, index) => (
-              <li key={index}>{name}</li>
-            ))}
-          </ul>
+          <p id="media-delete-message">{deletionWarning(pending)}</p>
+          {pending.scenes.length > 0 && (
+            <ul aria-label="Scènes concernées">
+              {pending.scenes.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
+          {pending.pads.length > 0 && (
+            <ul aria-label="Pads concernés">
+              {pending.pads.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
           <div className="media-delete-actions">
             <button className="secondary-button" autoFocus onClick={() => setPending(null)}>
               Annuler

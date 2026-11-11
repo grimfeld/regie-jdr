@@ -301,6 +301,7 @@ function startApp() {
     scenes,
     onAir,
     audio,
+    soundboards,
   });
   // The renderers fade with the saved duration, carried by the on-air state; audio plays at
   // the saved Master volume.
@@ -432,12 +433,10 @@ function startApp() {
         await retunePads();
         return renamed;
       },
+      // The on-air commands remove its pads too (pads are uses): preload what is left.
       'media:delete': async ({ campaignId, mediaId, confirmed }) => {
         const deletion = await commands.deleteMedia(campaignId, mediaId, confirmed);
-        if (deletion.deleted) {
-          await soundboards.removeMedia(campaignId, mediaId);
-          preloadPads();
-        }
+        if (deletion.deleted) preloadPads();
         return deletion;
       },
       'campaigns:list': () => storage.campaigns.list(),

@@ -174,13 +174,16 @@ export interface MediaImportResult {
 }
 
 /**
- * Outcome of deleting a Media. Media that Scenes use is only deleted once the Game Master
- * confirms: until then `deleted` is false and `affectedScenes` lists the Scenes using it.
- * Once deleted, `affectedScenes` lists the Scenes whose placements were removed.
+ * Outcome of deleting a Media. Media that Scenes or Soundboard pads use is only deleted once
+ * the Game Master confirms: until then `deleted` is false and `affectedScenes` and
+ * `affectedPads` list its uses. Once deleted, they list the Scenes whose placements were
+ * removed and the pads removed.
  */
 export interface MediaDeletion {
   deleted: boolean;
   affectedScenes: { id: SceneId; name: string }[];
+  /** Soundboard pads, by their name (their own, or their Sound effect's). */
+  affectedPads: { id: string; name: string }[];
 }
 
 /** What can be changed on a Campaign; absent fields are left as they are. */
@@ -284,8 +287,8 @@ export interface InvokeChannels {
     result: Media;
   };
   /**
-   * Delete a Media. Unused Media is deleted at once. Media that Scenes use is deleted only
-   * when `confirmed`; otherwise nothing changes and the result lists the Scenes using it.
+   * Delete a Media. Unused Media is deleted at once. Media that Scenes or Soundboard pads use
+   * is deleted only when `confirmed`; otherwise nothing changes and the result lists its uses.
    */
   'media:delete': {
     payload: { campaignId: CampaignId; mediaId: MediaId; confirmed: boolean };
