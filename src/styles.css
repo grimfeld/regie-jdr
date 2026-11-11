@@ -1419,11 +1419,37 @@ button {
   margin: 8px 0;
   line-height: 0;
 }
+/* Its frame is the image's size: its own width at most (default), or the width set by the
+   Game Master; the image fills it, its height following (aspect locked). */
+.scene-notes-editor .notes-image-frame {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
 .scene-notes-editor .notes-image img {
   display: block;
   max-width: 100%;
   height: auto;
   border-radius: 3px;
+}
+.scene-notes-editor .notes-image-frame.sized img {
+  width: 100%;
+}
+.scene-notes-editor .notes-image-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid var(--panel);
+  border-radius: 2px;
+  background: var(--accent2);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.scene-notes-editor .notes-image-handle:focus-visible {
+  outline: 2px solid var(--text);
 }
 .scene-notes-editor .notes-image .media-missing {
   width: 160px;
@@ -1432,9 +1458,30 @@ button {
   border: 1px dashed var(--accent2);
   border-radius: 3px;
 }
-.scene-notes-editor .notes-image.ProseMirror-selectednode {
+.scene-notes-editor .notes-image.ProseMirror-selectednode .notes-image-frame {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* A Notes image enlarged over the Control window (double click). */
+.notes-image-enlarged {
+  max-width: 94vw;
+  max-height: 94vh;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}
+.notes-image-enlarged::backdrop {
+  background: rgb(0 0 0 / 75%);
+}
+.notes-image-enlarged img {
+  display: block;
+  max-width: calc(94vw - 26px);
+  max-height: calc(94vh - 70px);
+  margin-bottom: 8px;
+  object-fit: contain;
 }
 
 /* The Notes editor's base styles, copied from @tiptap/core 3.32.2 (src/style.ts): injecting

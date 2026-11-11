@@ -148,13 +148,6 @@ describe('parseNotes', () => {
       doc(image('data:image/png;base64,iVBORw0KGgo=')),
     ],
     ['an image with a Media id in capitals', doc(image(MAP_ID.toUpperCase()))],
-    ...[9, 101, 0, -50, 55.5, Number.NaN, Infinity, '50', '50%', true].map(
-      (width) =>
-        [
-          `an image width of ${String(width)}`,
-          doc({ type: 'image', attrs: { mediaId: MAP_ID, width } }),
-        ] as const,
-    ),
     ['an image with content', doc({ ...image(), content: [paragraph()] })],
     ['an image inside a paragraph', doc(paragraph(image()))],
     [
@@ -182,6 +175,18 @@ describe('parseNotes', () => {
   ])('refuses %s', (_name, value) => {
     expect(parseNotes(value)).toBeUndefined();
   });
+
+  it.each([9, 101, 0, -50, 55.5, Number.NaN, Infinity, '50', '50%', true])(
+    'refuses an image width of %s',
+    (width) => {
+      expect(
+        parseNotes({
+          type: 'doc',
+          content: [{ type: 'image', attrs: { mediaId: MAP_ID, width } }],
+        }),
+      ).toBeUndefined();
+    },
+  );
 
   it('refuses notes nested too deep', () => {
     let node: NotesNode = paragraph(text('fond'));
