@@ -220,7 +220,7 @@ function padKeyLabel(index: number): string | undefined {
 /** A slider's handlers for a Soundboard level: heard on the pads sounding while dragged, saved once released. */
 type LevelOf = (edit: (volume: number) => SoundboardLevel) => {
   onLive: (volume: number) => void;
-  onCommit: (volume: number) => void;
+  onCommit: (volume: number) => Promise<void>;
 };
 
 function useLevel({ edit, showLive }: SoundboardControls): LevelOf {
@@ -229,7 +229,7 @@ function useLevel({ edit, showLive }: SoundboardControls): LevelOf {
     onLive: (volume) => live().push(change(volume)),
     onCommit: (volume) => {
       live().drop();
-      void edit(change(volume));
+      return edit(change(volume));
     },
   });
 }

@@ -38,8 +38,8 @@ export function BackgroundControls({ background, index, count, name, onEdit, fra
     });
     return {
       onLive: (value: number) => framing.onLive(edit(value)),
-      onRelease: (value: number | undefined) =>
-        framing.onRelease(value === undefined ? undefined : edit(value)),
+      onRelease: (value: number) => framing.onRelease(edit(value)),
+      onUnchanged: () => framing.onRelease(undefined),
     };
   };
 
@@ -124,7 +124,7 @@ const FITS: readonly { fit: BackgroundFit; label: string }[] = [
 /**
  * A slider that follows the pointer or the arrow keys, reporting each value live, and commits
  * its value once released (pointer up, key up, or leaving it), so a whole gesture is one edit.
- * Until the saved value comes back, it keeps showing the value it committed.
+ * Until that commit is saved, it keeps showing the value it committed.
  */
 function FramingSlider(props: {
   label: string;
@@ -135,25 +135,31 @@ function FramingSlider(props: {
   step: number;
   /** The slider moved to `value`, not saved yet. */
   onLive: (value: number) => void;
-  /** The slider was released on `value`, or undefined when it is back on the saved value. */
-  onRelease: (value: number | undefined) => void;
+  /** The slider was released on `value`: settles once it is saved (or failed and reloaded). */
+  onRelease: (value: number) => Promise<void>;
+  /** The slider was released back on the saved value. */
+  onUnchanged: () => void;
 }) {
-  const { label, name, value, min, max, step, onLive, onRelease } = props;
+  const { label, name, value, min, max, step, onLive, onRelease, onUnchanged } = props;
   // The value being chosen, the saved value it was chosen from, and whether it was sent.
   const [draft, setDraft] = useState<{ shown: number; from: number; sent: boolean }>();
-  // Once the saved value changes (the commit saved, an undo), the draft is over for good: an
-  // undo back to the value it started from must not bring it back.
+  // Once the saved value changes (an undo while dragging) or the commit is saved, the draft is
+  // over for good: an undo back to the value it started from must not bring it back.
   if (draft && draft.from !== value) setDraft(undefined);
   const current = draft?.from === value ? draft : undefined;
   const commit = () => {
     if (!current || current.sent) return;
     if (current.shown === value) {
       setDraft(undefined);
-      onRelease(undefined);
+      onUnchanged();
       return;
     }
-    setDraft({ ...current, sent: true });
-    onRelease(current.shown);
+    const sent = { ...current, sent: true };
+    setDraft(sent);
+    // Ended by the save itself, not by a render seeing the saved value: an undo answered before
+    // the window renders again restores the starting value, which would bring the draft back.
+    const end = () => setDraft((shown) => (shown === sent ? undefined : shown));
+    onRelease(current.shown).then(end, end);
   };
   return (
     <label className="framing-slider">

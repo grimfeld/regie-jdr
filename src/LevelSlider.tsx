@@ -13,9 +13,9 @@ interface Draft {
  * Ambience level, an Ambience's volume, the Soundboard level, a pad's volume. Each move is
  * reported live (`onLive`: heard at once, unsaved); once released (the input's `change`, a
  * pointer or key up, or leaving it) the value is committed (`onCommit`), so a whole drag is one
- * edit (one undo step on a Scene). Until the saved value changes it keeps showing the value it
- * committed; once it changes (the commit saved, an undo) its own value is dropped for good, so
- * an undo back to the level a drag started from never brings the drag back.
+ * edit (one undo step on a Scene). Until that commit is saved it keeps showing the value it
+ * committed; once saved, or once the saved value changes (an undo while dragging), its own value
+ * is dropped for good, so an undo back to the level a drag started from never brings it back.
  */
 export function LevelSlider(props: {
   label: string;
@@ -27,7 +27,8 @@ export function LevelSlider(props: {
   value: number;
   disabled?: boolean;
   onLive: (level: number) => void;
-  onCommit: (level: number) => void;
+  /** Saves `level`: settles once saved (or once a failure is shown); never rejects. */
+  onCommit: (level: number) => Promise<void>;
 }) {
   const { label, accessibleName = label, hideLabel = false, value, disabled, onLive } = props;
   const [draft, setDraft] = useState<Draft>();
@@ -55,9 +56,17 @@ export function LevelSlider(props: {
       setDraft(undefined);
       return;
     }
-    latest.current = { ...pending, sent: true };
-    setDraft(latest.current);
-    onCommit.current(pending.shown);
+    const sent = { ...pending, sent: true };
+    latest.current = sent;
+    setDraft(sent);
+    // Ended by the save itself, not by a render seeing the saved level: an undo answered before
+    // the window renders again restores the starting level, which would bring the draft back.
+    const end = () => {
+      if (latest.current !== sent) return;
+      latest.current = undefined;
+      setDraft(undefined);
+    };
+    onCommit.current(pending.shown).then(end, end);
   }, []);
 
   // The native `change` fires once the Game Master lets go (React's onChange is every move).

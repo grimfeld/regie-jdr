@@ -24,10 +24,12 @@ export function SceneAmbienceList(props: {
   onAdd: (mediaId: MediaId) => void;
   /** Sends an edit; a failure is shown as a notice. */
   onEdit: (command: SceneEdit) => void;
+  /** Saves a level slider's edit once released; settles once saved or a failure is shown. */
+  onCommitLevel: (command: SceneEdit) => Promise<void>;
   /** Makes a level or volume being dragged heard on air (Active Scene only), unsaved. */
   onTransient: (edit: AmbienceLevel) => Promise<void>;
 }) {
-  const { scene, sounds, active, onAdd, onEdit, onTransient } = props;
+  const { scene, sounds, active, onAdd, onEdit, onCommitLevel, onTransient } = props;
   /** The sender of the sliders' transient updates, created on first use (in an event). */
   const live = useTransientSender(onTransient);
   /** A slider's value: heard while dragged on the Active Scene, saved once released. */
@@ -37,7 +39,7 @@ export function SceneAmbienceList(props: {
     },
     onCommit: (level: number) => {
       live().drop();
-      onEdit(edit(level));
+      return onCommitLevel(edit(level));
     },
   });
   const drop = useDropTarget(
