@@ -257,7 +257,7 @@ function startApp() {
   });
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
-  const library = createMediaLibrary(storage, electronImageResizer);
+  const library = createMediaLibrary(storage, electronImageResizer, { log });
   const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
   // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
