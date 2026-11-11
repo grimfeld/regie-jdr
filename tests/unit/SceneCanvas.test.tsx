@@ -102,6 +102,24 @@ describe('the renderer’s fades', () => {
     expect(drawn('.canvas-overlay')).toEqual([]);
   });
 
+  it('removes a hidden placement after the fade duration, even while another one is dragged live', async () => {
+    const guard = { ...overlay(), id: 'o2' };
+    const dragged = (x: number) => ({ ...overlay(), position: { x, y: 0.5 } });
+    draw({ backgrounds: [], overlays: [dragged(0.5), guard] });
+    await loadImages();
+
+    // o2 is hidden while o1 moves on air: a new picture every frame for twice the fade.
+    for (let frame = 0; frame < 120; frame++) {
+      draw({ backgrounds: [], overlays: [dragged(0.5 - frame / 1000)] });
+      act(() => {
+        vi.advanceTimersByTime(FADE / 60);
+      });
+    }
+
+    expect(container.querySelector('[data-overlay-id="o2"]')).toBeNull();
+    expect(container.querySelectorAll('[data-overlay-id="o1"]')).toHaveLength(1);
+  });
+
   it('brings back a placement shown again while it fades out', async () => {
     draw({ backgrounds: [], overlays: [overlay()] });
     await loadImages();

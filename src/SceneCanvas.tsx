@@ -85,14 +85,17 @@ function useFading<T>(
     drawn = withLeaving(drawn, items, keyOf);
     setState({ content, drawn });
   }
-  const leaving = drawn.some((entry) => entry.leaving);
+  // The timer restarts only when the set of leaving items changes, never on a mere redraw: a
+  // live drag redraws every frame, and a Hidden item must still leave the Broadcast window's DOM
+  // once its fade is over (ADR-0003).
+  const leaving = JSON.stringify(drawn.filter((entry) => entry.leaving).map((entry) => entry.key));
   useEffect(() => {
-    if (!leaving) return;
+    if (leaving === '[]') return;
     const timer = setTimeout(() => {
       setState((current) => ({ ...current, drawn: withoutLeaving(current.drawn) }));
     }, fadeDurationMs);
     return () => clearTimeout(timer);
-  }, [drawn, leaving, fadeDurationMs]);
+  }, [leaving, fadeDurationMs]);
   return drawn;
 }
 
