@@ -3,13 +3,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createAudioOnAir } from '../../core/audioOnAir';
-import { AUDIO_FADE_MS } from '../../core/fades';
+import { ACTIVATE_DURATION_MS, AUDIO_FADE_MS, MUSIC_CROSSFADE_MS } from '../../core/fades';
 import { createMediaLibrary } from '../../core/media';
 import { mediaFileName } from '../../core/mediaAddress';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { notesFromPlainText } from '../../core/notes';
-import { createSceneLibrary } from '../../core/scenes';
+import { createSceneLibrary, SceneError } from '../../core/scenes';
 import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
@@ -131,6 +131,116 @@ describe('on-air commands', () => {
       version: 2,
     });
     expect(ctx.broadcast.at(-1)).toEqual(state);
+  });
+
+  describe('Activating the next or previous Scene', () => {
+    /** An open Campaign with Scenes A, B and C in running order, nothing on air. */
+    async function threeScenes(ctx: Awaited<ReturnType<typeof setup>>) {
+      const a = await sceneShowing(ctx, 'A');
+      const b = await sceneShowing(ctx, 'B');
+      const c = await sceneShowing(ctx, 'C');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      return [a.id, b.id, c.id];
+    }
+
+    it('with nothing on air, Activates the first Scene either way', async () => {
+      const ctx = await setup();
+      const [a] = await threeScenes(ctx);
+
+      expect((await ctx.commands.activateNextTo('previous')).activeSceneId).toBe(a);
+    });
+
+    it('two quick presses advance two Scenes, each from the one the press before Activated', async () => {
+      const ctx = await setup();
+      const [a, b, c] = await threeScenes(ctx);
+      await ctx.commands.activateScene(a);
+
+      const presses = [ctx.commands.activateNextTo('next'), ctx.commands.activateNextTo('next')];
+
+      expect((await Promise.all(presses)).map((state) => state.activeSceneId)).toEqual([b, c]);
+      expect((await ctx.commands.activateNextTo('previous')).activeSceneId).toBe(b);
+    });
+
+    it('past either end changes nothing on air', async () => {
+      const ctx = await setup();
+      const [, , c] = await threeScenes(ctx);
+      const onAir = await ctx.commands.activateScene(c);
+
+      expect(await ctx.commands.activateNextTo('next')).toEqual(onAir);
+      expect(ctx.broadcast.at(-1)).toEqual(onAir);
+    });
+
+    it('follows the running order as saved, and forces a Cut when asked', async () => {
+      const ctx = await setup();
+      const [a, b, c] = await threeScenes(ctx);
+      await ctx.scenes.move(ctx.campaign.id, c, 0);
+      await ctx.commands.activateScene(c);
+
+      const state = await ctx.commands.activateNextTo('next', { forceCut: true });
+
+      expect(state.activeSceneId).toBe(a);
+      expect(state.transition).toMatchObject({ kind: 'cut', durationMs: 0 });
+      expect((await ctx.commands.activateNextTo('next')).activeSceneId).toBe(b);
+    });
+
+    it('is refused when no Campaign is open', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.activateNextTo('next')).rejects.toThrow(SceneError);
+    });
+  });
+
+  describe('the Transition on Activate', () => {
+    it('Activating a Cut Scene cuts to it: the Transition takes no time', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'set-transition',
+        transition: 'cut',
+      });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      const state = await ctx.commands.activateScene(scene.id);
+
+      expect(state.scene).toEqual(cantinaPicture);
+      expect(state.transition).toEqual({ ...fadeInTo(scene.id), kind: 'cut', durationMs: 0 });
+    });
+
+    it('a forced Cut cuts to a Crossfade Scene and leaves its Transition as it is', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      const state = await ctx.commands.activateScene(scene.id, { forceCut: true });
+
+      expect(state.transition).toMatchObject({ kind: 'cut', durationMs: 0 });
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
+      const again = await ctx.commands.activateScene(scene.id);
+      expect(again.transition).toMatchObject({ kind: 'crossfade', durationMs: 1500 });
+    });
+
+    it('setting the Transition is saved and undoable, and changes nothing on air', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      const onAir = await ctx.commands.activateScene(scene.id);
+
+      const saved = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'set-transition',
+        transition: 'cut',
+      });
+
+      expect(saved.transition).toBe('cut');
+      // Shown again as any edit of the Active Scene is: same picture, no new Transition.
+      expect(ctx.broadcast.at(-1)).toEqual({ ...onAir, version: onAir.version + 1 });
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: 'régler la transition sur Cut',
+        redo: null,
+      });
+      const undone = await ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id);
+      expect(undone.transition).toBe('crossfade');
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.transition).toBe('crossfade');
+    });
   });
 
   it('editing the Active Scene saves it and updates the broadcast', async () => {
@@ -293,8 +403,60 @@ describe('on-air commands', () => {
       await ctx.commands.activateScene(scene.id);
 
       expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
-      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.activate);
+      expect(ctx.audio.mix().fadeMs).toBe(ACTIVATE_DURATION_MS.default);
       expect(ctx.mixes).toHaveLength(1);
+    });
+
+    it('Activating a Cut Scene switches its audio over the short Cut fade', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await ctx.scenes.save({ ...(await withMusic(ctx)), transition: 'cut' });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      await ctx.commands.activateScene(scene.id);
+
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.cut);
+    });
+
+    it('a forced Cut switches the audio over the short Cut fade too', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      await ctx.commands.activateScene(scene.id, { forceCut: true });
+
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.cut);
+    });
+
+    it('the Activate duration setting times picture and audio of the next Crossfade together', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      // Bagarre first: Activating it changes what is heard.
+      const created = await ctx.scenes.create(ctx.campaign.id, 'Bagarre');
+      const other = await ctx.scenes.save({ ...created, music: [ctx.music[1].id] });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      const mixes = ctx.mixes.length;
+
+      ctx.commands.setPlayDurations({ activateDurationMs: 3500, musicCrossfadeMs: 2000 });
+      // Nothing heard changes until the next Activate.
+      expect(ctx.mixes).toHaveLength(mixes);
+
+      const { transition } = await ctx.commands.activateScene(other.id);
+      expect(transition).toMatchObject({ kind: 'crossfade', durationMs: 3500 });
+      expect(ctx.audio.mix().fadeMs).toBe(3500);
+    });
+
+    it('a Cut stays instant, whatever the Activate duration setting', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      ctx.commands.setPlayDurations({ activateDurationMs: 3500, musicCrossfadeMs: 2000 });
+
+      const { transition } = await ctx.commands.activateScene(scene.id, { forceCut: true });
+
+      expect(transition).toMatchObject({ kind: 'cut', durationMs: 0 });
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.cut);
     });
 
     it('opening, switching or closing a Campaign stops audio', async () => {
@@ -549,7 +711,7 @@ describe('on-air commands', () => {
       await ctx.commands.pickMusic(ctx.music[1].id);
 
       expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[1].id, playing: true }]);
-      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.crossfade);
+      expect(ctx.audio.mix().fadeMs).toBe(MUSIC_CROSSFADE_MS.default);
       expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
       expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
         undo: null,
@@ -558,6 +720,20 @@ describe('on-air commands', () => {
       // The next Activate starts from the first Music again.
       await ctx.commands.activateScene(scene.id);
       expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+    });
+
+    it('picking a track crossfades over the Music crossfade duration setting', async () => {
+      const ctx = await setupWithMusic();
+      await playing(ctx);
+      ctx.commands.setPlayDurations({ activateDurationMs: 1500, musicCrossfadeMs: 6000 });
+
+      await ctx.commands.pickMusic(ctx.music[1].id);
+
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[1].id, playing: true }]);
+      expect(ctx.audio.mix().fadeMs).toBe(6000);
+      // Pausing keeps its own fixed fade.
+      await ctx.commands.setMusicPlayback('paused');
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.pause);
     });
 
     it('refuses a pick with no Active Scene or of a Music not in its list', async () => {
@@ -1297,6 +1473,25 @@ describe('on-air commands', () => {
       const ctx = await setup();
 
       await expect(ctx.commands.setBlackout(true)).rejects.toThrow(CampaignError);
+      expect(ctx.broadcast).toEqual([]);
+    });
+
+    it('toggled twice quickly, starts then ends, each from the state the one before left', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      const toggles = [ctx.commands.toggleBlackout(), ctx.commands.toggleBlackout()];
+
+      expect((await Promise.all(toggles)).map((state) => state.blackout)).toEqual([true, false]);
+      expect(ctx.broadcast.at(-1)).toMatchObject({ activeSceneId: scene.id, blackout: false });
+    });
+
+    it('toggling is refused when no Campaign is open', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.toggleBlackout()).rejects.toThrow(CampaignError);
       expect(ctx.broadcast).toEqual([]);
     });
   });

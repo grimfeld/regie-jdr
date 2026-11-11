@@ -20,7 +20,7 @@ import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboa
 import { useListening } from './Listening';
 import { NowPlaying, toggleSilence } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
-import { ScenesPanel } from './ScenesPanel';
+import { ScenesPanel, type NotesChange } from './ScenesPanel';
 import { SoundboardPanel, useSoundboard, type SoundboardControls } from './Soundboard';
 import { showNotice } from './notices';
 
@@ -76,6 +76,8 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         if (id) {
           await control.openCampaign(id);
           setOpenId(id);
+          // Opening reads the Campaign's documents: e.g. Scene Notes that could not be read.
+          void collectNotices();
         } else {
           setOpenId(null);
           await control.closeCampaign();
@@ -84,7 +86,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         showNotice(errorMessage(error));
       }
     },
-    [control],
+    [control, collectNotices],
   );
 
   useEffect(() => {
@@ -336,8 +338,11 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
    * names may have changed).
    */
   const [mediaRevision, setMediaRevision] = useState(0);
-  /** Bumped when a deleted Media's images were removed from Scene Notes: the Notes editor reloads. */
-  const [notesRevision, setNotesRevision] = useState(0);
+  /**
+   * Changed when a deleted Media's images were removed from Scene Notes: the Notes editor reloads
+   * if the open Scene's Notes were among them.
+   */
+  const [notesChange, setNotesChange] = useState<NotesChange>({ revision: 0, sceneIds: [] });
   /** Bumped when Media were dropped on the Scene editor and imported: the library reloads. */
   const [importRevision, setImportRevision] = useState(0);
   // Where the Scenes panel shows the Selected Scene's Notes.
@@ -372,7 +377,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             campaignId={campaign.id}
             control={control}
             mediaRevision={mediaRevision}
-            notesRevision={notesRevision}
+            notesChange={notesChange}
             onMediaImported={() => setImportRevision((revision) => revision + 1)}
             notesSlot={notesSlot}
           />
@@ -382,7 +387,12 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             control={control}
             onMediaDeleted={(deletion) => {
               setMediaRevision((revision) => revision + 1);
-              if (deletion.affectedNotes.length > 0) setNotesRevision((revision) => revision + 1);
+              if (deletion.affectedNotes.length > 0) {
+                setNotesChange(({ revision }) => ({
+                  revision: revision + 1,
+                  sceneIds: deletion.affectedNotes.map((scene) => scene.id),
+                }));
+              }
             }}
             onMediaRenamed={() => setMediaRevision((revision) => revision + 1)}
             importRevision={importRevision}

@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -68,9 +69,11 @@ async function createScene(page: Page, name: string) {
 async function dropOnMusicList(page: Page, name: string) {
   const rows = musicList(page).getByRole('listitem');
   const listed = await rows.count();
-  await soundInLibrary(page, name)
-    .locator('.media-audio-icon')
-    .dragTo(musicList(page).locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(page, name).locator('.media-audio-icon'),
+    musicList(page).locator('xpath=..'),
+    rows.nth(listed),
+  );
   await expect(rows).toHaveCount(listed + 1);
 }
 

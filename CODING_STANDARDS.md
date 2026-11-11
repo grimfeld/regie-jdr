@@ -68,6 +68,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 
 - Logic in `core/` or `electron/` gets a unit test in `tests/unit/` (Vitest), written first where there is logic.
 - A change the Game Master can see or do gets a whole-app test in `tests/app/` (Playwright, through `tests/app/harness.ts`).
+- A whole-app test drags and drops only through `dropAndWait` (`tests/app/harness.ts`), naming the drop's visible end state, never a list index or a fixed position _(lint)_.
 - A bug fix comes with the test that failed before it.
 - Gates, all green, none weakened: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run test:app`.
 

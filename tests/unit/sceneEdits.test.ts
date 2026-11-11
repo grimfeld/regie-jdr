@@ -25,6 +25,7 @@ const empty: Scene = {
   ambiences: [],
   volumes: { music: 1, ambience: 1 },
   notes: emptyNotes(),
+  transition: 'crossfade',
 };
 
 /** Applies edits in order, naming new placements p1, p2, ... */
@@ -198,6 +199,24 @@ describe('Scene edit commands', () => {
     expect(() => applyAll(empty, { kind: 'set-title', title: 'x'.repeat(101) })).toThrow(
       'Le titre affiché est trop long (100 caractères au plus).',
     );
+  });
+});
+
+describe('Scene Transition', () => {
+  it('sets the entry Transition to Cut and back to Crossfade, leaving the rest of the Scene', () => {
+    const cut = applyAll(empty, { kind: 'set-transition', transition: 'cut' });
+    expect(cut).toEqual({ ...empty, transition: 'cut' });
+    expect(applyAll(cut, { kind: 'set-transition', transition: 'crossfade' })).toEqual(empty);
+  });
+
+  it('reads a Transition edit from a window message, keeping only its fields', () => {
+    expect(parseSceneEdit({ kind: 'set-transition', transition: 'cut', x: 1 })).toEqual({
+      kind: 'set-transition',
+      transition: 'cut',
+    });
+    expect(parseSceneEdit({ kind: 'set-transition', transition: 'wipe' })).toBeUndefined();
+    expect(parseSceneEdit({ kind: 'set-transition' })).toBeUndefined();
+    expect(parseTransientEdit({ kind: 'set-transition', transition: 'cut' })).toBeUndefined();
   });
 });
 

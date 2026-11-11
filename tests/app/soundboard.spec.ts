@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   launchApp,
   stubFilePicker,
@@ -55,12 +56,17 @@ async function importSounds(
 /**
  * Drags a library sound onto the Soundboard, over its heading: a synthetic drag ending over a
  * pad's name field or slider never reaches the page (no dragenter), so the panel's centre is
- * not a safe target once it has a pad.
+ * not a safe target once it has a pad. Done once `dropped` is shown.
  */
-async function dropOnSoundboard(page: Page, name: string) {
-  await soundInLibrary(page, name)
-    .locator('.media-audio-icon')
-    .dragTo(soundboard(page), { targetPosition: { x: 40, y: 20 } });
+async function dropOnSoundboard(page: Page, name: string, dropped: Locator) {
+  await dropAndWait(
+    soundInLibrary(page, name).locator('.media-audio-icon'),
+    soundboard(page),
+    dropped,
+    {
+      targetPosition: { x: 40, y: 20 },
+    },
+  );
 }
 
 test('a pad lights while its Sound effect sounds and goes out after, with nothing on air', async ({
@@ -73,8 +79,12 @@ test('a pad lights while its Sound effect sounds and goes out after, with nothin
   await expect(soundboard(controlWindow)).toContainText('Déposez un bruitage');
 
   // Only Sound effects make pads.
-  await dropOnSoundboard(controlWindow, 'Auberge');
-  await dropOnSoundboard(controlWindow, 'Épée');
+  await dropOnSoundboard(
+    controlWindow,
+    'Auberge',
+    soundboard(controlWindow).getByText('Déposez un bruitage'),
+  );
+  await dropOnSoundboard(controlWindow, 'Épée', pad(controlWindow, 'Épée'));
   await expect(pads(controlWindow)).toHaveCount(1);
   await expect(pad(controlWindow, 'Épée')).toHaveAttribute('aria-pressed', 'false');
 
@@ -96,9 +106,9 @@ test('pads are renamed, reordered, given a volume and removed, saved per Campaig
   const { controlWindow } = regie;
   await createCampaign(controlWindow, 'Star Wars');
   await importSounds(regie, 'Bruitage', 1, 'Épée', 'Cri');
-  await dropOnSoundboard(controlWindow, 'Épée');
+  await dropOnSoundboard(controlWindow, 'Épée', pad(controlWindow, 'Épée'));
   await expect(pads(controlWindow)).toHaveCount(1);
-  await dropOnSoundboard(controlWindow, 'Cri');
+  await dropOnSoundboard(controlWindow, 'Cri', pad(controlWindow, 'Cri'));
   await expect(pads(controlWindow)).toHaveCount(2);
 
   const board = soundboard(controlWindow);
@@ -163,9 +173,9 @@ test('deleting a Sound effect used by pads warns, listing them, then removes the
   const { controlWindow } = regie;
   await createCampaign(controlWindow, 'Star Wars');
   await importSounds(regie, 'Bruitage', 1, 'Épée');
-  await dropOnSoundboard(controlWindow, 'Épée');
+  await dropOnSoundboard(controlWindow, 'Épée', pads(controlWindow).nth(0));
   await expect(pads(controlWindow)).toHaveCount(1);
-  await dropOnSoundboard(controlWindow, 'Épée');
+  await dropOnSoundboard(controlWindow, 'Épée', pads(controlWindow).nth(1));
   await expect(pads(controlWindow)).toHaveCount(2);
   const board = soundboard(controlWindow);
   await board.getByRole('textbox', { name: 'Nom de Épée' }).last().fill('Parade');

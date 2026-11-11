@@ -33,6 +33,8 @@ const sceneFieldOnAir = {
   ambiences: null,
   volumes: null,
   notes: null,
+  // A setting of the Scene: Activate puts the kind in OnAirState.transition, never the setting.
+  transition: null,
 } as const satisfies Record<keyof Scene, keyof OnAirScene | null>;
 
 /** Where each Background field goes on air; its Media id becomes the Media address `src`. */
@@ -125,6 +127,7 @@ describe('the broadcast projection allow-list', () => {
     ambiences: [{ mediaId: 'm3', on: true, volume: 1 }],
     volumes: { music: 1, ambience: 1 },
     notes: notesFromPlainText('Notes'),
+    transition: 'cut',
   };
   const projected = onAirSceneOf(scene, library);
 

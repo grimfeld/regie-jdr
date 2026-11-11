@@ -283,6 +283,11 @@ export function admitDocument(
   const decoded = decodeDocument(text, type);
   if (decoded.status === 'tooNew') throw new ImportError(TOO_NEW);
   if (decoded.status === 'corrupt') throw new ImportError(DAMAGED);
+  // A Scene whose Notes cannot be read parses with empty Notes (core/scenes.ts); an Export never
+  // holds one, so the zip was changed: refuse it rather than lose those Notes unseen.
+  if (isRecord(decoded.value) && 'unreadableNotes' in decoded.value) {
+    throw new ImportError(DAMAGED);
+  }
   const stored: unknown = JSON.parse(text);
   if (!isRecord(stored) || stored.schemaVersion !== document.schemaVersion) {
     throw new ImportError(DAMAGED);

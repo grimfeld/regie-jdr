@@ -26,14 +26,20 @@ import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import { openZipArchive, writeZipArchive } from './zipArchive.js';
 import type { CampaignImportResult, MediaImportKind, SoundboardEdit } from '../shared/contract.js';
-import type { PadCommand } from '../shared/domain.js';
+import type { OnAirState, PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
 // Global Settings (home theme, window bounds, last Active Scenes); set when the app starts.
 let settings: SettingsStore | null = null;
-// Settings writes still running: the app waits for them before it quits.
+// Settings writes and window calls still running: the app waits for them before it quits.
 const pendingWrites = new Set<Promise<unknown>>();
+
+/** Keeps `write` among the pending writes until it settles; it must not fail. */
+function trackWrite(write: Promise<unknown>) {
+  pendingWrites.add(write);
+  void write.finally(() => pendingWrites.delete(write));
+}
 // What is on air: in memory only, so nothing is on air after a restart.
 const onAir = createOnAir();
 // What plays (the audio part of the on-air state): in memory only, so nothing plays after a restart.
@@ -139,8 +145,7 @@ function saveSetting(write: (store: SettingsStore) => Promise<unknown>) {
   const pending = write(settings).catch((error: unknown) => {
     log.error('Saving the settings failed', error);
   });
-  pendingWrites.add(pending);
-  void pending.finally(() => pendingWrites.delete(pending));
+  trackWrite(pending);
 }
 
 /**
@@ -331,12 +336,11 @@ function focusControlWindow() {
 function startApp() {
   // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
   const notices: string[] = [];
-  const storage = openStorage(app.getPath('userData'), {
-    notify: (message) => {
-      notices.push(message);
-      log.warn(message);
-    },
-  });
+  const notify = (message: string) => {
+    notices.push(message);
+    log.warn(message);
+  };
+  const storage = openStorage(app.getPath('userData'), { notify });
   // An Import interrupted by a crash leaves its staging folder; none runs yet, and the next one
   // waits for this.
   const importLeftoversCleared = clearImportLeftovers(storage.importsFolder).catch(
@@ -385,7 +389,7 @@ function startApp() {
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
-  const scenes = createSceneLibrary(storage);
+  const scenes = createSceneLibrary(storage, { notify });
   const soundboards = createSoundboardStore({ storage, library });
   registerMediaProtocol(library);
   const campaignDeletion = createCampaignDeletion({
@@ -405,15 +409,16 @@ function startApp() {
     soundboards,
   });
   // The renderers fade with the saved duration, carried by the on-air state; audio plays at
-  // the saved Master volume.
+  // the saved Master volume; Activate and track changes take the saved durations.
   settingsStore
     .get()
-    .then(({ fadeDurationMs, masterVolume }) => {
+    .then(({ fadeDurationMs, masterVolume, activateDurationMs, musicCrossfadeMs }) => {
       onAir.setFadeDuration(fadeDurationMs);
       audio.setMasterVolume(masterVolume);
+      commands.setPlayDurations({ activateDurationMs, musicCrossfadeMs });
     })
     .catch((error: unknown) => {
-      log.error('Reading the fade duration and the Master volume failed', error);
+      log.error('Reading the fade, Master volume and play duration settings failed', error);
     });
   const currentSounding = () => engine.sounding();
   // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
@@ -459,6 +464,14 @@ function startApp() {
       .then((srcs) => sendPadCommands([{ kind: 'preload', srcs }]))
       .catch((error: unknown) => log.warn('Listing the Sound effects to preload failed', error));
   };
+  /** Remembers the Active Scene, for highlighting only: nothing goes on air after a restart. */
+  const rememberActive = (state: OnAirState) => {
+    const { campaignId, activeSceneId } = state;
+    if (campaignId && activeSceneId) {
+      saveSetting((store) => store.setLastActiveScene(campaignId, activeSceneId));
+    }
+    return state;
+  };
   /** Silence was set: when it `started`, the pads sounding fade out too. Returns what sounds. */
   const silenced = (started: boolean) => {
     if (started) {
@@ -484,6 +497,11 @@ function startApp() {
         const state = await commands.openCampaign(campaignId);
         stopPads();
         preloadPads();
+        // Read its Scenes now, so a Scene whose Notes cannot be read is reported as it opens
+        // (the window collects the notices then). A failure shows when the Scenes are listed.
+        await scenes.list(campaignId).catch((error: unknown) => {
+          log.warn('Reading the Scenes of the opened Campaign failed', error);
+        });
         return state;
       },
       'onAir:close-campaign': async () => {
@@ -492,14 +510,12 @@ function startApp() {
         preloadPads();
         return state;
       },
-      'onAir:activate-scene': async ({ sceneId }) => {
-        const state = await commands.activateScene(sceneId);
-        // Remembered for highlighting only: nothing goes on air after a restart.
-        const { campaignId } = state;
-        if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));
-        return state;
-      },
+      'onAir:activate-scene': async ({ sceneId, forceCut }) =>
+        rememberActive(await commands.activateScene(sceneId, { forceCut })),
+      'onAir:activate-next': async ({ direction, forceCut }) =>
+        rememberActive(await commands.activateNextTo(direction, { forceCut })),
       'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
+      'onAir:toggle-blackout': () => commands.toggleBlackout(),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>
@@ -608,6 +624,16 @@ function startApp() {
         onAir.setFadeDuration(saved.fadeDurationMs);
         return saved;
       },
+      'settings:set-activate-duration': async ({ activateDurationMs }) => {
+        const saved = await settingsStore.setActivateDuration(activateDurationMs);
+        commands.setPlayDurations(saved);
+        return saved;
+      },
+      'settings:set-music-crossfade': async ({ musicCrossfadeMs }) => {
+        const saved = await settingsStore.setMusicCrossfade(musicCrossfadeMs);
+        commands.setPlayDurations(saved);
+        return saved;
+      },
       'settings:set-master-volume': async ({ masterVolume }) => {
         const saved = await settingsStore.setMasterVolume(masterVolume);
         audio.setMasterVolume(saved.masterVolume);
@@ -657,6 +683,7 @@ function startApp() {
     },
     roleOf,
     log,
+    trackWrite,
   );
   void createControlWindow();
   app.on('activate', () => {
@@ -664,7 +691,8 @@ function startApp() {
   });
 }
 
-// Window bounds are saved as the windows close: finish those writes before quitting.
+// Window bounds are saved as the windows close, and a window's last call (Notes typed just
+// before quitting) may still be running: finish them before quitting.
 app.on('will-quit', (event) => {
   if (pendingWrites.size === 0) return;
   event.preventDefault();

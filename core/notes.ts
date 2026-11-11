@@ -50,7 +50,7 @@ export function isNotesMediaId(value: unknown): value is string {
   return typeof value === 'string' && MEDIA_ID.test(value);
 }
 
-/** Narrowest and widest an image in the Notes may be, in % of the width it stands in. */
+/** Narrowest and widest an image in the Notes may be, in % of the Notes panel's text width. */
 export const MIN_NOTES_IMAGE_WIDTH = 10;
 export const MAX_NOTES_IMAGE_WIDTH = 100;
 
@@ -66,8 +66,9 @@ export function isNotesImageWidth(value: unknown): value is number {
 
 /**
  * An image's attributes: its Media id and, once the Game Master has resized it, its width in % of
- * the width it stands in (the Notes panel, or the quote or list holding it). No width, or a null
- * one as the editor saves it: the default size, the image's own width up to the whole panel.
+ * the Notes panel's text width (#53), wherever it stands (inside a quote or a list it is never
+ * shown wider than them). No width, or a null one as the editor saves it: the default size, the
+ * image's own width up to the width it stands in.
  */
 function imageAttrs({ mediaId, width = null }: Record<string, unknown>): Attrs | undefined {
   if (!isNotesMediaId(mediaId)) return undefined;

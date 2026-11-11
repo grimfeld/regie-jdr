@@ -14,7 +14,7 @@ import type {
   VoiceState,
 } from '../shared/domain.js';
 import { isVoiceState } from './audioMix.js';
-import { AUDIO_FADE_MS, type AudioChange } from './fades.js';
+import { AUDIO_FADE_MS, type FixedAudioChange } from './fades.js';
 import { isRecord } from './guards.js';
 
 /** Most pad sounds playing at once. */
@@ -41,7 +41,7 @@ export interface PadVoices {
    * Cuts every pad sound, fading over `change`: everything stops (a Campaign opened, switched
    * or closed), or Silence starts. Pads pressed afterwards play as usual.
    */
-  clear(change?: AudioChange): PadCommand[];
+  clear(change?: FixedAudioChange): PadCommand[];
   /** The engine (re)started, holding nothing: forgets every pad sound without a command. */
   forget(): void;
   /**

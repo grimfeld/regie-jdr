@@ -90,6 +90,16 @@ describe('payload guards', () => {
     expect(checkInvoke('onAir:activate-scene', 'control', args)).toMatchObject({ ok: false });
   });
 
+  it('takes a forced Cut on Activate, and nothing else of that kind', () => {
+    expect(checkInvoke('onAir:activate-scene', 'control', [{ ...scene, forceCut: true }])).toEqual({
+      ok: true,
+      payload: { ...scene, forceCut: true },
+    });
+    expect(
+      checkInvoke('onAir:activate-scene', 'control', [{ ...scene, forceCut: 'yes' }]),
+    ).toMatchObject({ ok: false });
+  });
+
   it('rejects an argument on a channel that takes none', () => {
     expect(checkInvoke('broadcast:open', 'control', [{}])).toMatchObject({ ok: false });
     expect(checkInvoke('onAir:close-campaign', 'control', [campaign])).toMatchObject({
@@ -638,6 +648,36 @@ describe('Blackout channel', () => {
   });
 });
 
+describe('Blackout toggle and next-Scene channels', () => {
+  it('are for the Control window only', () => {
+    expect(checkInvoke('onAir:toggle-blackout', 'control', [])).toMatchObject({ ok: true });
+    expect(checkInvoke('onAir:toggle-blackout', 'broadcast', [])).toMatchObject({ ok: false });
+    const next = [{ direction: 'next' }];
+    expect(checkInvoke('onAir:activate-next', 'control', next)).toMatchObject({ ok: true });
+    expect(checkInvoke('onAir:activate-next', 'broadcast', next)).toMatchObject({ ok: false });
+  });
+
+  it('keep only the contract fields', () => {
+    const args = [{ direction: 'previous', forceCut: true, sceneId: 'x' }];
+    expect(checkInvoke('onAir:activate-next', 'control', args)).toEqual({
+      ok: true,
+      payload: { direction: 'previous', forceCut: true },
+    });
+    expect(checkInvoke('onAir:toggle-blackout', 'control', [{ on: true }])).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it.each([
+    ['nothing', []],
+    ['a bare direction', ['next']],
+    ['an unknown direction', [{ direction: 'last' }]],
+    ['a Cut flag of the wrong type', [{ direction: 'next', forceCut: 'yes' }]],
+  ])('reject a next Scene given as %s', (_label, args) => {
+    expect(checkInvoke('onAir:activate-next', 'control', args)).toMatchObject({ ok: false });
+  });
+});
+
 describe('Silence channel', () => {
   it('keeps only the flag, and rejects anything else', () => {
     expect(checkInvoke('audio:set-silence', 'control', [{ on: true, scene: 'x' }])).toEqual({
@@ -666,6 +706,8 @@ describe('Settings channels', () => {
       ['settings:get', []],
       ['settings:set-theme', [{ theme: 'retro' }]],
       ['settings:set-fade-duration', [{ fadeDurationMs: 600 }]],
+      ['settings:set-activate-duration', [{ activateDurationMs: 1500 }]],
+      ['settings:set-music-crossfade', [{ musicCrossfadeMs: 2000 }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
@@ -703,6 +745,29 @@ describe('Settings channels', () => {
     expect(checkInvoke('settings:set-fade-duration', 'control', [...args])).toMatchObject({
       ok: false,
     });
+  });
+
+  it('accept Activate and Music crossfade durations in bounds, keeping only contract fields', () => {
+    expect(
+      checkInvoke('settings:set-activate-duration', 'control', [
+        { activateDurationMs: 3000, x: 1 },
+      ]),
+    ).toEqual({ ok: true, payload: { activateDurationMs: 3000 } });
+    expect(
+      checkInvoke('settings:set-music-crossfade', 'control', [{ musicCrossfadeMs: 4500, x: 1 }]),
+    ).toEqual({ ok: true, payload: { musicCrossfadeMs: 4500 } });
+  });
+
+  it.each([
+    ['settings:set-activate-duration', [{ activateDurationMs: 0 }]],
+    ['settings:set-activate-duration', [{ activateDurationMs: 5001 }]],
+    ['settings:set-activate-duration', [{ activateDurationMs: '1.5' }]],
+    ['settings:set-activate-duration', [{ musicCrossfadeMs: 1500 }]],
+    ['settings:set-music-crossfade', [{ musicCrossfadeMs: 10_001 }]],
+    ['settings:set-music-crossfade', [{ musicCrossfadeMs: 99 }]],
+    ['settings:set-music-crossfade', [2000]],
+  ] as const)('%s rejects %j', (channel, args) => {
+    expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });
 });
 

@@ -17,6 +17,10 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 
 ## Follow-ups to clear before the M3 PR
 
+- Number fields refuse a French decimal comma ("4,5"); #50's test switched to "4.5". A French Game Master types a comma: accept both in "Fondus", "Durée d’activation", "Fondu entre musiques". Source: #50 report.
+- Run the full app suite (#50 merged with only `fades.spec` re-run). Source: #50 report.
+- Manual check: long Activate and Music crossfade sound right; 0.1 s Cut audio does not click.
+
 - Notes editor restarts (losing Notes undo) after any Media delete touching Notes, even when the open Scene was untouched; restart only when the open Scene changed. Source: #54 report.
 
 - A Notes save pending under 500 ms is lost if the app quits then; flush on quit. Source: #51 report.
@@ -30,3 +34,9 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: M2 CI fixed at `65e6049` (real slider-draft race; see [flaky tests](problem-flaky-app-tests.md)); #75 CI green. Backport to M1 #74 and merge-forward to M3 in progress.
 - 2026-11-12: #54 Notes images as uses merged at `6701986` (941 unit, 157 app tests). Gap: Notes undo lost for untouched open Scene after a delete touching other Notes.
 - 2026-11-12: slider-draft fix backported to M1 (`7fbc29f`, #74 CI green), merged into M2 (`3f6b9bc`, #75 CI green) and M3 (`16e5e3c`).
+- 2026-11-12: #55 merged at `d19af19` (941 unit, 158 app tests): no app change needed, M1 #24 already met it; added a three-Campaign + restart whole-app test (proven to fail when the stored Scene is ignored).
+- 2026-11-12: #49 Cut and forced Cut merged at `7924e22` (964 unit, 160 app tests). scenes.json now v4 (Crossfade migration). #56 must call `src/activate.ts`. Manual check: no click on a Cut's 0.1 s audio switch.
+- 2026-11-12: #49 Cut merged at `d30b310` (964 unit, 159 app tests). Manual check: 0.1 s audio switch on a Cut does not click.
+- 2026-11-12: #50 duration settings merged at `4d2d082` (983 unit tests; full app suite not re-run after its last test change).
+- 2026-11-12: #56 Scene shortcuts merged at `80ffc52` (990 unit, 165 app tests). Ctrl+Entrée, Ctrl+↓/↑, B in `KEY_MAP`; `SHIFT_FREE` lets Shift force a Cut; `isTypingIn` now counts any editable content (side effect: Ctrl+Z on a Notes image handle no longer undoes a Scene edit). Deviation: next/previous keys shown only in the Activer title. All agent slices of M3 done; closeout and review next.
+- 2026-11-12: M3 closeout merged at `e064f9e` (1014 unit, 169 app tests). Duration fields are text fields with decimal keypad accepting "4,5" (`millisecondsOfSecondsText` in `core/fades.ts`); pending Notes save flushed on quit/reload (main tracks in-flight window calls via `registerHandlers` `track`); Notes editor restarts only for touched Scenes; `dropAndWait` everywhere plus a lint ban on raw `dragTo` in `tests/app`; Alt+↑/↓ reorder (`move-scene-up/down` in `KEY_MAP`).

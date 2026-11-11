@@ -16,6 +16,7 @@ function scene(id: string, name = id, campaignId = 'c1'): Scene {
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
     notes: emptyNotes(),
+    transition: 'crossfade',
   };
 }
 
@@ -166,6 +167,11 @@ describe('undo labels', () => {
     [{ kind: 'move-music', mediaId: 'm-map', toIndex: 0 }, 'réordonner la musique Port'],
     [{ kind: 'remove-music', mediaId: 'm-map' }, 'retirer la musique Port'],
     [{ kind: 'set-music-level', level: 0.5 }, 'régler le niveau des musiques'],
+    [{ kind: 'set-transition', transition: 'cut' }, 'régler la transition sur Cut'],
+    [
+      { kind: 'set-transition', transition: 'crossfade' },
+      'régler la transition sur Fondu enchaîné',
+    ],
   ];
 
   it.each(cases)('names %j "%s"', (edit, label) => {

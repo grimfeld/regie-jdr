@@ -7,7 +7,14 @@
  * volume comes from Settings. Every change to what should sound gives a new mix with a higher
  * version; a change that alters nothing heard (a picture edit) gives none.
  */
-import type { AudioMix, Media, MediaId, MusicPlayback, Scene } from '../shared/domain.js';
+import type {
+  AudioMix,
+  Media,
+  MediaId,
+  MusicPlayback,
+  Scene,
+  TransitionKind,
+} from '../shared/domain.js';
 import {
   activatedMusic,
   MASTER_VOLUME,
@@ -17,16 +24,23 @@ import {
   pickedMusic,
   type MixInput,
 } from './audioMix.js';
-import type { AudioChange } from './fades.js';
+import { DEFAULT_PLAY_DURATIONS, type AudioChange, type PlayDurations } from './fades.js';
 
 export interface AudioOnAir {
   /** The current mix. */
   mix(): AudioMix;
   /**
    * A Scene is Activated: its first Music plays, with its switched-on Ambiences. Lifts Silence.
-   * `missing`: the audio Media whose file is missing, left out (here and below).
+   * `missing`: the audio Media whose file is missing, left out (here and below). `kind`: the
+   * Transition, which sets the fade: the Activate duration for a Crossfade, a very short one
+   * for a Cut.
    */
-  activateScene(scene: Scene, library: readonly Media[], missing: ReadonlySet<MediaId>): AudioMix;
+  activateScene(
+    scene: Scene,
+    library: readonly Media[],
+    missing: ReadonlySet<MediaId>,
+    kind?: TransitionKind,
+  ): AudioMix;
   /**
    * The Active Scene changed (an edit, an undo, a deleted Media): it plays on as it now is;
    * the current Music stays while still in its Music list. `change` sets the fade.
@@ -61,6 +75,11 @@ export interface AudioOnAir {
   setMasterVolume(masterVolume: number): AudioMix;
   /** The Master volume the mix is heard at. */
   masterVolume(): number;
+  /**
+   * The Activate and Music crossfade durations (Settings, already checked), for the next
+   * Activate and the next track picked. What sounds now does not change: no new mix.
+   */
+  setPlayDurations(durations: PlayDurations): void;
   /** Calls `listener` with each new mix. Returns the unsubscribe function. */
   subscribe(listener: (mix: AudioMix) => void): () => void;
 }
@@ -78,6 +97,7 @@ export function createAudioOnAir(): AudioOnAir {
     audio: { music: null },
     missing: new Set(),
     silence: false,
+    durations: DEFAULT_PLAY_DURATIONS,
   };
   let mix: AudioMix = { voices: [], missing: [], fadeMs: 0, version: 0 };
   const listeners = new Set<(mix: AudioMix) => void>();
@@ -97,7 +117,7 @@ export function createAudioOnAir(): AudioOnAir {
 
   return {
     mix: () => structuredClone(mix),
-    activateScene: (scene, library, missing) =>
+    activateScene: (scene, library, missing, kind = 'crossfade') =>
       change(
         {
           ...input,
@@ -107,7 +127,7 @@ export function createAudioOnAir(): AudioOnAir {
           audio: { music: activatedMusic(scene, input.audio.music) },
           silence: false,
         },
-        'activate',
+        kind === 'cut' ? 'cut' : 'activate',
       ),
     showActiveScene: (scene, library, kind, missing) =>
       change(
@@ -146,6 +166,9 @@ export function createAudioOnAir(): AudioOnAir {
     setSilence: (on) => change({ ...input, silence: on }, 'silence'),
     setMasterVolume: (masterVolume) => change({ ...input, masterVolume }, 'volume'),
     masterVolume: () => input.masterVolume,
+    setPlayDurations: ({ activateDurationMs, musicCrossfadeMs }) => {
+      input = { ...input, durations: { activateDurationMs, musicCrossfadeMs } };
+    },
     subscribe: (listener) => {
       const own = (snapshot: AudioMix) => listener(snapshot);
       listeners.add(own);

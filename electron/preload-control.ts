@@ -51,8 +51,12 @@ const bridge: ControlBridge = {
   onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
   openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
   closeCampaign: () => invoke('onAir:close-campaign'),
-  activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
+  activateScene: (sceneId, options) =>
+    invoke('onAir:activate-scene', { sceneId, ...(options?.forceCut && { forceCut: true }) }),
+  activateNextTo: (direction, options) =>
+    invoke('onAir:activate-next', { direction, ...(options?.forceCut && { forceCut: true }) }),
   setBlackout: (on) => invoke('onAir:set-blackout', { on }),
+  toggleBlackout: () => invoke('onAir:toggle-blackout'),
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
   createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
   editScene: (campaignId, sceneId, edit) => invoke('scenes:edit', { campaignId, sceneId, edit }),
@@ -108,6 +112,10 @@ const bridge: ControlBridge = {
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
   setFadeDuration: (fadeDurationMs) => invoke('settings:set-fade-duration', { fadeDurationMs }),
   setMasterVolume: (masterVolume) => invoke('settings:set-master-volume', { masterVolume }),
+  setActivateDuration: (activateDurationMs) =>
+    invoke('settings:set-activate-duration', { activateDurationMs }),
+  setMusicCrossfade: (musicCrossfadeMs) =>
+    invoke('settings:set-music-crossfade', { musicCrossfadeMs }),
   getSounding: () => invoke('audio:get-sounding'),
   setSilence: (on) => invoke('audio:set-silence', { on }),
   toggleSilence: () => invoke('audio:toggle-silence'),

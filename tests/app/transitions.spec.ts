@@ -185,3 +185,138 @@ test('Activating during Blackout keeps the broadcast black while the Transition 
     'true',
   );
 });
+
+/** The editor of the Selected Scene, opened on Scene `name` from the Scene list. */
+async function openScene(controlWindow: Page, name: string) {
+  await controlWindow
+    .getByRole('list', { name: 'Scènes de la campagne' })
+    .getByRole('button', { name, exact: true })
+    .click();
+  const editor = controlWindow.getByRole('region', { name: 'Scène ouverte' });
+  await expect(editor.getByRole('heading', { name, exact: true })).toBeVisible();
+  return editor;
+}
+
+/**
+ * Records, in the Broadcast window, each picture layer drawn dissolving over some time (what a
+ * Cut must never show), once, as "<its Backgrounds> over <duration>". Returns the reader.
+ */
+async function recordDissolves(broadcastWindow: Page) {
+  await broadcastWindow.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { dissolves: string[] }).dissolves = seen;
+    new MutationObserver(() => {
+      for (const layer of document.querySelectorAll<HTMLElement>(
+        '.canvas-layer[data-transition="dissolving"]',
+      )) {
+        const duration = layer.style.getPropertyValue('--transition-duration');
+        const backgrounds = [...layer.querySelectorAll('[data-background-id]')]
+          .map((item) => item.getAttribute('data-background-id'))
+          .join(' ');
+        const entry = `${backgrounds} over ${duration}`;
+        if (duration !== '0ms' && !seen.includes(entry)) seen.push(entry);
+      }
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+  return () =>
+    broadcastWindow.evaluate(() => (window as unknown as { dissolves: string[] }).dissolves);
+}
+
+test('A Scene set to Cut replaces the broadcast picture at once, and keeps its Transition', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  const { cantina, hangar, broadcastWindow, activate } = await twoScenes(regie);
+  const views = onAirViews(controlWindow, broadcastWindow);
+  await activate(cantina.id);
+  for (const view of views) {
+    await expect
+      .poll(() => layers(view))
+      .toEqual([{ phase: 'shown', backgrounds: [cantina.background] }]);
+  }
+
+  // The Game Master sets Hangar's Transition to Cut, then Activates it.
+  let editor = await openScene(controlWindow, 'Hangar');
+  await editor.getByRole('combobox', { name: 'Transition' }).selectOption({ label: 'Cut' });
+  await expect(
+    editor.getByRole('button', { name: 'Annuler : régler la transition sur Cut' }),
+  ).toBeVisible();
+  const dissolves = await recordDissolves(broadcastWindow);
+  await editor.getByRole('button', { name: 'Activer', exact: true }).click();
+
+  for (const view of views) {
+    await expect
+      .poll(() => layers(view))
+      .toEqual([{ phase: 'shown', backgrounds: [hangar.background] }]);
+    await expect(view.locator('.canvas-title')).toHaveText('Le hangar');
+  }
+  expect(await dissolves()).toEqual([]);
+
+  // Saved with the Scene.
+  await controlWindow.reload();
+  editor = await openScene(controlWindow, 'Hangar');
+  await expect(editor.getByRole('combobox', { name: 'Transition' })).toHaveValue('cut');
+});
+
+test('Shift+click on Activate forces a Cut once and leaves the Scene’s Crossfade as it is', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  const { cantina, hangar, broadcastWindow, activate } = await twoScenes(regie);
+  await activate(cantina.id);
+  await expect
+    .poll(() => layers(broadcastWindow.locator('main.broadcast-screen')))
+    .toEqual([{ phase: 'shown', backgrounds: [cantina.background] }]);
+
+  const editor = await openScene(controlWindow, 'Hangar');
+  const transition = editor.getByRole('combobox', { name: 'Transition' });
+  await expect(transition).toHaveValue('crossfade');
+  const dissolves = await recordDissolves(broadcastWindow);
+  await editor
+    .getByRole('button', { name: 'Activer', exact: true })
+    .click({ modifiers: ['Shift'] });
+
+  for (const view of onAirViews(controlWindow, broadcastWindow)) {
+    await expect
+      .poll(() => layers(view))
+      .toEqual([{ phase: 'shown', backgrounds: [hangar.background] }]);
+  }
+  expect(await dissolves()).toEqual([]);
+  await expect(transition).toHaveValue('crossfade');
+
+  // Activated again without Shift, Hangar crossfades as prepared.
+  await activate(cantina.id);
+  await editor.getByRole('button', { name: 'Activer', exact: true }).click();
+  await expect.poll(dissolves).toContain(`${hangar.background} over 1500ms`);
+});
+
+test('a Broadcast window reloaded mid-session shows what is on air at once, with no Transition replayed', async ({
+  regie,
+}) => {
+  const { cantina, broadcastWindow, activate } = await twoScenes(regie);
+  await activate(cantina.id);
+  const broadcast = onAirViews(regie.controlWindow, broadcastWindow)[1];
+  await expect
+    .poll(() => layers(broadcast))
+    .toEqual([{ phase: 'shown', backgrounds: [cantina.background] }]);
+
+  // Every Transition phase the reloaded window ever draws, from its first frame.
+  await broadcastWindow.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { phases: string[] }).phases = seen;
+    new MutationObserver(() => {
+      for (const layer of document.querySelectorAll('.canvas-layer')) {
+        seen.push(layer.getAttribute('data-transition') ?? '');
+      }
+    }).observe(document, { subtree: true, childList: true, attributes: true });
+  });
+  await broadcastWindow.reload();
+
+  await expect
+    .poll(() => layers(broadcast))
+    .toEqual([{ phase: 'shown', backgrounds: [cantina.background] }]);
+  const phases = await broadcastWindow.evaluate(
+    () => (window as unknown as { phases: string[] }).phases,
+  );
+  expect(new Set(phases)).toEqual(new Set(['shown']));
+});

@@ -27,7 +27,19 @@ import type {
   Settings,
   Soundboard,
   ThemeId,
+  TransitionKind,
 } from './domain.js';
+
+/**
+ * How to Activate a Scene. `forceCut`: a Cut this once, whatever the Scene's own Transition
+ * (Shift held on Activate); the Scene's Transition stays as it is.
+ */
+export interface ActivateOptions {
+  forceCut?: boolean;
+}
+
+/** A way through the running order: towards its end (`next`) or its start (`previous`). */
+export type SceneDirection = 'next' | 'previous';
 
 /**
  * One edit command on a Scene's composition, applied by the app core (core/sceneEdits.ts).
@@ -118,6 +130,8 @@ export type SceneEdit =
   | { kind: 'set-ambience-volume'; mediaId: MediaId; volume: number }
   /** Sets the Scene's Ambience level (0..1), which applies to all its Ambiences. */
   | { kind: 'set-ambience-level'; level: number }
+  /** Sets the Scene's entry Transition: how its picture comes in when it is Activated. */
+  | { kind: 'set-transition'; transition: TransitionKind }
   /**
    * Replaces the Scene's Notes (sent as the Game Master types). Never on air, and never in the
    * Scene undo history: the Notes editor has its own undo and redo.
@@ -273,13 +287,34 @@ export interface InvokeChannels {
   'onAir:open-campaign': { payload: { campaignId: CampaignId }; result: OnAirState };
   /** Close the open Campaign: nothing is on air. */
   'onAir:close-campaign': { payload: void; result: OnAirState };
-  /** Activate a Scene of the open Campaign: it goes on air. Fails if no Campaign is open. */
-  'onAir:activate-scene': { payload: { sceneId: SceneId }; result: OnAirState };
+  /**
+   * Activate a Scene of the open Campaign: it goes on air, with its own Transition or, when
+   * `forceCut`, a Cut (the Scene's Transition stays as it is). Fails if no Campaign is open.
+   */
+  'onAir:activate-scene': {
+    payload: { sceneId: SceneId } & ActivateOptions;
+    result: OnAirState;
+  };
+  /**
+   * Activate the Scene after or before the Active Scene in the running order (the first when
+   * nothing is on air), resolved in the main process in turn with the other commands: two quick
+   * presses advance two Scenes. Past either end, nothing changes. Fails if no Campaign is open.
+   */
+  'onAir:activate-next': {
+    payload: { direction: SceneDirection } & ActivateOptions;
+    result: OnAirState;
+  };
   /**
    * Start (`on`) or end Blackout: the broadcast fades to black, the Active Scene is unchanged.
    * Fails if no Campaign is open.
    */
   'onAir:set-blackout': { payload: { on: boolean }; result: OnAirState };
+  /**
+   * Start Blackout when it is off, end it when it is on, decided in the main process from the
+   * state the commands before left: two quick presses start then end it. Fails if no Campaign
+   * is open.
+   */
+  'onAir:toggle-blackout': { payload: void; result: OnAirState };
   /** The Scenes of a Campaign, in running order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
   /** Create an empty Scene, last in the running order; fails with a French message for an empty name. */
@@ -445,7 +480,8 @@ export interface InvokeChannels {
   'notices:take': { payload: void; result: string[] };
   /**
    * The global Settings: home page theme, window bounds, each Campaign's last Active Scene
-   * (for highlighting only: nothing goes on air after a restart) and the fade duration.
+   * (for highlighting only: nothing goes on air after a restart), the fade duration, the Master
+   * volume, the Activate duration and the Music crossfade duration.
    */
   'settings:get': { payload: void; result: Settings };
   /** Change the theme of the Campaign list home page. */
@@ -457,6 +493,16 @@ export interface InvokeChannels {
   'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
   /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
   'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
+  /**
+   * Change the Activate duration (milliseconds, bounds in core/fades.ts): the next Activate
+   * with a Crossfade dissolves the picture and fades the audio over it.
+   */
+  'settings:set-activate-duration': { payload: { activateDurationMs: number }; result: Settings };
+  /**
+   * Change the Music crossfade duration (milliseconds, bounds in core/fades.ts): the next track
+   * picked crossfades over it.
+   */
+  'settings:set-music-crossfade': { payload: { musicCrossfadeMs: number }; result: Settings };
   /**
    * The current mix, for the audio engine (on start and on every reload of the Control window,
    * when the main process forgets what the old engine reported).
@@ -579,8 +625,10 @@ export interface AudioEngineBridge {
 export interface ControlBridge extends BroadcastBridge {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   closeCampaign(): Promise<OnAirState>;
-  activateScene(sceneId: SceneId): Promise<OnAirState>;
+  activateScene(sceneId: SceneId, options?: ActivateOptions): Promise<OnAirState>;
+  activateNextTo(direction: SceneDirection, options?: ActivateOptions): Promise<OnAirState>;
   setBlackout(on: boolean): Promise<OnAirState>;
+  toggleBlackout(): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
@@ -635,6 +683,8 @@ export interface ControlBridge extends BroadcastBridge {
   setHomeTheme(theme: ThemeId): Promise<Settings>;
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   setMasterVolume(masterVolume: number): Promise<Settings>;
+  setActivateDuration(activateDurationMs: number): Promise<Settings>;
+  setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
   toggleSilence(): Promise<AudioSounding>;

@@ -8,3 +8,6 @@ Source: #41 report, 2026-11-12. True as of `m2-audio-mvp@2879653`.
 - Keys shown as `kbd` with `aria-keyshortcuts` on pads and the Silence button.
 - Broadcast window key presses never reach the Control window.
 - Test quirk: Playwright's Numpad press into a text field types nothing; typing test uses Digit1.
+- #49 (2026-11-12): Activate with or without a forced Cut is `activateScene` + `activateOptionsOf(event)` in `src/activate.ts`. #56's Ctrl+Enter / Ctrl+↓ / Ctrl+↑ call them; Shift on the key press gives the Cut.
+- #56 (2026-11-12): Ctrl+Entrée Activates the Selected Scene, Ctrl+↓ / Ctrl+↑ the Scene after / before the Active Scene (`sceneNextTo`; nothing on air → first; no wrap; Selected Scene unchanged), handled in `ScenesPanel`. B toggles Blackout (`OnAirMonitor`). Activate shortcuts are in `SHIFT_FREE`: they match with or without Shift, and handlers now receive the key press (`ShortcutHandlers` take `(press) => void`) to read Shift for `activateOptionsOf`. None repeat.
+- #56: `isTypingIn` also counts anything inside editable content (`closest('[contenteditable]:not([contenteditable="false"])')`), so a Notes image's resize handle is typing. Ctrl+↓/↑ have no button: their keys are in the Activate button's title.

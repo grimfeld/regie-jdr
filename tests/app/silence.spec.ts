@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import type { ControlBridge } from '../../shared/contract';
 import {
   createCampaign,
-  dragOnScreen,
+  dropAndWait,
   expect,
   launchApp,
   stubFilePicker,
@@ -80,9 +80,11 @@ async function taverneOnAir(regie: RunningApp, seconds = 2) {
   await panel.getByLabel('Nom de la scène').fill('Taverne');
   await panel.getByRole('button', { name: 'Créer la scène' }).click();
   await expect(editor(page).getByRole('heading', { name: 'Taverne', exact: true })).toBeVisible();
-  await soundInLibrary(page, 'Auberge')
-    .locator('.media-audio-icon')
-    .dragTo(musicList(page).locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(page, 'Auberge').locator('.media-audio-icon'),
+    musicList(page).locator('xpath=..'),
+    musicList(page).getByRole('listitem').filter({ hasText: 'Auberge' }),
+  );
   await expect(musicList(page).getByRole('listitem')).toHaveText([/Auberge/]);
   await editor(page).getByRole('button', { name: 'Activer', exact: true }).click();
   await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'playing');
@@ -151,11 +153,15 @@ test('a pad pressed during Silence sounds and Silence stays; switching Campaign 
   const page = regie.controlWindow;
   await taverneOnAir(regie);
   await importSounds(regie, 'Bruitage', 1, 'Épée');
-  await dragOnScreen(soundInLibrary(page, 'Épée').locator('.media-audio-icon'), soundboard(page), {
-    targetPosition: { x: 40, y: 20 },
-  });
   const pad = soundboard(page).getByRole('button', { name: 'Jouer Épée' });
-  await expect(pad).toBeVisible();
+  await dropAndWait(
+    soundInLibrary(page, 'Épée').locator('.media-audio-icon'),
+    soundboard(page),
+    pad,
+    {
+      targetPosition: { x: 40, y: 20 },
+    },
+  );
 
   await silenceButton(page).click();
   await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'paused');

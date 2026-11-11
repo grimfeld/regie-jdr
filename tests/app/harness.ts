@@ -1,5 +1,6 @@
 import {
   _electron as electron,
+  expect,
   test as base,
   type ElectronApplication,
   type Locator,
@@ -63,7 +64,7 @@ export const appPath = repoRoot;
  * drop, and how far apart two places are changes whenever a panel grows (the Notes, #51): see
  * docs/wiki/problem-flaky-app-tests.md.
  */
-export async function dragOnScreen(
+async function dragOnScreen(
   source: Locator,
   target: Locator,
   options?: Parameters<Locator['dragTo']>[1],
@@ -77,6 +78,23 @@ export async function dragOnScreen(
   const middle = (Math.min(from.top, to.top) + Math.max(from.bottom, to.bottom)) / 2;
   await source.page().evaluate((y) => window.scrollTo(0, y - window.innerHeight / 2), middle);
   await source.dragTo(target, options);
+}
+
+/**
+ * Drags `source` onto `target` as `dragOnScreen` does, and returns only once `dropped` is
+ * shown: the drop's visible end state (its new row, pad or image; for a refused drop, what
+ * shows nothing changed). Every app-test drag and drop goes through here: the next action
+ * must not start while the drop's answer can still move the page (a new row pushes the drag
+ * source down, and the next drag then drops nothing). See docs/wiki/problem-flaky-app-tests.md.
+ */
+export async function dropAndWait(
+  source: Locator,
+  target: Locator,
+  dropped: Locator,
+  options?: Parameters<Locator['dragTo']>[1],
+): Promise<void> {
+  await dragOnScreen(source, target, options);
+  await expect(dropped).toBeVisible();
 }
 
 /** Replaces the native file picker in the main process: the next pickers return `filePaths`. */
@@ -259,4 +277,4 @@ export const test = base.extend<{ regie: RunningApp }>({
   },
 });
 
-export { expect } from '@playwright/test';
+export { expect };

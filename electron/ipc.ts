@@ -30,11 +30,14 @@ const failurePrefix: Record<IpcFailureCode, string> = {
  * policy and payload guards of core/ipc.ts first; rejects are logged as warnings and the
  * caller's promise fails with an error mentioning "rejected". A handler that throws is logged
  * with its stack, which stays in the main process: the caller gets the error's message only.
+ * Each handler call that runs is handed to `track` (settled, never failing), so the app can
+ * finish it before quitting: a window's last message, sent as it closes, still gets saved.
  */
 export function registerHandlers(
   handlers: Handlers,
   roleOf: (sender: WebContents) => WindowRole | undefined,
   log: Pick<Logger, 'warn' | 'error'>,
+  track: (call: Promise<unknown>) => void = () => undefined,
 ): void {
   for (const channel of invokeChannels) {
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
@@ -45,8 +48,10 @@ export function registerHandlers(
         throw new Error(message);
       }
       const handler = handlers[channel] as (payload: unknown) => unknown;
+      const call = Promise.resolve().then(() => handler(verdict.payload));
+      track(call.catch(() => undefined));
       try {
-        return await handler(verdict.payload);
+        return await call;
       } catch (error) {
         const message = `${failurePrefix.failed}: "${channel}"`;
         log.error(message, error);

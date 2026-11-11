@@ -16,6 +16,7 @@ import type {
   Overlay,
   Scene,
   SceneAmbience,
+  TransitionKind,
 } from '../shared/domain.js';
 import { CANVAS, clampZoom } from './canvas.js';
 import { isRecord } from './guards.js';
@@ -164,8 +165,8 @@ export type PlacementTarget = 'canvas' | 'backgrounds' | 'overlays';
 
 /**
  * The edit that places `image` dropped on `target`. On the canvas, Scenery becomes a Background
- * and a Character or a Reference image (shown to the players like a handout on the Scene) an
- * Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
+ * and a Character or a Reference image (a Reference placed on a Scene is then shown to the
+ * players) an Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
  * is moved to the nearest canvas edge). On a list, it becomes that type; an Overlay then goes to
  * the canvas centre. Every drag-and-drop placement (library or Explorer) goes through here.
  */
@@ -380,6 +381,8 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
       return withAmbience(scene, edit.mediaId, (item) => ({ ...item, volume: edit.volume }));
     case 'set-ambience-level':
       return { ...scene, volumes: { ...scene.volumes, ambience: edit.level } };
+    case 'set-transition':
+      return { ...scene, transition: edit.transition };
     case 'set-notes':
       return { ...scene, notes: edit.notes };
   }
@@ -415,6 +418,11 @@ function withoutMusic(scene: Scene, mediaId: MediaId): MediaId[] {
 
 function isId(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
+}
+
+/** Whether a value is a Transition kind: Crossfade or Cut. */
+export function isTransitionKind(value: unknown): value is TransitionKind {
+  return value === 'crossfade' || value === 'cut';
 }
 
 /** Text of a sane size for a message; the clean* functions apply the real limits. */
@@ -558,6 +566,10 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
       return isId(value.mediaId) ? { kind: 'remove-music', mediaId: value.mediaId } : undefined;
     case 'set-music-level':
       return isUnit(value.level) ? { kind: 'set-music-level', level: value.level } : undefined;
+    case 'set-transition':
+      return isTransitionKind(value.transition)
+        ? { kind: 'set-transition', transition: value.transition }
+        : undefined;
     case 'set-notes': {
       const notes = parseNotes(value.notes);
       return notes && { kind: 'set-notes', notes };

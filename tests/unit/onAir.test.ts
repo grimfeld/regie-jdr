@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createOnAir, editorPictureOf, latestOnAir, onAirSceneOf } from '../../core/onAir';
+import {
+  createOnAir,
+  editorPictureOf,
+  latestOnAir,
+  onAirSceneOf,
+  transitionOnActivate,
+} from '../../core/onAir';
 import { applySceneEdit } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { Media, OnAirScene, Scene } from '../../shared/domain';
@@ -317,12 +323,67 @@ describe('a Transition on Activate', () => {
     expect(onAir.setFadeDuration(900).transition).toEqual(transition);
   });
 
+  it('crossfades over the Activate duration setting from the next Activate on; a Cut stays instant', () => {
+    const onAir = opened();
+    const { transition, version } = onAir.activateScene('cantina', cantina);
+    onAir.setActivateDuration(4000);
+    // A Transition carries its own duration: nothing on air changes.
+    expect(onAir.current()).toMatchObject({ transition, version });
+    expect(onAir.activateScene('hangar', blank).transition).toMatchObject({
+      kind: 'crossfade',
+      durationMs: 4000,
+    });
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      kind: 'cut',
+      durationMs: 0,
+    });
+  });
+
+  it('cuts to the incoming Scene at once: a Cut takes no time', () => {
+    const onAir = opened();
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.activateScene('hangar', blank, 'cut')).toMatchObject({
+      activeSceneId: 'hangar',
+      scene: blank,
+      transition: { ...crossfade(2, 'cantina', 'hangar'), kind: 'cut', durationMs: 0 },
+    });
+  });
+
+  it('cuts in from black, or mid-Transition, like a Crossfade would start', () => {
+    const onAir = opened();
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      kind: 'cut',
+      from: null,
+    });
+    onAir.activateScene('hangar', blank);
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      id: 3,
+      kind: 'cut',
+      from: 'hangar',
+    });
+  });
+
   it('forgets the latest Transition when the Campaign changes, and keeps counting', () => {
     const onAir = opened();
     onAir.activateScene('cantina', cantina);
     expect(onAir.openCampaign('warhammer').transition).toBeNull();
     expect(onAir.activateScene('forge', blank).transition).toEqual(crossfade(2, null, 'forge'));
     expect(onAir.closeCampaign().transition).toBeNull();
+  });
+});
+
+describe('the Transition Activate starts', () => {
+  it('is the Scene’s own Transition', () => {
+    expect(transitionOnActivate({ transition: 'crossfade' })).toBe('crossfade');
+    expect(transitionOnActivate({ transition: 'cut' }, {})).toBe('cut');
+  });
+
+  it('is a Cut when forced, whatever the Scene’s Transition, which stays as it is', () => {
+    const scene = { transition: 'crossfade' } as const;
+    expect(transitionOnActivate(scene, { forceCut: true })).toBe('cut');
+    expect(transitionOnActivate({ transition: 'cut' }, { forceCut: true })).toBe('cut');
+    expect(transitionOnActivate(scene, { forceCut: false })).toBe('crossfade');
+    expect(scene).toEqual({ transition: 'crossfade' });
   });
 });
 
@@ -347,6 +408,7 @@ describe('what of a Scene goes on air', () => {
     campaignId: 'c1',
     name: 'Embuscade des cultistes',
     title: 'Le vieux moulin',
+    transition: 'crossfade',
     backgrounds: [
       { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1.5, focus: centre, visible: true },
       { id: 'b2', mediaId: 'm2', fit: 'contain', zoom: 1, focus: { x: 0, y: 1 }, visible: false },
@@ -494,6 +556,7 @@ describe('what of a Scene the editor draws', () => {
     campaignId: 'c1',
     name: 'Embuscade des cultistes',
     title: 'Le vieux moulin',
+    transition: 'crossfade',
     backgrounds: [
       { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1, focus: centre, visible: true },
       { id: 'b2', mediaId: 'm1', fit: 'contain', zoom: 2, focus: centre, visible: false },

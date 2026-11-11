@@ -32,7 +32,12 @@ import type {
   SoundingVoice,
   VoiceState,
 } from '../shared/domain.js';
-import { AUDIO_FADE_MS, type AudioChange } from './fades.js';
+import {
+  audioFadeMs,
+  DEFAULT_PLAY_DURATIONS,
+  type AudioChange,
+  type PlayDurations,
+} from './fades.js';
 import { isRecord } from './guards.js';
 import { mediaAddress } from './mediaAddress.js';
 import { SceneError } from './sceneEdits.js';
@@ -56,11 +61,17 @@ export interface MixInput {
    * main process cuts those sounding when Silence starts (core/padVoices.ts). Absent: off.
    */
   silence?: boolean;
+  /**
+   * The Activate and Music crossfade duration settings, which time an Activate with a
+   * Crossfade and a track picked. Their defaults if absent.
+   */
+  durations?: PlayDurations;
 }
 
 /** The mix for `input`, fading over the duration of `change`. Its version is the holder's. */
 export function mixOf(input: MixInput, change: AudioChange): Omit<AudioMix, 'version'> {
-  const { scene, library, masterVolume, audio, silence, missing = new Set<MediaId>() } = input;
+  const { scene, library, masterVolume, audio, silence } = input;
+  const { missing = new Set<MediaId>(), durations = DEFAULT_PLAY_DURATIONS } = input;
   const voices: AudioVoice[] = [];
   const left: MissingVoice[] = [];
   /** Plays `voice`, unless its file is missing: then it is only listed as missing. */
@@ -82,7 +93,7 @@ export function mixOf(input: MixInput, change: AudioChange): Omit<AudioMix, 'ver
     }
   }
   const heard = silence ? voices.map((voice) => ({ ...voice, gain: 0, playing: false })) : voices;
-  return { voices: heard, missing: left, fadeMs: AUDIO_FADE_MS[change] };
+  return { voices: heard, missing: left, fadeMs: audioFadeMs(change, durations) };
 }
 
 /** The audio Media `mediaId` of the library, or null when it is not one (deleted, an image). */
@@ -170,7 +181,7 @@ export function musicWithPlayback(
   return first;
 }
 
-/** How a Scene edit on the Active Scene changes what is heard (its fade, AUDIO_FADE_MS). */
+/** How a Scene edit on the Active Scene changes what is heard (its fade, see audioFadeMs). */
 export function audioChangeOf(edit: SceneEdit): AudioChange {
   switch (edit.kind) {
     // Adding or moving Music does not start it: the current Music plays on as it was.
@@ -206,6 +217,7 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
     case 'set-title':
     case 'set-label-text':
     case 'set-label-visible':
+    case 'set-transition': // Only the next Activate uses it.
     case 'set-notes': // Never on air: editScene does not show Notes.
       return 'volume';
   }

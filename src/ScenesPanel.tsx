@@ -11,8 +11,10 @@ import type {
   SceneId,
 } from '../shared/domain';
 import type {
+  ActivateOptions,
   ControlBridge,
   MediaImportResult,
+  SceneDirection,
   SceneEdit,
   TransientEdit,
   UndoState,
@@ -23,7 +25,7 @@ import { editorPictureOf } from '../core/onAir';
 import { moveInRunningOrder } from '../core/runningOrder';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
-import { useShortcuts, type EditShortcut } from './keyboard';
+import { keyLabelOf, useShortcuts, type EditShortcut, type KeyPress } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
@@ -31,11 +33,22 @@ import { SceneList } from './SceneList';
 import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
+import { SceneTransitionField } from './SceneTransitionField';
+import { activateNextTo, activateOptionsOf, activateScene } from './activate';
 import { SceneNotes, type NotesImageSource } from './SceneNotes';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
 import { useBackgroundFraming } from './useBackgroundFraming';
 import { useOverlayTransforms } from './useOverlayTransforms';
+
+/**
+ * Scene Notes changed outside the Notes editor: a deleted Media's images were removed from the
+ * Notes of `sceneIds`. `revision` changes with each such change.
+ */
+export interface NotesChange {
+  revision: number;
+  sceneIds: readonly SceneId[];
+}
 
 interface Props {
   campaignId: CampaignId;
@@ -44,10 +57,11 @@ interface Props {
   mediaRevision: number;
   /**
    * Changes when a deleted Media's images were removed from Scene Notes: once the Scenes are read
-   * again, the Notes editor starts again on the cleaned Notes, its own undo history with it (the
-   * history could bring the deleted Media back).
+   * again, if the open Scene's Notes were among them, the Notes editor starts again on the
+   * cleaned Notes, its own undo history with it (the history could bring the deleted Media
+   * back). Other Notes leave the editor and its history as they are.
    */
-  notesRevision: number;
+  notesChange: NotesChange;
   /**
    * Image files dropped on the editor, or pasted or dropped into the Notes, were imported: the
    * library reads its Media again.
@@ -73,13 +87,18 @@ export function ScenesPanel({
   campaignId,
   control,
   mediaRevision,
-  notesRevision,
+  notesChange,
   onMediaImported,
   notesSlot,
 }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
-  /** The `notesRevision` the Scenes were last read for: the Notes editor's key. */
-  const [notesRead, setNotesRead] = useState(notesRevision);
+  /**
+   * The Notes change the Scenes were last read for, and the Notes editor's key, which changes
+   * only when that change touched the open Scene's Notes.
+   */
+  const [notesRead, setNotesRead] = useState({ revision: notesChange.revision, editorKey: 0 });
+  /** The open Scene's id as last rendered (`openedId` below), for the read below. */
+  const openedNow = useRef<SceneId | undefined>(undefined);
   /** The Scene the Game Master opened; undefined until they open one (see `selected`). */
   const [selectedId, setSelectedId] = useState<SceneId | undefined>(undefined);
   // Which Scene is on air.
@@ -100,7 +119,12 @@ export function ScenesPanel({
         if (cancelled) return;
         // Together, so the Notes editor starts again on the Notes just read, never older ones.
         setScenes(list);
-        setNotesRead(notesRevision);
+        setNotesRead((read) => {
+          if (read.revision === notesChange.revision) return read;
+          const opened = openedNow.current;
+          const touched = opened !== undefined && notesChange.sceneIds.includes(opened);
+          return { revision: notesChange.revision, editorKey: read.editorKey + (touched ? 1 : 0) };
+        });
       })
       .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
@@ -108,7 +132,7 @@ export function ScenesPanel({
     return () => {
       cancelled = true;
     };
-  }, [control, campaignId, mediaRevision, notesRevision]);
+  }, [control, campaignId, mediaRevision, notesChange]);
 
   // The library's images, to draw and to place, and its sounds, to name. Read again whenever a
   // Scene is opened, when the picker gets focus and when a sound is dropped, so Media imported
@@ -155,11 +179,27 @@ export function ScenesPanel({
       ? undefined
       : (scenes.find((scene) => scene.id === lastActiveId) ?? scenes.at(0))?.id);
   const selected = scenes.find((scene) => scene.id === openedId);
+  useEffect(() => {
+    openedNow.current = openedId;
+  });
   const undoState = useUndoState(control, campaignId, selected);
   const isActive = (scene: Scene) =>
     onAir?.campaignId === campaignId && onAir.activeSceneId === scene.id;
   const hasActive = onAir?.campaignId === campaignId && onAir.activeSceneId !== null;
   const isLastActive = (scene: Scene) => !hasActive && scene.id === lastActiveId;
+
+  /** Activates the Scene after or before the Active Scene; the Selected Scene stays as it is. */
+  function activateNext(direction: SceneDirection, press: KeyPress) {
+    if (control) void activateNextTo(control, direction, activateOptionsOf(press));
+  }
+  // The Activate shortcuts, anywhere in the window except while typing; Shift forces a Cut.
+  useShortcuts({
+    activate: (press) => {
+      if (control && selected) void activateScene(control, selected.id, activateOptionsOf(press));
+    },
+    'activate-next': (press) => activateNext('next', press),
+    'activate-previous': (press) => activateNext('previous', press),
+  });
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -323,15 +363,6 @@ export function ScenesPanel({
     }
   }
 
-  async function activate(scene: Scene) {
-    if (!control) return;
-    try {
-      await control.activateScene(scene.id);
-    } catch (error) {
-      showNotice(errorMessage(error));
-    }
-  }
-
   /**
    * Moves a Scene in the running order: shown at once, then saved. A Campaign-level command, not
    * a Scene edit: no Scene's undo history records it.
@@ -423,7 +454,7 @@ export function ScenesPanel({
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
           notesSlot={notesSlot}
-          notesRevision={notesRead}
+          notesRevision={notesRead.editorKey}
           undoState={undoState}
           onTravel={(shortcut) => void travel(selected, shortcut)}
           onRefreshImages={refreshImages}
@@ -441,7 +472,9 @@ export function ScenesPanel({
             control?.pickMusic(mediaId).catch((error: unknown) => showNotice(errorMessage(error)));
           }}
           onAddNotesImages={imagesForNotes}
-          onActivate={() => void activate(selected)}
+          onActivate={(options) => {
+            if (control) void activateScene(control, selected.id, options);
+          }}
           onDuplicate={() => void duplicate(selected)}
           onDelete={() => void remove(selected)}
         />
@@ -494,7 +527,8 @@ interface EditorProps {
   onDrop: (event: DragEvent, target: PlacementTarget, dropPoint?: NormalizedPoint) => void;
   /** The images to insert into the Notes for something pasted or dropped there. */
   onAddNotesImages: (source: NotesImageSource) => Promise<ImageMedia[]>;
-  onActivate: () => void;
+  /** Activates the Scene: with its own Transition, or a Cut when `options.forceCut`. */
+  onActivate: (options: ActivateOptions) => void;
   /** Duplicates the Scene; the copy opens in the editor. */
   onDuplicate: () => void;
   /** Deletes the Scene, once the Game Master has confirmed. */
@@ -540,6 +574,9 @@ function SceneEditor(props: EditorProps) {
   }
   // Ctrl+Z / Ctrl+Y anywhere in the window, except while typing in a field.
   useShortcuts({ undo: () => travel('undo'), redo: () => travel('redo') });
+  const activateKey = keyLabelOf('activate');
+  const nextKey = keyLabelOf('activate-next');
+  const previousKey = keyLabelOf('activate-previous');
 
   async function submitRename(event: FormEvent) {
     event.preventDefault();
@@ -579,8 +616,13 @@ function SceneEditor(props: EditorProps) {
           <button className="secondary-button" onClick={() => setConfirmingDelete(true)}>
             <Trash2 size={14} /> Supprimer
           </button>
-          <button className="primary-button" onClick={props.onActivate}>
-            Activer
+          <button
+            className="primary-button"
+            title={`Activer cette scène (${activateKey}). ${nextKey} / ${previousKey} : activer la scène suivante / précédente. Avec Maj : en Cut`}
+            aria-keyshortcuts={activateKey}
+            onClick={(event) => props.onActivate(activateOptionsOf(event))}
+          >
+            Activer <kbd aria-hidden>{activateKey}</kbd>
           </button>
         </div>
       ) : (
@@ -609,6 +651,7 @@ function SceneEditor(props: EditorProps) {
       )}
       <UndoBar state={props.undoState} onTravel={travel} />
       <SceneTitleField title={scene.title} onEdit={onEditShowingFailure} />
+      <SceneTransitionField transition={scene.transition} onEdit={onEditShowingFailure} />
 
       {confirmingDelete && (
         <div

@@ -579,6 +579,9 @@ button {
 .fade-setting-field input {
   width: 64px;
 }
+.fade-setting-field + .fade-setting-field {
+  margin-top: 8px;
+}
 .theme-footnote {
   font-size: 9px;
   line-height: 1.6;
@@ -1319,7 +1322,9 @@ button {
   font-size: 11px;
   color: var(--text-secondary);
 }
-.now-playing .panel-heading button kbd {
+.now-playing .panel-heading button kbd,
+.scene-editor-heading button kbd,
+.on-air-monitor > button kbd {
   font-size: 11px;
   opacity: 0.75;
 }
@@ -1426,6 +1431,8 @@ button {
   cursor: default;
 }
 .scene-notes-editor .tiptap {
+  /* The Notes images' widths are % of this text width, as cqi (src/NotesImage.tsx). */
+  container-type: inline-size;
   min-height: 120px;
   padding: 8px;
   color: var(--text);

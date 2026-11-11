@@ -11,7 +11,7 @@ import {
   pickedMusic,
   soundingOf,
 } from '../../core/audioMix';
-import { AUDIO_FADE_MS } from '../../core/fades';
+import { ACTIVATE_DURATION_MS, AUDIO_FADE_MS } from '../../core/fades';
 import type { SceneEdit } from '../../shared/contract';
 import type { AudioMedia, AudioMix, Media, Scene, SoundingState } from '../../shared/domain';
 import { emptyNotes } from '../../core/notes';
@@ -50,6 +50,7 @@ function scene(changes: Partial<Scene> = {}): Scene {
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
     notes: emptyNotes(),
+    transition: 'crossfade',
     ...changes,
   };
 }
@@ -69,7 +70,7 @@ describe('the mix', () => {
     );
 
     expect(mix).toEqual({
-      fadeMs: AUDIO_FADE_MS.activate,
+      fadeMs: ACTIVATE_DURATION_MS.default,
       missing: [],
       voices: [
         {

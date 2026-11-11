@@ -256,3 +256,32 @@ test('plain-text Notes from an older data folder become one paragraph per line',
     await restarted.app.close();
   }
 });
+
+test('Notes typed just before the app quits are saved', async ({ regie }) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Le moulin');
+  await notes(page).click();
+  await page.keyboard.type('Le meunier ment');
+  // Quit at once, well within the save delay after the last key.
+  await regie.app.close();
+  expect(await storedNotes(regie.dataDir)).toContain('Le meunier ment');
+
+  const restarted = await launchApp(regie.dataDir);
+  try {
+    await expect(notes(restarted.controlWindow)).toContainText('Le meunier ment');
+  } finally {
+    await restarted.app.close();
+  }
+});
+
+test('Notes typed just before the Control window reloads are saved', async ({ regie }) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Le moulin');
+  await notes(page).click();
+  await page.keyboard.type('Le meunier ment');
+  await page.reload();
+  await expect(notes(page)).toContainText('Le meunier ment');
+  expect(await storedNotes(regie.dataDir)).toContain('Le meunier ment');
+});

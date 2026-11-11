@@ -191,8 +191,9 @@ describe('openZipArchive', () => {
     const folder = path.join(folders().campaignsFolder, id);
     expect((await fs.readdir(folder)).sort()).toEqual(['campaign.json', 'media', 'scenes.json']);
     expect(await fs.readFile(path.join(folder, 'media', `${HASH}.png`))).toEqual(PIXELS);
+    // Written at version 3, before Transitions: Import brings it to the current version.
     expect(JSON.parse(await fs.readFile(path.join(folder, 'scenes.json'), 'utf8'))).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       scenes: [],
     });
   });

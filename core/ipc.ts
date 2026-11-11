@@ -12,11 +12,13 @@
  *     subscription), plus the bridge interface in shared/contract.ts.
  */
 import type {
+  ActivateOptions,
   CampaignChanges,
   InvokeChannel,
   InvokeChannels,
   MediaImportKind,
   Payload,
+  SceneDirection,
   SceneEdit,
   SoundboardEdit,
   SoundboardLevel,
@@ -38,7 +40,7 @@ import { MAX_PASTED_IMAGE_BYTES } from './mediaAddress.js';
 import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
-import { parseFadeDuration } from './fades.js';
+import { parseActivateDuration, parseFadeDuration, parseMusicCrossfade } from './fades.js';
 import { parseAudioEngineReport } from './audioMix.js';
 import { parsePadReport } from './padVoices.js';
 import { parseSoundboardEdit } from './soundboard.js';
@@ -132,9 +134,39 @@ function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
   return fadeDurationMs === undefined ? INVALID : { fadeDurationMs };
 }
 
+function activateDurationOf(value: unknown): Parsed<{ activateDurationMs: number }> {
+  const activateDurationMs = isRecord(value)
+    ? parseActivateDuration(value.activateDurationMs)
+    : undefined;
+  return activateDurationMs === undefined ? INVALID : { activateDurationMs };
+}
+
+function musicCrossfadeOf(value: unknown): Parsed<{ musicCrossfadeMs: number }> {
+  const musicCrossfadeMs = isRecord(value)
+    ? parseMusicCrossfade(value.musicCrossfadeMs)
+    : undefined;
+  return musicCrossfadeMs === undefined ? INVALID : { musicCrossfadeMs };
+}
+
 function masterVolumeOf(value: unknown): Parsed<{ masterVolume: number }> {
   const masterVolume = isRecord(value) ? parseVolume(value.masterVolume) : undefined;
   return masterVolume === undefined ? INVALID : { masterVolume };
+}
+
+function activation(value: unknown): Parsed<{ sceneId: SceneId } & ActivateOptions> {
+  const scene = idOf('sceneId')(value);
+  if (scene === INVALID || !isRecord(value)) return INVALID;
+  const { forceCut } = value;
+  if (forceCut === undefined) return scene;
+  return typeof forceCut === 'boolean' ? { ...scene, forceCut } : INVALID;
+}
+
+function directionOf(value: unknown): Parsed<{ direction: SceneDirection } & ActivateOptions> {
+  if (!isRecord(value)) return INVALID;
+  const { direction, forceCut } = value;
+  if (direction !== 'next' && direction !== 'previous') return INVALID;
+  if (forceCut === undefined) return { direction };
+  return typeof forceCut === 'boolean' ? { direction, forceCut } : INVALID;
 }
 
 function engineReport(value: unknown): Parsed<AudioEngineReport> {
@@ -362,8 +394,10 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:get': { from: anyWindow, parse: noPayload },
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
-  'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
+  'onAir:activate-scene': { from: controlOnly, parse: onePayload(activation) },
+  'onAir:activate-next': { from: controlOnly, parse: onePayload(directionOf) },
   'onAir:set-blackout': { from: controlOnly, parse: onePayload(onOffOf) },
+  'onAir:toggle-blackout': { from: controlOnly, parse: noPayload },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
   'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },
@@ -399,6 +433,8 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
   'settings:set-fade-duration': { from: controlOnly, parse: onePayload(fadeDurationOf) },
   'settings:set-master-volume': { from: controlOnly, parse: onePayload(masterVolumeOf) },
+  'settings:set-activate-duration': { from: controlOnly, parse: onePayload(activateDurationOf) },
+  'settings:set-music-crossfade': { from: controlOnly, parse: onePayload(musicCrossfadeOf) },
   // The audio engine runs in the Control window (ADR-0002): the Broadcast window gets no audio.
   'audio:get-mix': { from: controlOnly, parse: noPayload },
   'audio:report': { from: controlOnly, parse: onePayload(engineReport) },

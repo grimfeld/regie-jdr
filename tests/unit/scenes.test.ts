@@ -35,6 +35,7 @@ describe('scene library', () => {
       ambiences: [],
       volumes: { music: 1, ambience: 1 },
       notes: emptyNotes(),
+      transition: 'crossfade',
     });
     expect(await scenes.list(campaign.id)).toEqual([scene]);
   });
@@ -242,6 +243,7 @@ describe('scene library', () => {
         ambiences: [],
         volumes: { music: 1, ambience: 1 },
         notes: notesFromPlainText('secret'),
+        transition: 'crossfade',
       },
     ]);
   });
@@ -271,6 +273,99 @@ describe('scene library', () => {
       ],
     });
     expect(empty.notes).toEqual(emptyNotes());
+  });
+
+  it('gives a new Scene the Crossfade Transition', async () => {
+    const { campaign, scenes } = await setup();
+    expect((await scenes.create(campaign.id, 'La cantina')).transition).toBe('crossfade');
+  });
+
+  it('keeps a Scene’s Transition after the storage is reopened (restart)', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'Embuscade');
+    await scenes.save({ ...scene, transition: 'cut' });
+
+    const reopened = createSceneLibrary(openStorage(root()));
+    expect((await reopened.get(campaign.id, scene.id))?.transition).toBe('cut');
+  });
+
+  it('gives every Scene saved before Transitions (version 3) the Crossfade Transition', async () => {
+    const { storage, campaign, scenes } = await setup();
+    const {
+      campaignId: _campaignId,
+      transition: _transition,
+      ...stored
+    } = await scenes.create(campaign.id, 'La cantina');
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'scenes.json'),
+      JSON.stringify({ schemaVersion: 3, scenes: [stored, { ...stored, id: 's2' }] }),
+    );
+
+    const migrated = await scenes.list(campaign.id);
+    expect(migrated.map((scene) => scene.transition)).toEqual(['crossfade', 'crossfade']);
+  });
+
+  describe('a Scene whose stored Notes cannot be read', () => {
+    /** Scenes Cantina (its Notes unreadable: a link) and Hangar, saved, then read afresh. */
+    async function damaged() {
+      const { storage, campaign } = await setup();
+      const notices: string[] = [];
+      const scenes = createSceneLibrary(storage, { notify: (text) => notices.push(text) });
+      const cantina = await scenes.save({
+        ...(await scenes.create(campaign.id, 'Cantina')),
+        title: 'La cantina',
+      });
+      const hangar = await scenes.save({
+        ...(await scenes.create(campaign.id, 'Hangar')),
+        notes: notesFromPlainText('Garde à droite'),
+      });
+      const folder = storage.campaignFolder(campaign.id);
+      const file = path.join(folder, 'scenes.json');
+      const badNotes = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'link', text: 'Secret' }] }],
+      };
+      const stored = JSON.parse(await fs.readFile(file, 'utf8')) as {
+        scenes: Record<string, unknown>[];
+      };
+      stored.scenes[0].notes = badNotes;
+      await fs.writeFile(file, JSON.stringify(stored));
+      return { campaign, scenes, notices, folder, cantina, hangar, badNotes };
+    }
+
+    it('keeps its other fields with empty Notes, and the other Scenes as they are', async () => {
+      const { campaign, scenes, cantina, hangar } = await damaged();
+
+      expect(await scenes.list(campaign.id)).toEqual([{ ...cantina, notes: emptyNotes() }, hangar]);
+    });
+
+    it('keeps the unreadable Notes in a file of the Campaign folder, and says where, once', async () => {
+      const { campaign, scenes, notices, folder, badNotes, cantina } = await damaged();
+
+      await scenes.list(campaign.id);
+      await scenes.list(campaign.id);
+
+      const kept = (await fs.readdir(folder)).filter((name) => name.startsWith('notes-illisibles'));
+      expect(kept).toHaveLength(1);
+      expect(JSON.parse(await fs.readFile(path.join(folder, kept[0]), 'utf8'))).toEqual({
+        sceneId: cantina.id,
+        sceneName: 'Cantina',
+        notes: badNotes,
+      });
+      expect(notices).toEqual([
+        `Les notes de la scène « Cantina » étaient illisibles : elles sont vides. Leur contenu d’origine est gardé dans ${path.join(folder, kept[0])}.`,
+      ]);
+    });
+  });
+
+  it('rejects a stored Scene with an unknown Transition', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'La cantina');
+    expect(parseScene({ ...scene, transition: 'wipe' }, campaign.id)).toBeUndefined();
+    expect(parseScene({ ...scene, transition: 'cut' }, campaign.id)).toEqual({
+      ...scene,
+      transition: 'cut',
+    });
   });
 
   describe('running order', () => {
@@ -421,6 +516,7 @@ describe('Scene parsing', () => {
     ambiences: [{ mediaId: 'm4', on: true, volume: 0.3 }],
     volumes: { music: 0.5, ambience: 0.7 },
     notes: notesFromPlainText('secret'),
+    transition: 'cut',
   };
 
   it('accepts a complete Scene and attaches the Campaign id', () => {
@@ -499,6 +595,7 @@ describe('copy of a Scene', () => {
       { mediaId: 'm7', on: false, volume: 1 },
     ],
     volumes: { music: 0.5, ambience: 0.8 },
+    transition: 'cut',
     notes: {
       type: 'doc',
       content: [
@@ -530,6 +627,7 @@ describe('copy of a Scene', () => {
     ambiences: 'same',
     volumes: 'same',
     notes: 'same',
+    transition: 'same',
   } as const satisfies Record<keyof Scene, string>;
 
   let ids = 0;

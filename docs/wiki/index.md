@@ -17,6 +17,8 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Scene rendering and Scene edits](subsystem-scene-rendering-and-edits.md): shared renderer, broadcast projection, how to add a SceneEdit.
 
 - [Audio engine and mix](subsystem-audio.md): where audio plays, the pure mix, plug-in points for #36 to #43.
+- [Campaign management](subsystem-campaign-management.md): delete to Recycle Bin, Export/Import zip.
+- [Themes](subsystem-themes.md): token list, contrast and raw-colour guardrails, hooks for #65–#68.
 - [Rich Notes](subsystem-notes.md): TipTap editor, storage v3, undo split, #52 extension point.
 - [Keyboard shortcuts](subsystem-keyboard-shortcuts.md): one `KEY_MAP`, ready for M3 #56 and M4 #71.
 - [Media library](subsystem-media-library.md): thumbnails, search, rename, WebP caveat.
@@ -26,6 +28,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Piped merge hides a failed fast-forward](problem-piped-merge-hides-failure.md)
 - [Flaky whole-app tests](problem-flaky-app-tests.md)
 - [Usage limit stops every agent at once](problem-usage-limit.md)
+- [Session interrupted mid-work](problem-session-interrupted.md)
 
 ## Process
 
@@ -35,6 +38,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 
 - [M1 review 2026-11-11](review-m1-2026-11-11.md): 3 should-fix, 7 notes.
 - [M2 review 2026-11-12](review-m2-2026-11-12.md): 6 should-fix, 7 notes.
+- [M3 review 2026-11-12](review-m3-2026-11-12.md): 2 should-fix, 7 notes.
 
 ## Milestone logs
 

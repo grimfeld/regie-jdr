@@ -104,3 +104,17 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - `ACTIVATE_DURATION_MS` (1.5 s, `core/fades.ts`) drives both the picture Crossfade and `AUDIO_FADE_MS.activate`.
 - Renderer: each on-air picture is a layer on black; the incoming layer waits for image decode, then dissolves. Shared Backgrounds and the Scene title don't flicker; Blackout stays on top. Activate mid-transition freezes the dissolve where it is. Editor fades unchanged.
 - No Transition field on Scene yet. #49: add it (duplicate copies it; it never goes on air) and pass `kind: 'cut'`, `durationMs: 0` from `activateScene` in `core/onAir.ts`; renderer needs no change. #50: replace `ACTIVATE_DURATION_MS` where `core/onAir.ts` and `AUDIO_FADE_MS.activate` read it; carry it like `setFadeDuration`.
+
+## Cut and forced Cut (#49, 2026-11-12, `d30b310`)
+
+- Supersedes the #48 note "No Transition field on Scene yet". `Scene.transition` (`'crossfade' | 'cut'`, new Scenes Crossfade) changes only through `SceneEdit` `set-transition` (undo label "régler la transition sur Cut"). Never on air (allow-list `null`); duplicate copies it. `scenes.json` schema 4: migration from 3 sets Crossfade.
+- One rule for what Activate starts: `transitionOnActivate(scene, {forceCut})` in `core/onAir.ts`. `OnAir.activateScene(id, scene, kind)` puts a Cut on air as `{kind: 'cut', durationMs: 0}`; the renderer still waits for image decode, then shows it with no dissolve.
+- Audio: `AudioOnAir.activateScene(..., kind)` fades over `AUDIO_FADE_MS.cut` (100 ms) on a Cut, `activate` otherwise. #50 replaces only the Crossfade duration.
+- Channel `onAir:activate-scene` takes optional `forceCut`; bridge `activateScene(sceneId, {forceCut})`.
+- UI: "TRANSITION" menu under the Scene title (`src/SceneTransitionField.tsx`). Shift+click on Activer forces a Cut (`title` hint). `src/activate.ts`: `activateScene(control, sceneId, options)` + `activateOptionsOf(press)` (Shift = forced Cut). #56 shortcuts call these two with their KeyboardEvent.
+
+## Activate and Music crossfade durations (#50, 2026-11-12, `4d2d082`)
+
+- Settings schema 4: `activateDurationMs` (default 1500, 0.1–5 s) and `musicCrossfadeMs` (default 2000, 0.1–10 s); bounds are the agent's choice (0.1 s minimum avoids clicks). Control-only `settings:set-activate-duration`, `settings:set-music-crossfade`. Not on air (the Transition carries `durationMs`).
+- `OnAirCommands.setPlayDurations` sets picture and audio together (startup and both channels). `audioFadeMs(change, durations)` replaces `AUDIO_FADE_MS.activate`/`crossfade`; `ACTIVATE_DURATION_MS` is `{default, min, max}`. Cut stays 0 ms picture / 100 ms audio.
+- UI: "Durée d’activation" and "Fondu entre musiques" number fields (seconds) under "Fondus".

@@ -8,6 +8,7 @@
  *
  * Pure and free of Node: the Control window runs it to show a reorder at once.
  */
+import type { SceneDirection } from '../shared/contract.js';
 import type { SceneId } from '../shared/domain.js';
 
 /**
@@ -35,7 +36,7 @@ export function moveInRunningOrder<T extends { id: SceneId }>(
 export function sceneNextTo(
   order: readonly SceneId[],
   from: SceneId | null,
-  direction: 'next' | 'previous',
+  direction: SceneDirection,
 ): SceneId | undefined {
   const index = from === null ? -1 : order.indexOf(from);
   if (index < 0) return order[0];

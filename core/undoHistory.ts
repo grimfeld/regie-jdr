@@ -193,6 +193,8 @@ export function undoLabel(
       return `retirer la musique ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
     case 'set-music-level':
       return 'régler le niveau des musiques';
+    case 'set-transition':
+      return `régler la transition sur ${edit.transition === 'cut' ? 'Cut' : 'Fondu enchaîné'}`;
   }
 }
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
-  dragOnScreen,
+  dropAndWait,
   expect,
   stubFilePicker,
   test,
@@ -144,15 +144,21 @@ test('listening during Silence leaves the Scene and its Music as they are; a pad
   // The editor must be open before dragging: a drag onto a Scene still opening drops nothing.
   await expect(editor(page).getByRole('heading', { name: 'Taverne', exact: true })).toBeVisible();
   const musicList = editor(page).getByRole('list', { name: 'Musiques' });
-  await soundInLibrary(page, 'Auberge')
-    .locator('.media-audio-icon')
-    .dragTo(musicList.locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(page, 'Auberge').locator('.media-audio-icon'),
+    musicList.locator('xpath=..'),
+    musicList.getByRole('listitem').filter({ hasText: 'Auberge' }),
+  );
   await expect(musicList.getByRole('listitem')).toHaveText([/Auberge/]);
-  await dragOnScreen(soundInLibrary(page, 'Épée').locator('.media-audio-icon'), soundboard(page), {
-    targetPosition: { x: 40, y: 20 },
-  });
   const pad = soundboard(page).getByRole('button', { name: 'Jouer Épée' });
-  await expect(pad).toBeVisible();
+  await dropAndWait(
+    soundInLibrary(page, 'Épée').locator('.media-audio-icon'),
+    soundboard(page),
+    pad,
+    {
+      targetPosition: { x: 40, y: 20 },
+    },
+  );
   await editor(page).getByRole('button', { name: 'Activer', exact: true }).click();
   await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'playing');
 

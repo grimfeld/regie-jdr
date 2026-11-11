@@ -19,6 +19,7 @@ import {
   type ReadArchive,
 } from '../../core/campaignImport';
 import { MAX_CAMPAIGN_NAME_LENGTH } from '../../core/campaigns';
+import { emptyNotes } from '../../core/notes';
 import { useTempDir } from './tempDir';
 
 const PIXELS = Buffer.from('not really a png, but its hash names it');
@@ -380,6 +381,48 @@ describe('admitDocument', () => {
     ['a favourite that is not a boolean', mediaIndexText().replace('true', '"oui"')],
   ])('refuses a document with %s', (_case, text) => {
     expect(() => admitDocument(media, text)).toThrow(DAMAGED);
+  });
+
+  /** A Scenes document at `schemaVersion`, one Scene, as an Export of that version holds it. */
+  const scenesText = (schemaVersion: number, notes: unknown = emptyNotes()) =>
+    JSON.stringify({
+      schemaVersion,
+      scenes: [
+        {
+          id: 's1',
+          name: 'La cantina',
+          title: '',
+          backgrounds: [],
+          overlays: [],
+          music: [],
+          ambiences: [],
+          volumes: { music: 1, ambience: 1 },
+          notes,
+          ...(schemaVersion >= 4 && { transition: 'cut' }),
+        },
+      ],
+    });
+
+  it('gives the Scenes of an Export from before Transitions the Crossfade Transition', () => {
+    const stored: unknown = JSON.parse(
+      admitDocument({ path: 'scenes.json', schemaVersion: 3 }, scenesText(3)),
+    );
+    expect(stored).toMatchObject({
+      schemaVersion: 4,
+      scenes: [{ id: 's1', transition: 'crossfade' }],
+    });
+  });
+
+  it('keeps the Scenes of an Export made with Transitions (Milestone 3 documents)', () => {
+    expect(
+      JSON.parse(admitDocument({ path: 'scenes.json', schemaVersion: 4 }, scenesText(4))),
+    ).toEqual(JSON.parse(scenesText(4)));
+  });
+
+  it('refuses Scenes whose Notes cannot be read, rather than empty them unseen', () => {
+    expect(() =>
+      admitDocument({ path: 'scenes.json', schemaVersion: 4 }, scenesText(4, 'not notes')),
+    ).toThrow(DAMAGED);
   });
 
   it('refuses a document whose version is not the one the manifest lists', () => {

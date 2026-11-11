@@ -5,8 +5,13 @@
  * Scenes stored without their Campaign id (the folder gives it), in running order
  * (core/runningOrder.ts).
  * Errors meant for the Game Master are SceneError with a French message.
+ *
+ * A Scene whose stored Notes cannot be read keeps its other fields with empty Notes; the rest of
+ * the document loads as usual. The unreadable Notes are kept as they were in a file of the
+ * Campaign folder, `notes-illisibles-<Scene id>-<time>.json`, and the Game Master is told where.
  */
 import { randomUUID } from 'node:crypto';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type {
   Background,
@@ -32,7 +37,12 @@ import {
   parseNotes,
 } from './notes.js';
 import { moveInRunningOrder } from './runningOrder.js';
-import { cleanSceneName, MAX_SCENE_NAME_LENGTH, SceneError } from './sceneEdits.js';
+import {
+  cleanSceneName,
+  isTransitionKind,
+  MAX_SCENE_NAME_LENGTH,
+  SceneError,
+} from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
 export { SceneError };
@@ -138,9 +148,10 @@ function parseList<T>(value: unknown, parse: (item: unknown) => T | undefined): 
  */
 export function parseScene(value: unknown, campaignId: CampaignId): Scene | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, name, title, volumes } = value;
+  const { id, name, title, volumes, transition } = value;
   const notes = parseNotes(value.notes);
   if (!isId(id) || typeof name !== 'string' || !notes) return undefined;
+  if (!isTransitionKind(transition)) return undefined;
   if (typeof title !== 'string') return undefined;
   if (!isRecord(volumes) || !isUnit(volumes.music) || !isUnit(volumes.ambience)) return undefined;
   const backgrounds = parseList(value.backgrounds, parseBackground);
@@ -159,6 +170,7 @@ export function parseScene(value: unknown, campaignId: CampaignId): Scene | unde
     ambiences,
     volumes: { music: volumes.music, ambience: volumes.ambience },
     notes,
+    transition,
   };
 }
 
@@ -222,6 +234,22 @@ export function copyOfScene(source: Scene, newId: () => string): Scene {
 
 type StoredScene = Omit<Scene, 'campaignId'>;
 
+/** Notes of a stored Scene that could not be read, as they were stored. Never written back. */
+interface UnreadableNotes {
+  sceneId: SceneId;
+  sceneName: string;
+  notes: unknown;
+}
+
+/**
+ * The Scenes of a document; `unreadableNotes` (read only, never written) lists the Scenes kept
+ * with empty Notes because theirs could not be read.
+ */
+interface ScenesFields {
+  scenes: StoredScene[];
+  unreadableNotes?: UnreadableNotes[];
+}
+
 function stored({ campaignId: _campaignId, ...scene }: Scene): StoredScene {
   return scene;
 }
@@ -275,22 +303,53 @@ function migrateScenesV2(fields: Record<string, unknown>): Record<string, unknow
   return { ...fields, scenes };
 }
 
+/** Version 3 to 4 (Milestone 3): every Scene gets its entry Transition, Crossfade. */
+function migrateScenesV3(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.scenes)) return fields;
+  const scenes = fields.scenes.map((scene: unknown) =>
+    isRecord(scene) ? { ...scene, transition: 'crossfade' } : scene,
+  );
+  return { ...fields, scenes };
+}
+
 function zIndexOf(item: unknown): number {
   return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
 }
 
-export const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
+export const scenesDocument: DocumentType<ScenesFields> = {
   name: 'scenes',
-  version: 3,
-  migrations: { 1: migrateScenesV1, 2: migrateScenesV2 },
+  version: 4,
+  migrations: { 1: migrateScenesV1, 2: migrateScenesV2, 3: migrateScenesV3 },
   parse({ scenes }) {
-    const parsed = parseList(scenes, (item) => parseScene(item, ''));
-    return parsed && { scenes: parsed.map(stored) };
+    const unreadableNotes: UnreadableNotes[] = [];
+    const parsed = parseList(scenes, (item) => {
+      const scene = parseScene(item, '');
+      if (scene || !isRecord(item)) return scene;
+      // Only its Notes unreadable: the Scene stays, with empty Notes.
+      const kept = parseScene({ ...item, notes: emptyNotes() }, '');
+      if (kept) unreadableNotes.push({ sceneId: kept.id, sceneName: kept.name, notes: item.notes });
+      return kept;
+    });
+    if (!parsed) return undefined;
+    return unreadableNotes.length > 0
+      ? { scenes: parsed.map(stored), unreadableNotes }
+      : { scenes: parsed.map(stored) };
   },
 };
 
-export function createSceneLibrary(storage: Storage): SceneLibrary {
-  /** Serializes the read-modify-write of each Campaign's Scenes document. */
+export interface SceneLibraryOptions {
+  /** Tells the Game Master something went wrong with stored Scenes (plain French sentence). */
+  notify?: (message: string) => void;
+  /** The clock naming the files unreadable Notes are kept in (Date.now). */
+  now?: () => number;
+}
+
+export function createSceneLibrary(
+  storage: Storage,
+  options: SceneLibraryOptions = {},
+): SceneLibrary {
+  const { notify = () => undefined, now = Date.now } = options;
+  /** Serializes the reads and read-modify-writes of each Campaign's Scenes document. */
   const serialized = createKeyedSerialQueue<CampaignId>();
 
   async function fileOf(campaignId: CampaignId): Promise<string> {
@@ -300,9 +359,34 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
     return path.join(storage.campaignFolder(campaignId), SCENES_FILE);
   }
 
+  /** The Campaign's Scenes. Run in the Campaign's queue: it may save them (unreadable Notes). */
   async function read(file: string, campaignId: CampaignId): Promise<Scene[]> {
     const document = await storage.documents.read(file, scenesDocument);
-    return (document?.scenes ?? []).map((scene) => ({ ...scene, campaignId }));
+    const scenes = (document?.scenes ?? []).map((scene) => ({ ...scene, campaignId }));
+    if (document?.unreadableNotes) {
+      await keepUnreadable(path.dirname(file), document.unreadableNotes);
+      // Saved with empty Notes, so they are reported once; the document as it was is now the
+      // `.bak` too.
+      await write(file, scenes);
+    }
+    return scenes;
+  }
+
+  /** Keeps each Scene's unreadable Notes in a file of its own, and tells the Game Master. */
+  async function keepUnreadable(folder: string, unreadable: readonly UnreadableNotes[]) {
+    for (const entry of unreadable) {
+      const kept = path.join(folder, `notes-illisibles-${entry.sceneId}-${String(now())}.json`);
+      await fsp.writeFile(
+        kept,
+        `${JSON.stringify(entry, null, 2)}
+`,
+        { flag: 'wx' },
+      );
+      notify(
+        `Les notes de la scène « ${entry.sceneName} » étaient illisibles : elles sont vides. ` +
+          `Leur contenu d’origine est gardé dans ${kept}.`,
+      );
+    }
   }
 
   async function write(file: string, scenes: Scene[]): Promise<void> {
@@ -310,8 +394,8 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
   }
 
   return {
-    async list(campaignId) {
-      return read(await fileOf(campaignId), campaignId);
+    list(campaignId) {
+      return serialized(campaignId, async () => read(await fileOf(campaignId), campaignId));
     },
 
     async get(campaignId, sceneId) {
@@ -333,6 +417,7 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
           ambiences: [],
           volumes: { music: 1, ambience: 1 },
           notes: emptyNotes(),
+          transition: 'crossfade',
         };
         await write(file, [...scenes, scene]);
         return scene;
