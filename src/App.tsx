@@ -24,12 +24,7 @@ import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
 import { SoundboardPanel, useSoundboard, type SoundboardControls } from './Soundboard';
 import { showNotice } from './notices';
-
-const themes: { id: ThemeId; label: string; subtitle: string }[] = [
-  { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
-  { id: 'imperium', label: 'Imperium', subtitle: 'Gothique impérial, rouge, or et parchemin' },
-  { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' },
-];
+import { ThemePicker, themeLabel } from './ThemePicker';
 
 /** Theme of the Campaign list home page until the global Settings are read. */
 const DEFAULT_HOME_THEME: ThemeId = 'imperium';
@@ -234,12 +229,10 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           </div>
         </div>
         <div className="topbar-right">
-          {openCampaign ? (
+          {openCampaign && (
             <button className="secondary-button" onClick={() => void enter(null)}>
               <ArrowLeft size={14} /> Campagnes
             </button>
-          ) : (
-            <HomeThemePicker theme={homeTheme} onChange={(next) => void changeHomeTheme(next)} />
           )}
           <button className="primary-button" onClick={() => void control?.openBroadcast()}>
             <MonitorPlay size={16} /> Ouvrir la diffusion
@@ -278,7 +271,24 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
             onImport={control && importCampaign}
             transfer={transfer}
             onCancelTransfer={() => void control?.cancelCampaignTransfer()}
-          />
+          >
+            <section className="panel home-theme">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">APPARENCE</span>
+                  <h2>
+                    <Palette size={18} /> Thème de l’accueil
+                  </h2>
+                </div>
+              </div>
+              <ThemePicker
+                label="Thème de l’accueil"
+                theme={homeTheme}
+                onChange={(next) => void changeHomeTheme(next)}
+              />
+              <p className="theme-footnote">Les nouvelles campagnes prennent ce thème.</p>
+            </section>
+          </CampaignList>
         )
       )}
       <footer className="footer">
@@ -286,32 +296,6 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         <span>Fonctionnement local · Aucun compte requis</span>
       </footer>
     </main>
-  );
-}
-
-/** Minimal picker for the home page theme (finished themes and their picker come later). */
-function HomeThemePicker({
-  theme,
-  onChange,
-}: {
-  theme: ThemeId;
-  onChange: (theme: ThemeId) => void;
-}) {
-  return (
-    <label className="home-theme">
-      <Palette size={14} />
-      <select
-        aria-label="Thème de l’accueil"
-        value={theme}
-        onChange={(e) => onChange(e.target.value as ThemeId)}
-      >
-        {themes.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
@@ -345,7 +329,6 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   // Where the Scenes panel shows the Selected Scene's Notes.
   const [notesSlot, setNotesSlot] = useState<HTMLElement | null>(null);
 
-  const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
   // Per Campaign, whichever Scene is active. Read again when a Media is deleted (its pads go).
   const soundboard = useSoundboard(control, campaign.id, mediaRevision);
   useAudioShortcuts(control, soundboard);
@@ -364,7 +347,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
           <span className="top-separator" aria-hidden="true">
             |
           </span>
-          <span className="theme-name">{themeLabel}</span>
+          <span className="theme-name">{themeLabel(theme)}</span>
         </div>
       </div>
 
@@ -413,22 +396,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
               </div>
               <Settings2 size={17} />
             </div>
-            <div className="theme-options">
-              {themes.map((item) => (
-                <button
-                  key={item.id}
-                  className={`theme-option ${theme === item.id ? 'selected' : ''}`}
-                  onClick={() => onThemeChange(item.id)}
-                >
-                  <span className="theme-swatch" data-theme={item.id}></span>
-                  <span>
-                    <strong>{item.label}</strong>
-                    <small>{item.subtitle}</small>
-                  </span>
-                  <span className="radio-indicator" />
-                </button>
-              ))}
-            </div>
+            <ThemePicker label="Thème de la campagne" theme={theme} onChange={onThemeChange} />
             {theme === 'imperium' && (
               <p className="theme-footnote">
                 Esthétique impériale uniquement : gothique monumental, héraldique, rouge et or.

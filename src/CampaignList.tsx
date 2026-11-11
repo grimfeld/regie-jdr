@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Download, FolderOpen, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import type {
   CampaignDeletionSummary,
@@ -84,6 +84,8 @@ interface Props {
   transfer?: CampaignTransferProgress | null;
   /** Cancels the Export or Import under way; its call then resolves as cancelled. */
   onCancelTransfer?: () => void;
+  /** Shown under the list: the home page's theme picker. */
+  children?: ReactNode;
 }
 
 /** How far an Export or Import is, for its progress bar: "1,2 Go sur 3,4 Go (35 %)". */
@@ -115,6 +117,7 @@ export function CampaignList({
   onImport,
   transfer = null,
   onCancelTransfer,
+  children,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -371,6 +374,7 @@ export function CampaignList({
           </li>
         ))}
       </ul>
+      {children}
     </section>
   );
 }

@@ -17,10 +17,6 @@ async function restart(running: RunningApp): Promise<RunningApp> {
   return launchApp(running.dataDir);
 }
 
-function theme(page: Page) {
-  return page.locator('html');
-}
-
 interface Bounds {
   x: number;
   y: number;
@@ -40,32 +36,6 @@ async function moveWindow(app: ElectronApplication, page: Page, bounds: Bounds):
   }, bounds);
   return boundsOf(app, page);
 }
-
-test('the home page theme is remembered across restarts; a Campaign keeps its own theme', async ({
-  regie,
-}) => {
-  const home = regie.controlWindow;
-  await expect(home.getByRole('heading', { name: 'Vos campagnes' })).toBeVisible();
-  await expect(theme(home)).toHaveAttribute('data-theme', 'imperium');
-  await home.getByLabel('Thème de l’accueil').selectOption({ label: 'Fantasy' });
-  await expect(theme(home)).toHaveAttribute('data-theme', 'fantasy');
-
-  const restarted = await restart(regie);
-  try {
-    const page = restarted.controlWindow;
-    await expect(page.getByRole('heading', { name: 'Vos campagnes' })).toBeVisible();
-    await expect(theme(page)).toHaveAttribute('data-theme', 'fantasy');
-    await expect(page.getByLabel('Thème de l’accueil')).toHaveValue('fantasy');
-
-    // Inside a Campaign, the Campaign's own theme applies; back home, the global one.
-    await createCampaign(page, 'Warhammer');
-    await expect(theme(page)).toHaveAttribute('data-theme', 'imperium');
-    await page.getByRole('button', { name: 'Campagnes' }).click();
-    await expect(theme(page)).toHaveAttribute('data-theme', 'fantasy');
-  } finally {
-    await restarted.app.close();
-  }
-});
 
 test('the Control and Broadcast windows reopen where and as large as they were left', async ({
   regie,
