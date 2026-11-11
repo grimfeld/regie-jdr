@@ -429,7 +429,9 @@ export function ScenesPanel({
    * saved. A Campaign-level command, not a Scene edit: no Scene's undo history records it.
    */
   async function editRunningOrder(command: RunningOrderEdit) {
-    // A new Chapter needs its id from the main process: it shows once saved.
+    // A new Chapter needs its id from the main process: `createChapter` shows it once saved.
+    // Any other command shows at once, from the same rules the main process applies; its answer
+    // is not shown, or an older answer could undo a quicker key press already shown.
     if (command.kind !== 'create-chapter') {
       setOrder((current) => {
         try {
@@ -441,8 +443,7 @@ export function ScenesPanel({
     }
     if (!control) return;
     try {
-      const saved = await control.editRunningOrder(campaignId, command);
-      setOrder((current) => withRunningOrder(current.scenes, saved));
+      await control.editRunningOrder(campaignId, command);
     } catch (error) {
       showNotice(errorMessage(error));
       await reload();
