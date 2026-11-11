@@ -18,3 +18,13 @@
 - Channel `campaigns:export` `{ id }`; refuses the open Campaign; a document without `schemaVersion` stops export with a French message.
 - Save dialog: Documents, "<name> – <date>.zip", Windows-forbidden chars → `_`. Notice counts missing Media left out.
 - Not tested: a Campaign larger than memory (8 MB streamed in unit test). `tests/zipEntries.ts` is a test-only zip reader; swap for yauzl.
+
+## Import (#61, 2026-11-12, `m4-campaign-themes-qol@ff3bb76`)
+
+- Supersedes the #60 note "yauzl not yet installed": `yauzl` 3.4.0 (+ `@types/yauzl` 3.4.0); `tests/zipEntries.ts` reads with it; `tests/rawZip.ts` builds hostile zips byte by byte.
+- Checks: manifest first, known format version. Entry kept only if its exact path is in the manifest; manifest paths are known documents or `media/<sha256><allowlisted ext>` (the allowlist is the zip-slip defence; yauzl `strictFileNames` also refuses `..`, absolute, backslash). Links, encrypted entries, case-insensitive duplicates refused.
+- Bombs: streamed sizes must equal the manifest's; Media hash must match its name; caps on entry count, manifest and documents; total ≤ 50× zip size + 16 MiB, checked before unpacking.
+- Documents: newer `schemaVersion` or unknown document refused ("from a newer version"); older migrated and saved at current version.
+- Staging `<root>/imports/`, renamed atomically to a new id, never over an existing folder; failure/cancel removes it; main clears leftovers at startup. AbortSignal + Media-byte progress ready for #63.
+- Choices: name clash check ignores case; a Media in the manifest but absent from the zip is allowed (shows missing). Highlight: outline + "Importée" badge, not saved.
+- Hooks: #62 reuses `importCampaign` with `openZipArchive(path)` after main checks the dropped path. Gaps: no free-disk-space check; older-version migration covered by unit tests only.
