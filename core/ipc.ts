@@ -18,6 +18,7 @@ import type {
   InvokeChannels,
   MediaImportKind,
   Payload,
+  SceneDirection,
   SceneEdit,
   SoundboardEdit,
   SoundboardLevel,
@@ -153,6 +154,14 @@ function activation(value: unknown): Parsed<{ sceneId: SceneId } & ActivateOptio
   const { forceCut } = value;
   if (forceCut === undefined) return scene;
   return typeof forceCut === 'boolean' ? { ...scene, forceCut } : INVALID;
+}
+
+function directionOf(value: unknown): Parsed<{ direction: SceneDirection } & ActivateOptions> {
+  if (!isRecord(value)) return INVALID;
+  const { direction, forceCut } = value;
+  if (direction !== 'next' && direction !== 'previous') return INVALID;
+  if (forceCut === undefined) return { direction };
+  return typeof forceCut === 'boolean' ? { direction, forceCut } : INVALID;
 }
 
 function engineReport(value: unknown): Parsed<AudioEngineReport> {
@@ -363,7 +372,9 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
   'onAir:activate-scene': { from: controlOnly, parse: onePayload(activation) },
+  'onAir:activate-next': { from: controlOnly, parse: onePayload(directionOf) },
   'onAir:set-blackout': { from: controlOnly, parse: onePayload(onOffOf) },
+  'onAir:toggle-blackout': { from: controlOnly, parse: noPayload },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
   'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },

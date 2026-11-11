@@ -21,7 +21,7 @@ import { createSettingsStore, type SettingsStore, type SettingsWindow } from '..
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
-import type { PadCommand } from '../shared/domain.js';
+import type { OnAirState, PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
@@ -364,6 +364,14 @@ function startApp() {
       .then((srcs) => sendPadCommands([{ kind: 'preload', srcs }]))
       .catch((error: unknown) => log.warn('Listing the Sound effects to preload failed', error));
   };
+  /** Remembers the Active Scene, for highlighting only: nothing goes on air after a restart. */
+  const rememberActive = (state: OnAirState) => {
+    const { campaignId, activeSceneId } = state;
+    if (campaignId && activeSceneId) {
+      saveSetting((store) => store.setLastActiveScene(campaignId, activeSceneId));
+    }
+    return state;
+  };
   /** Silence was set: when it `started`, the pads sounding fade out too. Returns what sounds. */
   const silenced = (started: boolean) => {
     if (started) {
@@ -397,14 +405,12 @@ function startApp() {
         preloadPads();
         return state;
       },
-      'onAir:activate-scene': async ({ sceneId, forceCut }) => {
-        const state = await commands.activateScene(sceneId, { forceCut });
-        // Remembered for highlighting only: nothing goes on air after a restart.
-        const { campaignId } = state;
-        if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));
-        return state;
-      },
+      'onAir:activate-scene': async ({ sceneId, forceCut }) =>
+        rememberActive(await commands.activateScene(sceneId, { forceCut })),
+      'onAir:activate-next': async ({ direction, forceCut }) =>
+        rememberActive(await commands.activateNextTo(direction, { forceCut })),
       'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
+      'onAir:toggle-blackout': () => commands.toggleBlackout(),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>

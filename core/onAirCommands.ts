@@ -11,6 +11,7 @@
 import type {
   ActivateOptions,
   MediaDeletion,
+  SceneDirection,
   TransientEdit,
   UndoState,
 } from '../shared/contract.js';
@@ -31,6 +32,7 @@ import { MediaError, type MediaLibrary } from './media.js';
 import { mediaAddress } from './mediaAddress.js';
 import { notesKeepingImages } from './notes.js';
 import { onAirSceneOf, transitionOnActivate, type OnAir } from './onAir.js';
+import { sceneNextTo } from './runningOrder.js';
 import { addedMedia, applySceneEdit, type SceneEdit } from './sceneEdits.js';
 import {
   mediaOfScene,
@@ -63,11 +65,23 @@ export interface OnAirCommands {
    */
   activateScene(sceneId: SceneId, options?: ActivateOptions): Promise<OnAirState>;
   /**
+   * Activates the Scene after (`next`) or before (`previous`) the Active Scene in the running
+   * order as saved, like `activateScene`; the first Scene when nothing is on air. Resolved in
+   * turn with the other commands, from the Active Scene the commands before left: pressed twice
+   * quickly, it advances two Scenes. Past either end, nothing changes.
+   */
+  activateNextTo(direction: SceneDirection, options?: ActivateOptions): Promise<OnAirState>;
+  /**
    * Starts or ends Blackout in the open Campaign: the broadcast fades to black, the Active
    * Scene and its edits stay as they are. Never saved: opening, switching or closing a
    * Campaign, and a restart, clear it.
    */
   setBlackout(on: boolean): Promise<OnAirState>;
+  /**
+   * Starts Blackout when it is off, ends it when it is on, from the state the commands before
+   * left: pressed twice quickly, it starts then ends.
+   */
+  toggleBlackout(): Promise<OnAirState>;
   /**
    * Sets the Activate and Music crossfade durations (Settings, already checked): the picture
    * and the audio of the next Activate with a Crossfade change together over the Activate
@@ -259,6 +273,33 @@ export function createOnAirCommands(deps: {
     if (saved) await showActive(saved, 'volume');
   }
 
+  /** The open Campaign; throws a SceneError when none is open. */
+  function openCampaignId(): CampaignId {
+    const { campaignId } = onAir.current();
+    if (campaignId === null) {
+      throw new SceneError('Ouvrez une campagne avant d’activer une scène.');
+    }
+    return campaignId;
+  }
+
+  /** Puts a Scene of the open Campaign on air, with its Transition or a forced Cut. */
+  async function activate(campaignId: CampaignId, sceneId: SceneId, options?: ActivateOptions) {
+    const scene = await scenes.get(campaignId, sceneId);
+    if (!scene) throw new SceneError('Cette scène n’existe plus.');
+    const media = await library.list(campaignId);
+    const kind = transitionOnActivate(scene, options);
+    audio.activateScene(scene, media, await missingAudio(scene, media), kind);
+    return onAir.activateScene(scene.id, onAirSceneOf(scene, media), kind);
+  }
+
+  /** Starts (`on`) or ends Blackout in the open Campaign. */
+  function blackout(on: boolean) {
+    if (onAir.current().campaignId === null) {
+      throw new CampaignError('Ouvrez une campagne avant de passer au noir.');
+    }
+    return onAir.setBlackout(on);
+  }
+
   /** Starts (`on`) or lifts Silence; returns whether it started. */
   function silence(on: boolean) {
     const started = on && !audio.silence();
@@ -315,26 +356,20 @@ export function createOnAirCommands(deps: {
       }),
 
     activateScene: (sceneId, options) =>
+      serialized(() => activate(openCampaignId(), sceneId, options)),
+
+    activateNextTo: (direction, options) =>
       serialized(async () => {
-        const { campaignId } = onAir.current();
-        if (campaignId === null) {
-          throw new SceneError('Ouvrez une campagne avant d’activer une scène.');
-        }
-        const scene = await scenes.get(campaignId, sceneId);
-        if (!scene) throw new SceneError('Cette scène n’existe plus.');
-        const media = await library.list(campaignId);
-        const kind = transitionOnActivate(scene, options);
-        audio.activateScene(scene, media, await missingAudio(scene, media), kind);
-        return onAir.activateScene(scene.id, onAirSceneOf(scene, media), kind);
+        const campaignId = openCampaignId();
+        const order = (await scenes.list(campaignId)).map((scene) => scene.id);
+        const sceneId = sceneNextTo(order, onAir.current().activeSceneId, direction);
+        if (sceneId === undefined) return onAir.current();
+        return activate(campaignId, sceneId, options);
       }),
 
-    setBlackout: (on) =>
-      serialized(() => {
-        if (onAir.current().campaignId === null) {
-          throw new CampaignError('Ouvrez une campagne avant de passer au noir.');
-        }
-        return onAir.setBlackout(on);
-      }),
+    setBlackout: (on) => serialized(() => blackout(on)),
+
+    toggleBlackout: () => serialized(() => blackout(!onAir.current().blackout)),
 
     setPlayDurations: (durations) => {
       onAir.setActivateDuration(durations.activateDurationMs);

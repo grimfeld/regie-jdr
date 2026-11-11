@@ -9,7 +9,7 @@ import { mediaFileName } from '../../core/mediaAddress';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { notesFromPlainText } from '../../core/notes';
-import { createSceneLibrary } from '../../core/scenes';
+import { createSceneLibrary, SceneError } from '../../core/scenes';
 import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
@@ -131,6 +131,63 @@ describe('on-air commands', () => {
       version: 2,
     });
     expect(ctx.broadcast.at(-1)).toEqual(state);
+  });
+
+  describe('Activating the next or previous Scene', () => {
+    /** An open Campaign with Scenes A, B and C in running order, nothing on air. */
+    async function threeScenes(ctx: Awaited<ReturnType<typeof setup>>) {
+      const a = await sceneShowing(ctx, 'A');
+      const b = await sceneShowing(ctx, 'B');
+      const c = await sceneShowing(ctx, 'C');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      return [a.id, b.id, c.id];
+    }
+
+    it('with nothing on air, Activates the first Scene either way', async () => {
+      const ctx = await setup();
+      const [a] = await threeScenes(ctx);
+
+      expect((await ctx.commands.activateNextTo('previous')).activeSceneId).toBe(a);
+    });
+
+    it('two quick presses advance two Scenes, each from the one the press before Activated', async () => {
+      const ctx = await setup();
+      const [a, b, c] = await threeScenes(ctx);
+      await ctx.commands.activateScene(a);
+
+      const presses = [ctx.commands.activateNextTo('next'), ctx.commands.activateNextTo('next')];
+
+      expect((await Promise.all(presses)).map((state) => state.activeSceneId)).toEqual([b, c]);
+      expect((await ctx.commands.activateNextTo('previous')).activeSceneId).toBe(b);
+    });
+
+    it('past either end changes nothing on air', async () => {
+      const ctx = await setup();
+      const [, , c] = await threeScenes(ctx);
+      const onAir = await ctx.commands.activateScene(c);
+
+      expect(await ctx.commands.activateNextTo('next')).toEqual(onAir);
+      expect(ctx.broadcast.at(-1)).toEqual(onAir);
+    });
+
+    it('follows the running order as saved, and forces a Cut when asked', async () => {
+      const ctx = await setup();
+      const [a, b, c] = await threeScenes(ctx);
+      await ctx.scenes.move(ctx.campaign.id, c, 0);
+      await ctx.commands.activateScene(c);
+
+      const state = await ctx.commands.activateNextTo('next', { forceCut: true });
+
+      expect(state.activeSceneId).toBe(a);
+      expect(state.transition).toMatchObject({ kind: 'cut', durationMs: 0 });
+      expect((await ctx.commands.activateNextTo('next')).activeSceneId).toBe(b);
+    });
+
+    it('is refused when no Campaign is open', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.activateNextTo('next')).rejects.toThrow(SceneError);
+    });
   });
 
   describe('the Transition on Activate', () => {
@@ -1416,6 +1473,25 @@ describe('on-air commands', () => {
       const ctx = await setup();
 
       await expect(ctx.commands.setBlackout(true)).rejects.toThrow(CampaignError);
+      expect(ctx.broadcast).toEqual([]);
+    });
+
+    it('toggled twice quickly, starts then ends, each from the state the one before left', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      const toggles = [ctx.commands.toggleBlackout(), ctx.commands.toggleBlackout()];
+
+      expect((await Promise.all(toggles)).map((state) => state.blackout)).toEqual([true, false]);
+      expect(ctx.broadcast.at(-1)).toMatchObject({ activeSceneId: scene.id, blackout: false });
+    });
+
+    it('toggling is refused when no Campaign is open', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.toggleBlackout()).rejects.toThrow(CampaignError);
       expect(ctx.broadcast).toEqual([]);
     });
   });

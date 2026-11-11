@@ -143,6 +143,28 @@ test('B toggles Blackout, key shown', async ({ regie }) => {
   await expect(blackoutButton(page)).toHaveAttribute('aria-pressed', 'false');
 });
 
+test('quick presses each act on the state the press before left', async ({ regie }) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScenes(page, 'Cantina', 'Hangar', 'Trône');
+  await focusPage(page);
+  await page.keyboard.press('Control+ArrowDown');
+  await expect.poll(() => activeName(page)).toBe('Cantina');
+
+  // Two presses before the window sees the first one go on air: two Scenes further.
+  await page.keyboard.press('Control+ArrowDown');
+  await page.keyboard.press('Control+ArrowDown');
+  await expect.poll(() => activeName(page)).toBe('Trône');
+
+  // Blackout pressed twice at once: on, then off again.
+  const before = (await onAir(page)).version;
+  await page.keyboard.press('b');
+  await page.keyboard.press('b');
+  await expect.poll(async () => (await onAir(page)).version).toBe(before + 2);
+  expect((await onAir(page)).blackout).toBe(false);
+  await expect(blackoutButton(page)).toHaveAttribute('aria-pressed', 'false');
+});
+
 test('Scene shortcuts do nothing while typing, in the Notes or in another window', async ({
   regie,
 }) => {

@@ -53,7 +53,10 @@ const bridge: ControlBridge = {
   closeCampaign: () => invoke('onAir:close-campaign'),
   activateScene: (sceneId, options) =>
     invoke('onAir:activate-scene', { sceneId, ...(options?.forceCut && { forceCut: true }) }),
+  activateNextTo: (direction, options) =>
+    invoke('onAir:activate-next', { direction, ...(options?.forceCut && { forceCut: true }) }),
   setBlackout: (on) => invoke('onAir:set-blackout', { on }),
+  toggleBlackout: () => invoke('onAir:toggle-blackout'),
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
   createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
   editScene: (campaignId, sceneId, edit) => invoke('scenes:edit', { campaignId, sceneId, edit }),

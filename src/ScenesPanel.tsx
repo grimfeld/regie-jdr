@@ -14,6 +14,7 @@ import type {
   ActivateOptions,
   ControlBridge,
   MediaImportResult,
+  SceneDirection,
   SceneEdit,
   TransientEdit,
   UndoState,
@@ -21,7 +22,7 @@ import type {
 import { layOutCanvas } from '../core/canvas';
 import { MAX_PASTED_IMAGE_BYTES } from '../core/mediaAddress';
 import { editorPictureOf } from '../core/onAir';
-import { moveInRunningOrder, sceneNextTo } from '../core/runningOrder';
+import { moveInRunningOrder } from '../core/runningOrder';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
 import { keyLabelOf, useShortcuts, type EditShortcut, type KeyPress } from './keyboard';
@@ -33,7 +34,7 @@ import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
 import { SceneTransitionField } from './SceneTransitionField';
-import { activateOptionsOf, activateScene } from './activate';
+import { activateNextTo, activateOptionsOf, activateScene } from './activate';
 import { SceneNotes, type NotesImageSource } from './SceneNotes';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
@@ -188,24 +189,16 @@ export function ScenesPanel({
   const isLastActive = (scene: Scene) => !hasActive && scene.id === lastActiveId;
 
   /** Activates the Scene after or before the Active Scene; the Selected Scene stays as it is. */
-  function activateNextTo(direction: 'next' | 'previous', press: KeyPress) {
-    const from = hasActive ? onAir.activeSceneId : null;
-    const sceneId = sceneNextTo(
-      scenes.map((scene) => scene.id),
-      from,
-      direction,
-    );
-    if (control && sceneId !== undefined) {
-      void activateScene(control, sceneId, activateOptionsOf(press));
-    }
+  function activateNext(direction: SceneDirection, press: KeyPress) {
+    if (control) void activateNextTo(control, direction, activateOptionsOf(press));
   }
   // The Activate shortcuts, anywhere in the window except while typing; Shift forces a Cut.
   useShortcuts({
     activate: (press) => {
       if (control && selected) void activateScene(control, selected.id, activateOptionsOf(press));
     },
-    'activate-next': (press) => activateNextTo('next', press),
-    'activate-previous': (press) => activateNextTo('previous', press),
+    'activate-next': (press) => activateNext('next', press),
+    'activate-previous': (press) => activateNext('previous', press),
   });
 
   async function create(event: FormEvent) {

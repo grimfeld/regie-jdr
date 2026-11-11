@@ -20,10 +20,12 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
   const blackoutKey = keyLabelOf('blackout');
   useShortcuts({ blackout: () => void toggleBlackout() });
 
+  // Decided in the main process, from the state the commands before left: two quick presses
+  // start then end Blackout, whatever snapshot this window has seen yet.
   async function toggleBlackout() {
     if (!control) return;
     try {
-      await control.setBlackout(!blackout);
+      await control.toggleBlackout();
     } catch (error) {
       showNotice(errorMessage(error));
     }

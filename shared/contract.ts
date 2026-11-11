@@ -38,6 +38,9 @@ export interface ActivateOptions {
   forceCut?: boolean;
 }
 
+/** A way through the running order: towards its end (`next`) or its start (`previous`). */
+export type SceneDirection = 'next' | 'previous';
+
 /**
  * One edit command on a Scene's composition, applied by the app core (core/sceneEdits.ts).
  * Plain data, so the core can keep an undo history of them.
@@ -254,10 +257,25 @@ export interface InvokeChannels {
     result: OnAirState;
   };
   /**
+   * Activate the Scene after or before the Active Scene in the running order (the first when
+   * nothing is on air), resolved in the main process in turn with the other commands: two quick
+   * presses advance two Scenes. Past either end, nothing changes. Fails if no Campaign is open.
+   */
+  'onAir:activate-next': {
+    payload: { direction: SceneDirection } & ActivateOptions;
+    result: OnAirState;
+  };
+  /**
    * Start (`on`) or end Blackout: the broadcast fades to black, the Active Scene is unchanged.
    * Fails if no Campaign is open.
    */
   'onAir:set-blackout': { payload: { on: boolean }; result: OnAirState };
+  /**
+   * Start Blackout when it is off, end it when it is on, decided in the main process from the
+   * state the commands before left: two quick presses start then end it. Fails if no Campaign
+   * is open.
+   */
+  'onAir:toggle-blackout': { payload: void; result: OnAirState };
   /** The Scenes of a Campaign, in running order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
   /** Create an empty Scene, last in the running order; fails with a French message for an empty name. */
@@ -525,7 +543,9 @@ export interface ControlBridge extends BroadcastBridge {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   closeCampaign(): Promise<OnAirState>;
   activateScene(sceneId: SceneId, options?: ActivateOptions): Promise<OnAirState>;
+  activateNextTo(direction: SceneDirection, options?: ActivateOptions): Promise<OnAirState>;
   setBlackout(on: boolean): Promise<OnAirState>;
+  toggleBlackout(): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;

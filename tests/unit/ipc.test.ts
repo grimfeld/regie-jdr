@@ -576,6 +576,36 @@ describe('Blackout channel', () => {
   });
 });
 
+describe('Blackout toggle and next-Scene channels', () => {
+  it('are for the Control window only', () => {
+    expect(checkInvoke('onAir:toggle-blackout', 'control', [])).toMatchObject({ ok: true });
+    expect(checkInvoke('onAir:toggle-blackout', 'broadcast', [])).toMatchObject({ ok: false });
+    const next = [{ direction: 'next' }];
+    expect(checkInvoke('onAir:activate-next', 'control', next)).toMatchObject({ ok: true });
+    expect(checkInvoke('onAir:activate-next', 'broadcast', next)).toMatchObject({ ok: false });
+  });
+
+  it('keep only the contract fields', () => {
+    const args = [{ direction: 'previous', forceCut: true, sceneId: 'x' }];
+    expect(checkInvoke('onAir:activate-next', 'control', args)).toEqual({
+      ok: true,
+      payload: { direction: 'previous', forceCut: true },
+    });
+    expect(checkInvoke('onAir:toggle-blackout', 'control', [{ on: true }])).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it.each([
+    ['nothing', []],
+    ['a bare direction', ['next']],
+    ['an unknown direction', [{ direction: 'last' }]],
+    ['a Cut flag of the wrong type', [{ direction: 'next', forceCut: 'yes' }]],
+  ])('reject a next Scene given as %s', (_label, args) => {
+    expect(checkInvoke('onAir:activate-next', 'control', args)).toMatchObject({ ok: false });
+  });
+});
+
 describe('Silence channel', () => {
   it('keeps only the flag, and rejects anything else', () => {
     expect(checkInvoke('audio:set-silence', 'control', [{ on: true, scene: 'x' }])).toEqual({

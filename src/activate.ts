@@ -1,4 +1,4 @@
-import type { ActivateOptions, ControlBridge } from '../shared/contract';
+import type { ActivateOptions, ControlBridge, SceneDirection } from '../shared/contract';
 import type { SceneId } from '../shared/domain';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
@@ -22,6 +22,23 @@ export async function activateScene(
 ): Promise<void> {
   try {
     await control.activateScene(sceneId, options);
+  } catch (error) {
+    showNotice(errorMessage(error));
+  }
+}
+
+/**
+ * Activates the Scene after or before the Active Scene in the running order; a failure is shown
+ * as a notice. The main process picks the Scene, in turn with the other commands, so two quick
+ * presses advance two Scenes even before this window has seen the first one go on air.
+ */
+export async function activateNextTo(
+  control: ControlBridge,
+  direction: SceneDirection,
+  options: ActivateOptions = {},
+): Promise<void> {
+  try {
+    await control.activateNextTo(direction, options);
   } catch (error) {
     showNotice(errorMessage(error));
   }
