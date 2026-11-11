@@ -23,6 +23,22 @@ input {
 button {
   cursor: pointer;
 }
+/*
+ * Every field is dressed by the Theme, whether or not its own rule says more: left to the
+ * system, a field is a light or grey box on a dark Theme (the Fondus durations, M4 closeout).
+ * :where() keeps this at no specificity, so any component rule overrides it.
+ * tests/app/theme-fields.spec.ts checks every visible field in each Theme.
+ */
+:where(
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+  select,
+  textarea
+) {
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
 .app-shell {
   min-height: 100vh;
   background: var(--texture), var(--frame), var(--page);
