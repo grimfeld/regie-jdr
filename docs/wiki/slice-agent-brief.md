@@ -10,7 +10,7 @@ Integration checkout (MAIN below): the checkout that holds your milestone branch
 | `m2-audio-mvp` | `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/m2-integration` |
 | `m3-transitions-closeout` | `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/m3-integration` (from 2026-11-12) |
 
-Wiki home: from 2026-11-11 (M1 closed as PR #74, merged forward at `m2-audio-mvp@6a66ecd`) the newest wiki is in the M2 checkout's `docs/wiki/`; read it there. Earlier the M1 checkout held it. Create slice worktrees with `git -C MAIN worktree add ...` (paths in step 2 are relative to MAIN of the repo root, `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n>`).
+Wiki home: from 2026-11-12 (M2 closed as PR #75, merged forward at `m3-transitions-closeout@ea75a13`) the newest wiki is in the M3 checkout's `docs/wiki/`. Earlier: from 2026-11-11 (M1 closed as PR #74, merged forward at `m2-audio-mvp@6a66ecd`) the newest wiki is in the M2 checkout's `docs/wiki/`; read it there. Earlier the M1 checkout held it. Create slice worktrees with `git -C MAIN worktree add ...` (paths in step 2 are relative to MAIN of the repo root, `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n>`).
 
 ## 1. Read first
 
