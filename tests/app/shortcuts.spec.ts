@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   openBroadcastWindow,
   stubFilePicker,
@@ -43,10 +44,12 @@ async function padsOf(regie: RunningApp, ...names: string[]) {
     .click();
   for (const name of names) {
     // Over the panel's heading: a drop over a pad's field or slider never reaches the page.
-    await soundInLibrary(page, name)
-      .locator('.media-audio-icon')
-      .dragTo(soundboard(page), { targetPosition: { x: 40, y: 20 } });
-    await expect(pad(page, name)).toBeVisible();
+    await dropAndWait(
+      soundInLibrary(page, name).locator('.media-audio-icon'),
+      soundboard(page),
+      pad(page, name),
+      { targetPosition: { x: 40, y: 20 } },
+    );
   }
 }
 

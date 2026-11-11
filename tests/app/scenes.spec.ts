@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
-  dragOnScreen,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -310,9 +310,17 @@ test('Scenes are dragged into their running order, new ones go last, and the ord
   const names = (page: Page) =>
     scenesPanel(page).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
 
-  await dragOnScreen(row('Dune'), row('Cantina'));
+  await dropAndWait(
+    row('Dune'),
+    row('Cantina'),
+    names(controlWindow).first().and(sceneEntry(controlWindow, 'Dune')),
+  );
   await expect(names(controlWindow)).toHaveText(['Dune', 'Cantina', 'Hangar']);
-  await dragOnScreen(row('Cantina'), row('Hangar'));
+  await dropAndWait(
+    row('Cantina'),
+    row('Hangar'),
+    names(controlWindow).last().and(sceneEntry(controlWindow, 'Cantina')),
+  );
   await expect(names(controlWindow)).toHaveText(['Dune', 'Hangar', 'Cantina']);
 
   // Reordering is not a Scene edit: undo still undoes the rename, and the order stays.

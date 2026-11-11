@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   stubFilePicker,
   test,
@@ -73,15 +74,19 @@ async function tavern(regie: RunningApp) {
   await panel.getByLabel('Nom de la scène').fill('Taverne');
   await panel.getByRole('button', { name: 'Créer la scène' }).click();
   await expect(editor(controlWindow).getByRole('heading', { name: 'Taverne' })).toBeVisible();
-  await soundInLibrary(controlWindow, 'Auberge')
-    .locator('.media-audio-icon')
-    .dragTo(musicList(controlWindow).locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(controlWindow, 'Auberge').locator('.media-audio-icon'),
+    musicList(controlWindow).locator('xpath=..'),
+    musicList(controlWindow).getByRole('listitem').filter({ hasText: 'Auberge' }),
+  );
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/]);
 
-  await soundInLibrary(controlWindow, 'Pluie')
-    .locator('.media-audio-icon')
-    .dragTo(ambienceList(controlWindow).locator('xpath=..'));
   const playRain = ambienceList(controlWindow).getByRole('checkbox', { name: 'Jouer Pluie' });
+  await dropAndWait(
+    soundInLibrary(controlWindow, 'Pluie').locator('.media-audio-icon'),
+    ambienceList(controlWindow).locator('xpath=..'),
+    playRain,
+  );
   await playRain.check();
   await expect(playRain).toBeChecked();
 }
@@ -170,11 +175,13 @@ test('a Soundboard pad whose file was deleted is badged; pressing it says so', a
   await fs.mkdir(folder, { recursive: true });
   await importSounds(regie, [await writeToneWav(folder, 'Épée', 660)], 'Bruitage');
   const soundboard = controlWindow.getByRole('region', { name: 'Table de bruitages' });
-  await soundInLibrary(controlWindow, 'Épée')
-    .locator('.media-audio-icon')
-    .dragTo(soundboard, { targetPosition: { x: 40, y: 20 } });
   const pad = soundboard.getByRole('button', { name: 'Jouer Épée' });
-  await expect(pad).toBeVisible();
+  await dropAndWait(
+    soundInLibrary(controlWindow, 'Épée').locator('.media-audio-icon'),
+    soundboard,
+    pad,
+    { targetPosition: { x: 40, y: 20 } },
+  );
   await expect(pad).not.toContainText('Média manquant');
 
   await deleteFileOf(regie, 'Épée');

@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
-  dragOnScreen,
+  dropAndWait,
   dropFiles,
   expect,
   launchApp,
@@ -194,9 +194,12 @@ test('a library image dragged into the Notes is inserted as it is', async ({ reg
   await page.getByRole('button', { name: 'Importer des images' }).click();
   await page.getByLabel('Catégorie de Vador').selectOption({ label: 'Personnage' });
 
-  await dragOnScreen(libraryItem(page, 'Vador').getByRole('img', { name: 'Vador' }), notes(page));
+  await dropAndWait(
+    libraryItem(page, 'Vador').getByRole('img', { name: 'Vador' }),
+    notes(page),
+    notesImage(page, 'Vador'),
+  );
 
-  await expect(notesImage(page, 'Vador')).toBeVisible();
   const [media] = await storedMedia(regie.dataDir);
   await expect.poll(() => storedNotesImages(regie.dataDir)).toEqual([media.id]);
   expect(media.category).toBe('character');
@@ -255,14 +258,12 @@ test('the library filters Reference images, and a Reference image can change cat
   await expect(page.getByLabel('Catégorie de Carte')).toHaveValue('reference');
 
   // Placed on the Scene like any other image.
-  await dragOnScreen(
+  await dropAndWait(
     libraryItem(page, 'Carte').getByRole('img', { name: 'Carte' }),
     // The drop area around the Overlay list (empty, so it has no height).
     editor(page).getByRole('list', { name: 'Superpositions' }).locator('xpath=..'),
-  );
-  await expect(
     editor(page).getByRole('list', { name: 'Superpositions' }).getByText('Carte'),
-  ).toBeVisible();
+  );
 
   await page.getByLabel('Catégorie de Carte').selectOption({ label: 'Décors' });
   await expect(library(page).getByRole('listitem')).toHaveCount(0);

@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { ControlBridge } from '../../shared/contract';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -67,7 +68,11 @@ async function activeSceneWithOverlay({ app, controlWindow }: RunningApp) {
     .getByRole('img', { name: IMAGE });
   await expect(thumbnail).toBeVisible();
   await createScene(controlWindow, 'Cantina');
-  await thumbnail.dragTo(overlayList(controlWindow).locator('xpath=..'));
+  await dropAndWait(
+    thumbnail,
+    overlayList(controlWindow).locator('xpath=..'),
+    overlayList(controlWindow).getByRole('listitem').first(),
+  );
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
   await expect(editor(controlWindow)).toContainText('EN DIRECT');

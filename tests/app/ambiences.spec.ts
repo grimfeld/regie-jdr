@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   stubFilePicker,
   test,
@@ -82,11 +83,11 @@ async function createScene(page: Page, name: string) {
 
 /** Drags a library sound onto the open Scene's Ambiences, and waits for it to be listed. */
 async function dropAmbience(page: Page, name: string) {
-  await soundInLibrary(page, name)
-    .locator('.media-audio-icon')
-    .dragTo(ambienceList(page).locator('xpath=..'));
-  // A drop made while the list re-renders can be lost: wait for this one to land.
-  await expect(ambience(page, name)).toBeVisible();
+  await dropAndWait(
+    soundInLibrary(page, name).locator('.media-audio-icon'),
+    ambienceList(page).locator('xpath=..'),
+    ambience(page, name),
+  );
 }
 
 /**
@@ -119,9 +120,11 @@ test('Ambiences dragged onto a Scene start off; switched on, they play together 
   const page = regie.controlWindow;
   await campaignWithSounds(regie);
   await createScene(page, 'Taverne');
-  await soundInLibrary(page, 'Auberge')
-    .locator('.media-audio-icon')
-    .dragTo(musicList(page).locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(page, 'Auberge').locator('.media-audio-icon'),
+    musicList(page).locator('xpath=..'),
+    musicList(page).getByRole('listitem').filter({ hasText: 'Auberge' }),
+  );
   await expect(musicList(page).getByRole('listitem')).toHaveText([/Auberge/]);
   await dropAmbience(page, 'Pluie');
   await dropAmbience(page, 'Feu');
@@ -268,9 +271,11 @@ test('Activating a Scene that shares an Ambience keeps it sounding throughout, a
   const page = regie.controlWindow;
   await campaignWithSounds(regie);
   await createScene(page, 'Taverne, jour');
-  await soundInLibrary(page, 'Auberge')
-    .locator('.media-audio-icon')
-    .dragTo(musicList(page).locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(page, 'Auberge').locator('.media-audio-icon'),
+    musicList(page).locator('xpath=..'),
+    musicList(page).getByRole('listitem').filter({ hasText: 'Auberge' }),
+  );
   await expect(musicList(page).getByRole('listitem')).toHaveText([/Auberge/]);
   await dropAmbience(page, 'Pluie');
   await ambienceSwitch(page, 'Pluie').check();
@@ -310,9 +315,11 @@ test('Music and Ambiences loop seamlessly: the strip never shows them loading ag
   // 2 s tones: several loops while watched.
   await campaignWithSounds(regie);
   await createScene(page, 'Taverne');
-  await soundInLibrary(page, 'Auberge')
-    .locator('.media-audio-icon')
-    .dragTo(musicList(page).locator('xpath=..'));
+  await dropAndWait(
+    soundInLibrary(page, 'Auberge').locator('.media-audio-icon'),
+    musicList(page).locator('xpath=..'),
+    musicList(page).getByRole('listitem').filter({ hasText: 'Auberge' }),
+  );
   await expect(musicList(page).getByRole('listitem')).toHaveText([/Auberge/]);
   await dropAmbience(page, 'Pluie');
   await ambienceSwitch(page, 'Pluie').check();

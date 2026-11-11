@@ -280,6 +280,22 @@ export default tseslint.config(
       'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }],
     },
   },
+  // Whole-app tests drag and drop only through dropAndWait (tests/app/harness.ts), which returns
+  // once the drop's visible end state shows: a raw drag let the next step race the drop's
+  // answer (docs/wiki/problem-flaky-app-tests.md).
+  {
+    files: ['tests/app/**/*.ts'],
+    ignores: ['tests/app/harness.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='dragTo']",
+          message: 'Drag and drop through dropAndWait (tests/app/harness.ts).',
+        },
+      ],
+    },
+  },
   {
     files: ['scripts/**/*.mjs'],
     rules: { 'no-console': 'off' },

@@ -2,7 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { Campaign, Scene } from '../../shared/domain';
 import {
   createCampaign,
-  dragOnScreen,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -50,7 +50,11 @@ async function createScene(page: Page, name: string) {
 /** Places the image as one more Overlay (at the canvas centre), drawn once loaded. */
 async function placeOverlay(page: Page) {
   const count = await overlayList(page).getByRole('listitem').count();
-  await dragOnScreen(thumbnail(page), overlayList(page).locator('xpath=..'));
+  await dropAndWait(
+    thumbnail(page),
+    overlayList(page).locator('xpath=..'),
+    overlayList(page).getByRole('listitem').nth(count),
+  );
   await expect(overlayList(page).getByRole('listitem')).toHaveCount(count + 1);
   await expect(editorCanvas(page).locator('.canvas-overlay img:not([hidden])')).toHaveCount(
     count + 1,
@@ -154,8 +158,11 @@ test('Overlays are brought forward and sent back among themselves, always above 
   await sceneWithImage(regie, 'Cantina');
   await placeOverlay(page);
   await placeOverlay(page);
-  await thumbnail(page).dragTo(
-    editor(page).getByRole('list', { name: 'Arrière-plans' }).locator('xpath=..'),
+  const backgrounds = editor(page).getByRole('list', { name: 'Arrière-plans' });
+  await dropAndWait(
+    thumbnail(page),
+    backgrounds.locator('xpath=..'),
+    backgrounds.getByRole('listitem').first(),
   );
   const drawn = editorCanvas(page).locator('.canvas-background, .canvas-overlay');
   await expect(drawn).toHaveCount(3);
