@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Music2, Pause, Play, Square, Volume2, Waves, Zap } from 'lucide-react';
+import {
+  AudioLines,
+  Music2,
+  Pause,
+  Play,
+  Square,
+  Volume2,
+  VolumeX,
+  Waves,
+  Zap,
+} from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
 import type {
   AudioSounding,
@@ -27,6 +37,14 @@ function unplayableNotice({ name, state }: SoundingVoice): string {
     : `« ${name} » n’a pas pu être lu : il est ignoré, les autres sons continuent.`;
 }
 
+/**
+ * A voice's state as the strip says it: during Silence, a voice that would sound is just
+ * silent; a missing or unreadable one still says so.
+ */
+function stateLabelOf(state: SoundingState, silence: boolean) {
+  return silence && state !== 'failed' && state !== 'missing' ? 'silence' : stateLabels[state];
+}
+
 const roleIcons = { music: Music2, ambience: Waves };
 
 function RoleIcon({ role }: { role: SoundingVoice['role'] }) {
@@ -38,16 +56,19 @@ function RoleIcon({ role }: { role: SoundingVoice['role'] }) {
  * The "En cours" strip, next to the On-air monitor: what is actually sounding, as the audio
  * engine reports it (a file that failed to load shows as such), and the Master volume.
  * Pads sounding (#39) show after the voices. The current Music has its pause/resume and
- * stop buttons here (live playback, not saved).
- * Later slices add here: Ambiences on (#37), Silence (#40).
+ * stop buttons here (live playback, not saved). The Silence toggle (#40) sits in its heading,
+ * always visible: during Silence the voices stay listed, silent, and come back when it lifts;
+ * the Music's buttons hide then, as the engine reports every voice paused.
+ * Later slices add here: Ambiences on (#37).
  */
 export function NowPlaying({ control }: { control: ControlBridge | undefined }) {
   const sounding = useSounding(control);
   useUnplayableNotices(sounding);
   const voices = sounding?.voices ?? [];
   const pads = sounding?.pads ?? [];
+  const silence = sounding?.silence ?? false;
   return (
-    <section className="panel now-playing" aria-label="En cours">
+    <section className="panel now-playing" aria-label="En cours" data-silence={silence}>
       <div className="panel-heading">
         <div>
           <span className="eyebrow">CE QU’ENTENDENT LES JOUEURS</span>
@@ -55,6 +76,14 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
             <AudioLines size={18} /> En cours
           </h2>
         </div>
+        <button
+          className={silence ? 'primary-button' : 'secondary-button'}
+          aria-pressed={silence}
+          title="Couper tout le son en fondu, ou le rétablir tel qu’il était"
+          onClick={() => void setSilence(control, !silence)}
+        >
+          <VolumeX size={14} /> Silence
+        </button>
       </div>
       {voices.length === 0 && pads.length === 0 ? (
         <p className="now-playing-empty">Aucun son.</p>
@@ -66,8 +95,8 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
               <li key={voice.mediaId} data-role={voice.role} data-state={voice.state}>
                 <RoleIcon role={voice.role} />
                 <span className="now-playing-name">{voice.name}</span>
-                <small>{stateLabels[voice.state]}</small>
-                {isMusic && <MusicPlayback control={control} voice={voice} />}
+                <small>{stateLabelOf(voice.state, silence)}</small>
+                {isMusic && !silence && <MusicPlayback control={control} voice={voice} />}
               </li>
             );
           })}
@@ -121,6 +150,19 @@ function MusicPlayback({
       </button>
     </span>
   );
+}
+
+/**
+ * Starts (`on`) or lifts Silence, telling the Game Master if that fails. For the Silence
+ * button, and for a keyboard shortcut (#41), which reads the current state from useSounding.
+ */
+export async function setSilence(control: ControlBridge | undefined, on: boolean) {
+  if (!control) return;
+  try {
+    await control.setSilence(on);
+  } catch (error) {
+    showNotice(errorMessage(error));
+  }
 }
 
 /** What is sounding, kept up to date; null until first known. */
