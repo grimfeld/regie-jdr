@@ -148,6 +148,42 @@ export function fixture(name: string): string {
   return path.join(__dirname, 'fixtures', name);
 }
 
+/**
+ * Writes a WAV file of a quiet `hz` tone, `seconds` long (8 kHz, 16-bit mono), named
+ * `<name>.wav` in `folder`; returns its path. Audio fixtures are made, not stored. Files with
+ * the same tone have the same content, so an import keeps one: give each its own `hz`.
+ */
+export async function writeToneWav(
+  folder: string,
+  name: string,
+  hz: number,
+  seconds = 2,
+): Promise<string> {
+  const rate = 8000;
+  const samples = Math.round(rate * seconds);
+  const data = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i++) {
+    data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hz * i) / rate) * 3000), i * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  const file = path.join(folder, `${name}.wav`);
+  await fs.writeFile(file, Buffer.concat([header, data]));
+  return file;
+}
+
 /** `test` with a `regie` fixture: the built app running on a fresh temporary data folder. */
 export const test = base.extend<{ regie: RunningApp }>({
   regie: async ({}, use) => {

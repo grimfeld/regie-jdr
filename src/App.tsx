@@ -6,6 +6,7 @@ import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
+import { NowPlaying } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
 import { showNotice } from './notices';
@@ -286,6 +287,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
 
         <aside className="control-column">
           <OnAirMonitor control={control} />
+          <NowPlaying control={control} />
           <FadeSetting control={control} />
           <div className="panel">
             <div className="panel-heading">

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { Clapperboard, History, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
-import type { CampaignId, ImageMedia, NormalizedPoint, Scene, SceneId } from '../shared/domain';
+import type {
+  AudioMedia,
+  CampaignId,
+  ImageMedia,
+  NormalizedPoint,
+  Scene,
+  SceneId,
+} from '../shared/domain';
 import type { ControlBridge, OverlayTransform, SceneEdit, UndoState } from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
@@ -10,6 +17,7 @@ import { editShortcutOf, type EditShortcut } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
+import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
@@ -39,6 +47,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
   // Which Scene is on air.
   const onAir = useOnAir(control);
   const [images, setImages] = useState<ImageMedia[]>([]);
+  const [sounds, setSounds] = useState<AudioMedia[]>([]);
   const [newName, setNewName] = useState('');
   const nameField = useRef<HTMLInputElement>(null);
 
@@ -58,13 +67,17 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
     };
   }, [control, campaignId, mediaRevision]);
 
-  // The library's images, to draw and to place. Read again whenever a Scene is
-  // opened and when the picker gets focus, so images imported meanwhile are offered.
+  // The library's images, to draw and to place, and its sounds, to name. Read again whenever a
+  // Scene is opened, when the picker gets focus and when a sound is dropped, so Media imported
+  // meanwhile are known.
   const refreshImages = useCallback(() => {
     if (!control) return;
     control
       .listMedia(campaignId)
-      .then((media) => setImages(media.filter((m): m is ImageMedia => m.kind === 'image')))
+      .then((media) => {
+        setImages(media.filter((m): m is ImageMedia => m.kind === 'image'));
+        setSounds(media.filter((m): m is AudioMedia => m.kind === 'audio'));
+      })
       .catch((error: unknown) => showNotice(errorMessage(error)));
   }, [control, campaignId]);
   useEffect(refreshImages, [refreshImages, selectedId, mediaRevision]);
@@ -291,6 +304,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
           key={selected.id}
           scene={selected}
           images={images}
+          sounds={sounds}
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
           undoState={undoState}
@@ -327,6 +341,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
 interface EditorProps {
   scene: Scene;
   images: ImageMedia[];
+  sounds: AudioMedia[];
   /** Whether the Selected Scene is the Active Scene: its edits go on air. */
   active: boolean;
   /** The fade duration setting (OnAirState.fadeDurationMs), undefined until known. */
@@ -528,6 +543,17 @@ function SceneEditor(props: EditorProps) {
           images={images}
           onEdit={onEditShowingFailure}
           onDrop={(event) => onDrop(event, 'overlays')}
+        />
+      </div>
+
+      <div className="placement-lists">
+        <SceneMusicList
+          scene={scene}
+          sounds={props.sounds}
+          onAdd={(mediaId) => {
+            if (!props.sounds.some((sound) => sound.id === mediaId)) onRefreshImages();
+            onEditShowingFailure({ kind: 'add-music', mediaId });
+          }}
         />
       </div>
     </section>

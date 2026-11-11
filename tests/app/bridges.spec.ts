@@ -28,14 +28,15 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'editScene',
     'getOnAir',
     'getSettings',
+    'getSounding',
     'getUndoState',
     'importDroppedMedia',
     'importMedia',
     'listCampaigns',
     'listMedia',
     'listScenes',
-    'onAudioHalt',
     'onOnAirChanged',
+    'onSoundingChanged',
     'openBroadcast',
     'openCampaign',
     'redoSceneEdit',
@@ -44,17 +45,14 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'setFadeDuration',
     'setHomeTheme',
     'setImageCategory',
+    'setMasterVolume',
     'showTransientEdit',
     'takeNotices',
     'toggleBroadcastFullscreen',
     'undoSceneEdit',
     'updateCampaign',
   ]);
-  expect(await broadcastWindow.evaluate(keysOf)).toEqual([
-    'getOnAir',
-    'onAudioHalt',
-    'onOnAirChanged',
-  ]);
+  expect(await broadcastWindow.evaluate(keysOf)).toEqual(['getOnAir', 'onOnAirChanged']);
 });
 
 test('a mutating message sent from the Broadcast window is rejected and logged', async ({

@@ -11,7 +11,7 @@ import {
 } from '../core/librarySearch';
 import { mediaKindOfFileName, thumbnailAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
-import { carriesFiles, droppedFiles, startMediaDrag } from './mediaDrag';
+import { carriesFiles, droppedFiles, startAudioDrag, startMediaDrag } from './mediaDrag';
 import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
@@ -334,7 +334,12 @@ export function MediaLibrary({
       <ul className="media-library sound-library" aria-label="Sons">
         {sounds.map((item) => (
           <li className="media-item" key={item.id}>
-            <span className="media-audio-icon">
+            <span
+              className="media-audio-icon"
+              draggable
+              title="Glissez le son sur la scène ouverte pour l’y ajouter"
+              onDragStart={(event) => startAudioDrag(event, item)}
+            >
               <Music2 size={20} />
             </span>
             <MediaName item={item} onRename={(name) => void rename(item, name)} />

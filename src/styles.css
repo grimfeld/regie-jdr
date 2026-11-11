@@ -1117,3 +1117,54 @@ button {
 .image-library .asset-thumb[draggable='true'] {
   cursor: grab;
 }
+
+/* "En cours" strip: what the audio engine reports sounding, and the Master volume. */
+.media-audio-icon[draggable='true'] {
+  cursor: grab;
+}
+.now-playing-list {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.now-playing-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.now-playing-list li small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.now-playing-list li[data-state='failed'] small {
+  color: var(--accent);
+}
+.now-playing-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.now-playing-empty {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.master-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.master-volume input {
+  flex: 1;
+  min-width: 0;
+}
+.scene-music li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
