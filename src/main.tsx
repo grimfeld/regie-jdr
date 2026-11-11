@@ -23,7 +23,7 @@ if (!root) throw new Error('index.html has no #root element');
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <ErrorBoundary>
+    <ErrorBoundary window={isBroadcast ? 'broadcast' : 'control'}>
       <App />
     </ErrorBoundary>
     {isBroadcast ? null : <Notices />}
