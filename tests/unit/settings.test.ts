@@ -8,12 +8,13 @@ describe('settings', () => {
   const dir = useTempDir();
   const reopen = () => createSettingsStore(openStorage(dir.path));
 
-  it('start with the imperium home theme, no window bounds, no last Active Scene and a 0.6 s fade', async () => {
+  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade and a full Master volume', async () => {
     expect(await reopen().get()).toEqual({
       theme: 'imperium',
       windowBounds: {},
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
+      masterVolume: 1,
     });
   });
 
@@ -45,6 +46,7 @@ describe('settings', () => {
       windowBounds: {},
       lastActiveSceneByCampaign: { 'star-wars': 'cantina' },
       fadeDurationMs: 600,
+      masterVolume: 1,
     });
   });
 
@@ -65,7 +67,51 @@ describe('settings', () => {
       windowBounds: {},
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
+      masterVolume: 1,
     });
+  });
+
+  it('give Settings saved before Milestone 2 a full Master volume, keeping the rest', async () => {
+    const storage = openStorage(dir.path);
+    await fs.writeFile(
+      storage.settingsFile,
+      JSON.stringify({
+        schemaVersion: 2,
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        fadeDurationMs: 900,
+      }),
+    );
+    expect(await reopen().get()).toEqual({
+      theme: 'retro',
+      windowBounds: {},
+      lastActiveSceneByCampaign: {},
+      fadeDurationMs: 900,
+      masterVolume: 1,
+    });
+  });
+
+  it('keep a stored Master volume and drop an unusable one', async () => {
+    const storage = openStorage(dir.path);
+    const write = (masterVolume: unknown) =>
+      fs.writeFile(
+        storage.settingsFile,
+        JSON.stringify({
+          schemaVersion: 3,
+          theme: 'retro',
+          windowBounds: {},
+          lastActiveSceneByCampaign: {},
+          fadeDurationMs: 600,
+          masterVolume,
+        }),
+      );
+    await write(0.4);
+    expect((await reopen().get()).masterVolume).toBe(0.4);
+    for (const unusable of [1.5, -0.1, 'loud', null]) {
+      await write(unusable);
+      expect((await reopen().get()).masterVolume).toBe(1);
+    }
   });
 
   it('remember the global theme across a restart', async () => {
@@ -89,6 +135,7 @@ describe('settings', () => {
       },
       lastActiveSceneByCampaign: { 'star-wars': 'hangar', warhammer: 'cathedral' },
       fadeDurationMs: 600,
+      masterVolume: 1,
     });
   });
 
@@ -105,6 +152,7 @@ describe('settings', () => {
       windowBounds: { control: { x: 0, y: 0, width: 800, height: 600 } },
       lastActiveSceneByCampaign: { 'star-wars': 'cantina' },
       fadeDurationMs: 1000,
+      masterVolume: 1,
     });
   });
 
@@ -124,6 +172,7 @@ describe('settings', () => {
       windowBounds: {},
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
+      masterVolume: 1,
     });
   });
 });

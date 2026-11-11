@@ -1,7 +1,8 @@
 /**
  * Global Settings (one document, `<root>/settings.json`): the home page theme, the Control and
  * Broadcast window bounds, the last Active Scene of each Campaign (for highlighting only:
- * nothing goes on air after a restart) and the fade duration. No Electron dependency.
+ * nothing goes on air after a restart), the fade duration and the Master volume. No Electron
+ * dependency.
  */
 import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
@@ -26,6 +27,16 @@ export interface SettingsStore {
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
 }
 
+/** Master volume until the Game Master changes it: full. */
+export const DEFAULT_MASTER_VOLUME = 1;
+
+/** A volume, 0..1, or undefined for anything else. */
+export function parseVolume(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : undefined;
+}
+
 /** Theme of the home page until the Game Master picks one. */
 export const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 
@@ -35,6 +46,7 @@ function defaults(): Settings {
     windowBounds: {},
     lastActiveSceneByCampaign: {},
     fadeDurationMs: FADE_DURATION_MS.default,
+    masterVolume: DEFAULT_MASTER_VOLUME,
   };
 }
 
@@ -51,10 +63,14 @@ export function parseWindowBounds(value: unknown): WindowBounds | undefined {
 
 const settingsDocument: DocumentType<Settings> = {
   name: 'settings',
-  version: 2,
-  // Version 2 adds the fade duration, at its default.
-  migrations: { 1: (fields) => ({ ...fields, fadeDurationMs: FADE_DURATION_MS.default }) },
-  parse({ theme, windowBounds, lastActiveSceneByCampaign, fadeDurationMs }) {
+  version: 3,
+  migrations: {
+    // Version 2 adds the fade duration, at its default.
+    1: (fields) => ({ ...fields, fadeDurationMs: FADE_DURATION_MS.default }),
+    // Version 3 (Milestone 2) adds the Master volume, at its default.
+    2: (fields) => ({ ...fields, masterVolume: DEFAULT_MASTER_VOLUME }),
+  },
+  parse({ theme, windowBounds, lastActiveSceneByCampaign, fadeDurationMs, masterVolume }) {
     if (!isThemeId(theme) || !isRecord(windowBounds) || !isRecord(lastActiveSceneByCampaign)) {
       return undefined;
     }
@@ -72,6 +88,7 @@ const settingsDocument: DocumentType<Settings> = {
       windowBounds: bounds,
       lastActiveSceneByCampaign: lastActive,
       fadeDurationMs: parseFadeDuration(fadeDurationMs) ?? FADE_DURATION_MS.default,
+      masterVolume: parseVolume(masterVolume) ?? DEFAULT_MASTER_VOLUME,
     };
   },
 };

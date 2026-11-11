@@ -106,13 +106,16 @@ export interface Overlay {
 /** An Ambience listed on a Scene, switched on or off independently of the others. */
 export interface SceneAmbience {
   mediaId: MediaId;
-  /** Whether it plays while the Scene is active; all that are on play together, looping. */
+  /**
+   * Whether it plays while the Scene is active; all that are on play together, looping. An
+   * Ambience added to a Scene starts off.
+   */
   on: boolean;
   /** 0..1 */
   volume: number;
 }
 
-/** Volumes of a Scene, 0..1. */
+/** Levels of a Scene, 0..1: its Music level and its Ambience level. */
 export interface SceneVolumes {
   music: number;
   ambience: number;
@@ -138,7 +141,7 @@ export interface Scene {
   notes: string;
 }
 
-/** One pad of a Soundboard, triggering a Sound effect. */
+/** One pad of a Soundboard, triggering a Sound effect once (pads never loop). */
 export interface SoundboardPad {
   id: string;
   mediaId: MediaId;
@@ -150,7 +153,10 @@ export interface SoundboardPad {
 /** A Campaign's set of pads for triggering Sound effects, whichever Scene is active. */
 export interface Soundboard {
   campaignId: CampaignId;
+  /** In the Game Master's order; keys 1 to 9 trigger the first nine. */
   pads: SoundboardPad[];
+  /** The Soundboard level, 0..1, applied to every pad. */
+  volume: number;
 }
 
 export interface WindowBounds {
@@ -175,6 +181,8 @@ export interface Settings {
    * Blackout, in milliseconds (bounds in core/fades.ts). One setting for the whole app.
    */
   fadeDurationMs: number;
+  /** The Master volume, 0..1, applied to all app audio. */
+  masterVolume: number;
 }
 
 /** A visible Background as the Broadcast window draws it. */
