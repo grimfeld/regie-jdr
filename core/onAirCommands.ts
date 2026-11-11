@@ -24,9 +24,16 @@ import type { AudioOnAir } from './audioOnAir.js';
 import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { mediaAddress } from './mediaAddress.js';
+import { notesKeepingImages } from './notes.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
 import { addedMedia, applySceneEdit, type SceneEdit } from './sceneEdits.js';
-import { mediaOfScene, SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
+import {
+  mediaOfScene,
+  notesUseMedia,
+  SceneError,
+  sceneUsesMedia,
+  type SceneLibrary,
+} from './scenes.js';
 import { createSerialQueue } from './serialQueue.js';
 import {
   createUndoHistories,
@@ -115,9 +122,9 @@ export interface OnAirCommands {
   renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
   /**
    * Deletes a Media. Unused Media goes at once. Media that Scenes or Soundboard pads use is
-   * only listed with those Scenes and pads unless `confirmed`; then the Media, its file, its
-   * placements in those Scenes and those pads are removed, and the broadcast drops it if the
-   * Active Scene showed it.
+   * only listed with those Scenes (placing it, or showing it in their Notes) and pads unless
+   * `confirmed`; then the Media, its file, its placements, its images in those Notes and those
+   * pads are removed, and the broadcast drops it if the Active Scene showed it.
    */
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
 }
@@ -207,10 +214,15 @@ export function createOnAirCommands(deps: {
   async function applyEdit(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit) {
     const scene = await scenes.get(campaignId, sceneId);
     if (!scene) throw new SceneError('Cette scène n’existe plus.');
-    // Notes: saved only. Never on air, and outside the Scene undo history (their editor has its
-    // own undo and redo).
-    if (edit.kind === 'set-notes') return scenes.save(applySceneEdit(scene, edit, newId));
     const media = await library.list(campaignId);
+    // Notes: saved only. Never on air, and outside the Scene undo history (their editor has its
+    // own undo and redo). An image of a Media no longer in the library (deleted while the editor
+    // held it, or brought back by its undo) is left out: no Notes point to nothing.
+    if (edit.kind === 'set-notes') {
+      const images = new Set(media.filter((item) => item.kind === 'image').map(({ id }) => id));
+      const notes = notesKeepingImages(edit.notes, (mediaId) => images.has(mediaId));
+      return scenes.save(applySceneEdit(scene, { ...edit, notes }, newId));
+    }
     checkAdded(edit, media);
     const saved = await saveScene(applySceneEdit(scene, edit, newId), audioChangeOf(edit));
     histories.record({
@@ -406,25 +418,31 @@ export function createOnAirCommands(deps: {
         const deleted = (await library.list(campaignId)).find((media) => media.id === mediaId);
         if (!deleted) throw new MediaError('Ce média n’existe plus.');
         const summary = ({ id, name }: Scene) => ({ id, name });
-        const using = (await scenes.list(campaignId)).filter((scene) =>
-          sceneUsesMedia(scene, mediaId),
-        );
-        const affectedPads = (await soundboards.get(campaignId)).pads
-          .filter((pad) => pad.mediaId === mediaId)
-          .map((pad) => ({ id: pad.id, name: pad.label ?? deleted.name }));
-        if ((using.length > 0 || affectedPads.length > 0) && !confirmed) {
-          return { deleted: false, affectedScenes: using.map(summary), affectedPads };
-        }
+        const all = await scenes.list(campaignId);
+        const placing = all.filter((scene) => sceneUsesMedia(scene, mediaId));
+        const noting = all.filter((scene) => notesUseMedia(scene, mediaId));
+        const uses = {
+          affectedScenes: placing.map(summary),
+          affectedPads: (await soundboards.get(campaignId)).pads
+            .filter((pad) => pad.mediaId === mediaId)
+            .map((pad) => ({ id: pad.id, name: pad.label ?? deleted.name })),
+          affectedNotes: noting.map(summary),
+        };
+        const used = Object.values(uses).some((list) => list.length > 0);
+        if (used && !confirmed) return { deleted: false, ...uses };
         // Uses first: if the Media delete then fails, nothing points at a missing Media.
         await soundboards.removeMedia(campaignId, mediaId);
-        const cleaned = await scenes.removeMediaPlacements(campaignId, mediaId);
-        // Their histories could bring the deleted Media back: forget them.
-        cleaned.forEach((scene) => histories.clear(campaignId, scene.id));
+        const cleaned = await scenes.removeMediaUses(campaignId, mediaId);
+        // Their histories could bring the deleted Media back: forget them. Notes are outside the
+        // Scene history (their editor's own history starts again on the cleaned Notes).
+        const placed = new Set(placing.map((scene) => scene.id));
+        const replaced = cleaned.filter((scene) => placed.has(scene.id));
+        replaced.forEach((scene) => histories.clear(campaignId, scene.id));
         await library.delete(campaignId, mediaId);
         const current = onAir.current();
-        const active = cleaned.find((scene) => scene.id === current.activeSceneId);
+        const active = replaced.find((scene) => scene.id === current.activeSceneId);
         if (active && current.campaignId === campaignId) await showActive(active, 'stop');
-        return { deleted: true, affectedScenes: cleaned.map(summary), affectedPads };
+        return { deleted: true, ...uses };
       }),
   };
 }

@@ -209,9 +209,12 @@ export interface MediaImportResult {
  */
 export interface MediaDeletion {
   deleted: boolean;
+  /** Scenes placing the Media (Background, Overlay, music, Ambience). */
   affectedScenes: { id: SceneId; name: string }[];
   /** Soundboard pads, by their name (their own, or their Sound effect's). */
   affectedPads: { id: string; name: string }[];
+  /** Scenes whose Notes show the Media as an image. */
+  affectedNotes: { id: SceneId; name: string }[];
 }
 
 /** What can be changed on a Campaign; absent fields are left as they are. */
@@ -340,8 +343,9 @@ export interface InvokeChannels {
     result: Media;
   };
   /**
-   * Delete a Media. Unused Media is deleted at once. Media that Scenes or Soundboard pads use
-   * is deleted only when `confirmed`; otherwise nothing changes and the result lists its uses.
+   * Delete a Media. Unused Media is deleted at once. Media that Scenes (placements or Notes
+   * images) or Soundboard pads use is deleted only when `confirmed`; otherwise nothing changes
+   * and the result lists its uses.
    */
   'media:delete': {
     payload: { campaignId: CampaignId; mediaId: MediaId; confirmed: boolean };

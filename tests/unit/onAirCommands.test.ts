@@ -1007,6 +1007,7 @@ describe('on-air commands', () => {
         deleted: true,
         affectedScenes: [],
         affectedPads: [],
+        affectedNotes: [],
       });
 
       expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
@@ -1025,6 +1026,7 @@ describe('on-air commands', () => {
         deleted: false,
         affectedScenes: [{ id: cantina.id, name: 'Cantina' }],
         affectedPads: [],
+        affectedNotes: [],
       });
 
       expect(await ctx.library.list(ctx.campaign.id)).toEqual([ctx.image]);
@@ -1048,6 +1050,7 @@ describe('on-air commands', () => {
           { id: hangar.id, name: 'Hangar' },
         ],
         affectedPads: [],
+        affectedNotes: [],
       });
 
       expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
@@ -1102,6 +1105,7 @@ describe('on-air commands', () => {
           { id: 'pad1', name: 'Épée' },
           { id: 'pad2', name: 'Parade' },
         ],
+        affectedNotes: [],
       });
       expect((await ctx.soundboards.get(ctx.campaign.id)).pads).toHaveLength(2);
       expect(await ctx.library.list(ctx.campaign.id)).toContainEqual(sword);
@@ -1115,6 +1119,97 @@ describe('on-air commands', () => {
       });
       expect((await ctx.soundboards.get(ctx.campaign.id)).pads).toEqual([]);
       expect(await ctx.library.list(ctx.campaign.id)).not.toContainEqual(sword);
+    });
+
+    /** A Scene whose Notes show the image Media between two lines of text, and place nothing. */
+    async function sceneNoting(ctx: Awaited<ReturnType<typeof setup>>, name: string) {
+      const created = await ctx.scenes.create(ctx.campaign.id, name);
+      return ctx.commands.editScene(ctx.campaign.id, created.id, {
+        kind: 'set-notes',
+        notes: {
+          type: 'doc',
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: 'Plan' }] },
+            { type: 'image', attrs: { mediaId: ctx.image.id, width: 50 } },
+            { type: 'paragraph', content: [{ type: 'text', text: 'Fin' }] },
+          ],
+        },
+      });
+    }
+    const notesWithoutImage = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Plan' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Fin' }] },
+      ],
+    };
+
+    it('counts images in Notes as uses: lists their Scenes and changes nothing until confirmed', async () => {
+      const ctx = await setup();
+      const mill = await sceneNoting(ctx, 'Le moulin');
+      const cantina = await sceneShowing(ctx, 'Cantina');
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false)).toEqual({
+        deleted: false,
+        affectedScenes: [{ id: cantina.id, name: 'Cantina' }],
+        affectedPads: [],
+        affectedNotes: [{ id: mill.id, name: 'Le moulin' }],
+      });
+
+      expect(await ctx.library.list(ctx.campaign.id)).toEqual([ctx.image]);
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([mill, cantina]);
+    });
+
+    it('asks first for Media used only in Notes', async () => {
+      const ctx = await setup();
+      const mill = await sceneNoting(ctx, 'Le moulin');
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false)).toMatchObject({
+        deleted: false,
+        affectedNotes: [{ id: mill.id, name: 'Le moulin' }],
+      });
+      expect(await ctx.library.list(ctx.campaign.id)).toEqual([ctx.image]);
+      // Its file is the file of a Media in use, never an orphan.
+      expect(await ctx.library.listOrphanFiles(ctx.campaign.id)).toEqual([]);
+    });
+
+    it('on confirmation removes the images from those Notes, keeping the rest and the Scene history', async () => {
+      const ctx = await setup();
+      const mill = await sceneNoting(ctx, 'Le moulin');
+      await ctx.commands.editScene(ctx.campaign.id, mill.id, { kind: 'set-title', title: 'Nuit' });
+      const titled = await ctx.scenes.get(ctx.campaign.id, mill.id);
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true)).toMatchObject({
+        deleted: true,
+        affectedNotes: [{ id: mill.id, name: 'Le moulin' }],
+      });
+
+      expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
+      expect(await mediaFiles(ctx)).toEqual([]);
+      expect(await ctx.scenes.get(ctx.campaign.id, mill.id)).toEqual({
+        ...titled,
+        notes: notesWithoutImage,
+      });
+      // The Scene history held no use of the Media: its undo still works, Notes left as they are.
+      expect(await ctx.commands.undoSceneEdit(ctx.campaign.id, mill.id)).toEqual({
+        ...mill,
+        notes: notesWithoutImage,
+      });
+    });
+
+    it('never saves Notes showing a Media no longer in the library', async () => {
+      const ctx = await setup();
+      const mill = await sceneNoting(ctx, 'Le moulin');
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true);
+
+      // The Notes editor still held the image (its undo brought it back): saved without it.
+      const saved = await ctx.commands.editScene(ctx.campaign.id, mill.id, {
+        kind: 'set-notes',
+        notes: mill.notes,
+      });
+
+      expect(saved.notes).toEqual(notesWithoutImage);
+      expect(await ctx.scenes.get(ctx.campaign.id, mill.id)).toEqual(saved);
     });
 
     it('refuses Media that no longer exists', async () => {

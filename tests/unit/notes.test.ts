@@ -5,7 +5,9 @@ import {
   MAX_NOTES_SIZE,
   MAX_NOTES_IMAGE_WIDTH,
   MIN_NOTES_IMAGE_WIDTH,
+  mediaOfNotes,
   notesFromPlainText,
+  notesKeepingImages,
   parseNotes,
 } from '../../core/notes';
 import type { NotesDocument, NotesNode } from '../../shared/domain';
@@ -219,5 +221,68 @@ describe('notesFromPlainText', () => {
 
   it('gives notes that pass the check', () => {
     expect(parseNotes(notesFromPlainText('a\nb'))).toEqual(notesFromPlainText('a\nb'));
+  });
+});
+
+const PORTRAIT_ID = '1c0ffee0-2222-4abc-8def-0123456789ab';
+const quote = (...content: NotesNode[]): NotesNode => ({ type: 'blockquote', content });
+const bullets = (...items: NotesNode[][]): NotesNode => ({
+  type: 'bulletList',
+  content: items.map((content) => ({ type: 'listItem', content })),
+});
+
+describe('mediaOfNotes', () => {
+  it('finds no Media in Notes without images', () => {
+    expect(mediaOfNotes(emptyNotes())).toEqual([]);
+  });
+
+  it('finds the Media of every image, nested in quotes and lists too, in document order', () => {
+    const notes = doc(
+      image(),
+      quote(paragraph(text('Carte')), image(PORTRAIT_ID)),
+      bullets([paragraph(text('Salle')), { type: 'image', attrs: { mediaId: MAP_ID, width: 40 } }]),
+    );
+
+    expect(mediaOfNotes(notes)).toEqual([MAP_ID, PORTRAIT_ID, MAP_ID]);
+  });
+});
+
+describe('notesKeepingImages', () => {
+  const notMap = (mediaId: string) => mediaId !== MAP_ID;
+
+  it('gives back the same Notes when every image is kept', () => {
+    const notes = doc(paragraph(text('Le moulin')), image(PORTRAIT_ID));
+
+    expect(notesKeepingImages(notes, notMap)).toBe(notes);
+  });
+
+  it('removes the images of a Media wherever they stand, keeping everything else', () => {
+    const notes = doc(
+      paragraph(text('Le moulin')),
+      image(),
+      quote(paragraph(text('Carte')), image(), image(PORTRAIT_ID)),
+      bullets([paragraph(text('Salle')), image()]),
+    );
+
+    expect(notesKeepingImages(notes, notMap)).toEqual(
+      doc(
+        paragraph(text('Le moulin')),
+        quote(paragraph(text('Carte')), image(PORTRAIT_ID)),
+        bullets([paragraph(text('Salle'))]),
+      ),
+    );
+  });
+
+  it('leaves an empty paragraph where only the removed images stood', () => {
+    expect(notesKeepingImages(doc(image(), image()), notMap)).toEqual(emptyNotes());
+    expect(notesKeepingImages(doc(quote(image())), notMap)).toEqual(doc(quote(paragraph())));
+  });
+
+  it('gives Notes that pass the check', () => {
+    const notes = doc(quote(image()), bullets([paragraph(text('Salle')), image()]), image());
+
+    const kept = notesKeepingImages(notes, notMap);
+
+    expect(parseNotes(kept)).toEqual(kept);
   });
 });

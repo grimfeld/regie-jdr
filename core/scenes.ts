@@ -24,7 +24,13 @@ import { CampaignError } from './campaigns.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
-import { emptyNotes, notesFromPlainText, parseNotes } from './notes.js';
+import {
+  emptyNotes,
+  mediaOfNotes,
+  notesFromPlainText,
+  notesKeepingImages,
+  parseNotes,
+} from './notes.js';
 import { moveInRunningOrder } from './runningOrder.js';
 import { cleanSceneName, MAX_SCENE_NAME_LENGTH, SceneError } from './sceneEdits.js';
 
@@ -37,10 +43,11 @@ export interface SceneLibrary {
   /** The Scene, or undefined if it does not exist. */
   get(campaignId: CampaignId, sceneId: SceneId): Promise<Scene | undefined>;
   /**
-   * Removes every placement of a Media (Backgrounds, Overlays, music, Ambiences) from the
-   * Campaign's Scenes and returns the Scenes that changed, as saved.
+   * Removes every use of a Media from the Campaign's Scenes, its placements (Backgrounds,
+   * Overlays, music, Ambiences) and its images in the Notes, and returns the Scenes that changed,
+   * as saved.
    */
-  removeMediaPlacements(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
+  removeMediaUses(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
   /** A new, empty Scene, last in the running order. */
   create(campaignId: CampaignId, name: string): Promise<Scene>;
   /** Deletes a Scene; throws a SceneError when it does not exist. */
@@ -172,9 +179,16 @@ export function sceneUsesMedia(scene: Scene, mediaId: MediaId): boolean {
   return mediaOfScene(scene).includes(mediaId);
 }
 
+/** Whether a Scene's Notes show a Media as an image: a use, though never on air. */
+export function notesUseMedia(scene: Scene, mediaId: MediaId): boolean {
+  return mediaOfNotes(scene.notes).includes(mediaId);
+}
+
+/** A Scene without any use of a Media: its placements and its images in the Notes. */
 function withoutMedia(scene: Scene, mediaId: MediaId): Scene {
   return {
     ...scene,
+    notes: notesKeepingImages(scene.notes, (id) => id !== mediaId),
     backgrounds: scene.backgrounds.filter((item) => item.mediaId !== mediaId),
     overlays: scene.overlays.filter((item) => item.mediaId !== mediaId),
     music: scene.music.filter((item) => item !== mediaId),
@@ -325,13 +339,13 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
       });
     },
 
-    removeMediaPlacements(campaignId, mediaId) {
+    removeMediaUses(campaignId, mediaId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
         const scenes = await read(file, campaignId);
         const affected: Scene[] = [];
         const updated = scenes.map((scene) => {
-          if (!sceneUsesMedia(scene, mediaId)) return scene;
+          if (!sceneUsesMedia(scene, mediaId) && !notesUseMedia(scene, mediaId)) return scene;
           const cleaned = withoutMedia(scene, mediaId);
           affected.push(cleaned);
           return cleaned;

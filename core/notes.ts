@@ -225,3 +225,43 @@ function parseMarks(value: unknown): NotesMark[] | undefined {
   }
   return marks;
 }
+
+// Media uses -----------------------------------------------------------------
+
+/** Every Media the images of the Notes show, in document order: Notes images are Media uses. */
+export function mediaOfNotes(notes: NotesDocument): string[] {
+  const found: string[] = [];
+  const visit = (nodes: readonly NotesNode[] | undefined) => {
+    for (const node of nodes ?? []) {
+      const mediaId = node.attrs?.mediaId;
+      if (node.type === 'image' && typeof mediaId === 'string') found.push(mediaId);
+      visit(node.content);
+    }
+  };
+  visit(notes.content);
+  return found;
+}
+
+/**
+ * The Notes with only the images whose Media `keep` accepts, the rest as they were: a deleted
+ * Media leaves no image pointing at nothing. A quote, or the Notes themselves, left with no block
+ * gets one empty paragraph, as the editor would (list items always start with a paragraph, so
+ * they never empty). The same Notes object when every image is kept.
+ */
+export function notesKeepingImages(
+  notes: NotesDocument,
+  keep: (mediaId: string) => boolean,
+): NotesDocument {
+  if (mediaOfNotes(notes).every(keep)) return notes;
+  const kept = (node: NotesNode) => {
+    const mediaId = node.attrs?.mediaId;
+    return node.type !== 'image' || (typeof mediaId === 'string' && keep(mediaId));
+  };
+  const clean = (nodes: readonly NotesNode[]): NotesNode[] => {
+    const left = nodes
+      .filter(kept)
+      .map((node) => (node.content ? { ...node, content: clean(node.content) } : node));
+    return left.length > 0 ? left : [{ type: 'paragraph' }];
+  };
+  return { type: 'doc', content: clean(notes.content) };
+}

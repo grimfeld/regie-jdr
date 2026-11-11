@@ -85,7 +85,7 @@ describe('scene library', () => {
       backgrounds: [{ ...placed('kept', 'b3'), ...background }],
     });
 
-    const affected = await scenes.removeMediaPlacements(campaign.id, 'gone');
+    const affected = await scenes.removeMediaUses(campaign.id, 'gone');
 
     const cleaned: Scene = {
       ...cantina,
@@ -99,11 +99,33 @@ describe('scene library', () => {
     expect(await reopened.list(campaign.id)).toEqual([cleaned, bridge]);
   });
 
+  it('removes the images of a Media from the Notes of the Scenes showing it there', async () => {
+    const { campaign, scenes } = await setup();
+    const map = '9b2d1c3e-1111-4d8e-9a43-0f0f2b0c1d2e';
+    const portrait = '1c0ffee0-2222-4abc-8def-0123456789ab';
+    const image = (mediaId: string) => ({ type: 'image', attrs: { mediaId } });
+    const mill = await scenes.save({
+      ...(await scenes.create(campaign.id, 'Le moulin')),
+      notes: { type: 'doc', content: [image(map), image(portrait)] },
+    });
+    const bridge = await scenes.save({
+      ...(await scenes.create(campaign.id, 'La passerelle')),
+      notes: { type: 'doc', content: [image(portrait)] },
+    });
+
+    const affected = await scenes.removeMediaUses(campaign.id, map);
+
+    const cleaned: Scene = { ...mill, notes: { type: 'doc', content: [image(portrait)] } };
+    expect(affected).toEqual([cleaned]);
+    const reopened = createSceneLibrary(openStorage(root()));
+    expect(await reopened.list(campaign.id)).toEqual([cleaned, bridge]);
+  });
+
   it('changes nothing when no Scene uses the Media', async () => {
     const { campaign, scenes } = await setup();
     const scene = await scenes.create(campaign.id, 'La cantina');
 
-    expect(await scenes.removeMediaPlacements(campaign.id, 'unused')).toEqual([]);
+    expect(await scenes.removeMediaUses(campaign.id, 'unused')).toEqual([]);
     expect(await scenes.list(campaign.id)).toEqual([scene]);
   });
 
