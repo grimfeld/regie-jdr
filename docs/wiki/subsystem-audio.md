@@ -58,3 +58,9 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Continuity, the 1.5 s Activate fade and starting from the first Music already came from the #35 design; #38 pinned them with `tests/unit/activateAudio.test.ts` and a whole-app test in `tests/app/ambiences.spec.ts` (shared Ambience stays "playing" through Activate; proven to fail if voices are recreated).
 - Engine (`6227c0f`): a new voice waits for its first `playing` event before fading in, so loading no longer eats the fade.
 - Known issue: playback uses `<audio loop>`, which is not gapless and fires `waiting` at each loop. Short loops flicker "chargement…" in the strip and may leave an audible gap. App tests use 30 s tones to avoid it.
+
+## Listening (#43, 2026-11-12)
+
+- ADR-0002 branch: no private listening. "Écouter" on each library sound is enabled only while `listeningAllowed(sounding)` (`core/audioMix.ts`): Silence on, no voice `playing`, no pad. A warning "Écoute audible par les joueurs" shows while allowed. Missing files: disabled.
+- `useListening` (`src/Listening.tsx`) plays through its own hidden `<audio class="listening-player">`, not the engine: mix, Scene and "En cours" untouched; it stops when the rule stops holding (Silence lifted, Activate, pad).
+- Gaps: the "En cours" strip does not list a sound being listened to; listening plays at full element volume, not the Master volume. Manual Discord check (acceptance criterion) still to do by hand.
