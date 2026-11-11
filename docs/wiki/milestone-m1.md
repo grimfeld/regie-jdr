@@ -39,3 +39,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - 2026-11-11: #27 Explorer drag-import merged at `a65b466` (379 unit, 87 app tests). See [library page](subsystem-media-library.md).
 - 2026-11-11: #29 Overlay transforms merged at `d733c25` (417 unit, 91 app tests). No deviations. Made `placing.spec.ts` wait for both Overlay rows (timing fix); check whether that was the flaky line 202.
 - 2026-11-11: #31 fades merged at `bbd3ac7` (452 unit, 94 app tests). Changed `labels-title.spec` to count only Labels not fading out.
+- 2026-11-11: #32 undo/redo merged at `a5c4533` (508 unit, 97 app tests). Every M1 slice is now merged. Next: closeout, then spec review, then PR.

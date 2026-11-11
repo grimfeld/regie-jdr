@@ -74,3 +74,11 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - All fade timing in renderer-safe `core/fades.ts`.
 - Fade-out on broadcast: `SceneCanvas` keeps drawing a removed item from the last picture at its stack place and drops it after the fade (`withLeaving`). Images stay transparent until `img.decode()` resolves. Labels and Scene title cross-fade on change; Blackout fades both ways. Fading-out Overlays ignore pointer input.
 - Side effect: Activating another Scene dissolves over the fade duration. See [carry-forward](carry-forward.md).
+
+## Undo and redo (#32, 2026-11-11, `a5c4533`)
+
+- History in `core/undoHistory.ts`, recorded inside `editScene`. Each step is a whole-Scene snapshot with a French label (e.g. "masquer Orc"). Control-only channels `scenes:undo-state`, `scenes:undo`, `scenes:redo`.
+- Deleting Media clears the history of every Scene it touched.
+- If the saved Scene no longer matches the step, undo is refused in French and that Scene's history cleared. **Rule for every later milestone: any new Scene field (Music, Ambiences, Notes, Transition, Chapter) must change through a `SceneEdit` in `editScene`, or undo breaks.**
+- Moves of the same Overlay within 1 s merge into one step (nudge bursts; also two quick drags).
+- Shared typing check: `isTypingIn` and `editShortcutOf` in `src/keyboard.ts`.
