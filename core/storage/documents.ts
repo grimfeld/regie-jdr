@@ -98,11 +98,14 @@ function isNotFound(error: unknown): boolean {
   return isRecord(error) && error.code === 'ENOENT';
 }
 
-type Decoded<T> =
+export type Decoded<T> =
   { status: 'ok'; value: T } | { status: 'corrupt' } | { status: 'tooNew'; version: number };
 
-/** Parses, migrates and checks the text of a document. */
-function decode<T>(text: string, type: DocumentType<T>): Decoded<T> {
+/**
+ * Parses, migrates and checks the text of a document: `tooNew` when a newer app wrote it,
+ * `corrupt` when it is not a document of this type. Campaign Import checks documents with it.
+ */
+export function decodeDocument<T>(text: string, type: DocumentType<T>): Decoded<T> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -127,7 +130,8 @@ function decode<T>(text: string, type: DocumentType<T>): Decoded<T> {
   return value === undefined ? { status: 'corrupt' } : { status: 'ok', value };
 }
 
-function encode<T>(type: DocumentType<T>, value: T): string {
+/** The text a document is stored as, at the type's current version. */
+export function encodeDocument<T>(type: DocumentType<T>, value: T): string {
   return `${JSON.stringify({ schemaVersion: type.version, ...value }, null, 2)}\n`;
 }
 
@@ -158,7 +162,7 @@ export function createDocumentStore(
   }
 
   async function write<T>(file: string, type: DocumentType<T>, value: T): Promise<void> {
-    const text = encode(type, value);
+    const text = encodeDocument(type, value);
     await fileSystem.makeDirectory(path.dirname(file));
     const current = await fileSystem.readFile(file);
     if (current !== undefined && looksValid(current)) {
@@ -170,7 +174,7 @@ export function createDocumentStore(
   async function read<T>(file: string, type: DocumentType<T>): Promise<T | undefined> {
     const text = await fileSystem.readFile(file);
     if (text === undefined) return undefined;
-    const decoded = decode(text, type);
+    const decoded = decodeDocument(text, type);
     if (decoded.status === 'ok') return decoded.value;
     if (decoded.status === 'tooNew') {
       throw new DocumentError(
@@ -179,7 +183,7 @@ export function createDocumentStore(
       );
     }
     const backup = await fileSystem.readFile(`${file}.bak`);
-    const fromBackup = backup === undefined ? undefined : decode(backup, type);
+    const fromBackup = backup === undefined ? undefined : decodeDocument(backup, type);
     if (backup === undefined || fromBackup?.status !== 'ok') {
       throw new DocumentError(`${file}: this ${type.name} is corrupt and has no usable backup`);
     }

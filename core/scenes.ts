@@ -279,7 +279,7 @@ function zIndexOf(item: unknown): number {
   return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
 }
 
-const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
+export const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
   name: 'scenes',
   version: 3,
   migrations: { 1: migrateScenesV1, 2: migrateScenesV2 },

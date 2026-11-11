@@ -65,7 +65,7 @@ test('Exporter on the Campaign list saves a zip of its documents and Media', asy
   await expect(controlWindow.getByText('Campagne exportée.', { exact: true })).toBeVisible();
   const [offered] = await offeredSavePaths(app);
   expect(path.basename(offered)).toMatch(/^Les Ombres_ Tarsis – \d{4}-\d{2}-\d{2}\.zip$/);
-  const entries = readZipEntries(await fs.readFile(target));
+  const entries = await readZipEntries(await fs.readFile(target));
   const names = entries.map((entry) => entry.name);
   expect(names[0]).toBe('regie-export.json');
   expect(names).toEqual(
@@ -97,7 +97,7 @@ test('an Export leaves Media missing on disk out and says how many', async ({ re
   await expect(
     controlWindow.getByText('Campagne exportée. 1 média introuvable n’a pas été inclus.'),
   ).toBeVisible();
-  const names = readZipEntries(await fs.readFile(target)).map((entry) => entry.name);
+  const names = (await readZipEntries(await fs.readFile(target))).map((entry) => entry.name);
   expect(names).toContain('campaign.json');
   expect(names.filter((name) => name.startsWith('media/'))).toEqual([]);
 });

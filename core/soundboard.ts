@@ -132,7 +132,7 @@ function parsePad(value: unknown): SoundboardPad | undefined {
   return { id, mediaId, volume, ...(label !== undefined && { label }) };
 }
 
-const soundboardDocument: DocumentType<StoredSoundboard> = {
+export const soundboardDocument: DocumentType<StoredSoundboard> = {
   name: 'soundboard',
   version: 1,
   migrations: {},

@@ -1,16 +1,19 @@
 /**
- * The zip writer behind Campaign Export (core/campaignExport.ts): yazl, pure JavaScript, no
- * native build (ADR-0005). Entries are streamed: a file entry is opened only when yazl reaches
- * it, so an Export of any size never sits in memory.
+ * The zip writer behind Campaign Export (core/campaignExport.ts) and the zip reader behind
+ * Campaign Import (core/campaignImport.ts): yazl and yauzl, pure JavaScript, no native build
+ * (ADR-0005). Entries are streamed both ways, so a Campaign of any size never sits in memory.
  * yazl API: https://github.com/thejoshwolfe/yazl/blob/3.3.1/README.md
+ * yauzl API: https://github.com/thejoshwolfe/yauzl/blob/3.4.0/README.md
  */
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
 import fsp from 'node:fs/promises';
-import { Transform } from 'node:stream';
+import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import * as yauzl from 'yauzl';
 import { ZipFile } from 'yazl';
 import type { WriteArchive } from '../core/campaignExport.js';
+import { unreadableArchive, type ArchiveFile, type OpenArchive } from '../core/campaignImport.js';
 
 /**
  * A WriteArchive writing a zip to `target`. The zip is written next to it under a temporary
@@ -68,5 +71,91 @@ export function writeZipArchive(target: string): WriteArchive {
       await fsp.rm(partial, { force: true, maxRetries: 5 });
       throw failed.signal.aborted ? failed.signal.reason : error;
     }
+  };
+}
+
+/** Unix file types, from the high 16 bits of a zip entry's external attributes. */
+const UNIX_TYPE_MASK = 0o170000;
+const UNIX_FILE = 0o100000;
+const UNIX_FOLDER = 0o040000;
+const UNIX_LINK = 0o120000;
+const DOS_FOLDER = 0x10;
+
+/** What a zip entry is. Anything but a plain, readable file or folder is `link` or `other`. */
+export function archiveFileKind(entry: yauzl.Entry): ArchiveFile['kind'] {
+  const attributes = entry.externalFileAttributes;
+  const unixType = (attributes >>> 16) & UNIX_TYPE_MASK;
+  if (unixType === UNIX_LINK) return 'link';
+  if (entry.isEncrypted() || !entry.canDecodeFileData()) return 'other';
+  if (entry.fileName.endsWith('/') || unixType === UNIX_FOLDER || attributes & DOS_FOLDER) {
+    return 'folder';
+  }
+  return unixType === 0 || unixType === UNIX_FILE ? 'file' : 'other';
+}
+
+/** Content of an entry; a read failure (bad data, wrong size) is an unreadable archive. */
+async function* readable(stream: Readable): AsyncGenerator<Uint8Array> {
+  try {
+    for await (const chunk of stream) yield chunk as Buffer;
+  } catch (error) {
+    throw unreadableArchive(error);
+  } finally {
+    stream.destroy();
+  }
+}
+
+/**
+ * An OpenArchive reading the zip `file` with yauzl. yauzl already refuses absolute paths, `..`
+ * and backslashes in entry names (strictFileNames) and content whose size differs from what the
+ * zip declares (validateEntrySizes); core/campaignImport.ts checks every name again, more
+ * strictly. Every yauzl failure becomes an ImportError, so no English message reaches a window.
+ */
+export function openZipArchive(file: string): OpenArchive {
+  return async () => {
+    let zip: yauzl.ZipFile;
+    let archiveBytes: number;
+    try {
+      archiveBytes = (await fsp.stat(file)).size;
+      zip = await yauzl.openPromise(file, {
+        autoClose: false,
+        decodeStrings: true,
+        strictFileNames: true,
+        validateEntrySizes: true,
+      });
+    } catch (error) {
+      throw unreadableArchive(error);
+    }
+    return {
+      archiveBytes,
+      entryCount: zip.entryCount,
+      async *entries() {
+        const entries = zip.eachEntry();
+        for (;;) {
+          let next: IteratorResult<yauzl.Entry>;
+          try {
+            next = await entries.next();
+          } catch (error) {
+            throw unreadableArchive(error);
+          }
+          if (next.done) return;
+          const entry = next.value;
+          yield {
+            path: entry.fileName,
+            kind: archiveFileKind(entry),
+            declaredSize: entry.uncompressedSize,
+            async open() {
+              try {
+                return readable(await zip.openReadStreamPromise(entry));
+              } catch (error) {
+                throw unreadableArchive(error);
+              }
+            },
+          };
+        }
+      },
+      close() {
+        zip.close();
+      },
+    };
   };
 }

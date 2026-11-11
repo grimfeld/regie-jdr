@@ -232,7 +232,7 @@ function migrateMediaIndexV2(fields: Record<string, unknown>): Record<string, un
 /** The index stores Media without their Campaign id: it is the folder's. */
 type StoredMedia = Omit<Media, 'campaignId'>;
 
-const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
+export const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
   name: 'media',
   version: 3,
   migrations: { 1: migrateMediaIndexV1, 2: migrateMediaIndexV2 },

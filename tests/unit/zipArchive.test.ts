@@ -1,7 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { writeZipArchive } from '../../electron/zipArchive';
+import { createHash } from 'node:crypto';
+import { exportCampaign } from '../../core/campaignExport';
+import { importCampaign } from '../../core/campaignImport';
+import { openZipArchive, writeZipArchive } from '../../electron/zipArchive';
+import { rawZip, type RawZipEntry } from '../rawZip';
 import { readZipEntries } from '../zipEntries';
 import { useTempDir } from './tempDir';
 
@@ -28,7 +32,7 @@ describe('writeZipArchive', () => {
       { onBytes: (count) => bytes.push(count) },
     );
 
-    const entries = readZipEntries(await fs.readFile(target));
+    const entries = await readZipEntries(await fs.readFile(target));
     expect(entries.map(({ name, method }) => [name, method])).toEqual([
       ['campaign.json', 8],
       ['media/image.png', 0],
@@ -47,7 +51,7 @@ describe('writeZipArchive', () => {
       { path: 'a.json', compress: true, source: { data: Buffer.from('{}') } },
     ]);
 
-    expect(readZipEntries(await fs.readFile(target)).map((entry) => entry.name)).toEqual([
+    expect((await readZipEntries(await fs.readFile(target))).map((entry) => entry.name)).toEqual([
       'a.json',
     ]);
   });
@@ -98,5 +102,163 @@ describe('writeZipArchive', () => {
       ),
     ).rejects.toThrow();
     expect(await fs.readdir(dir.path)).toEqual([]);
+  });
+});
+
+describe('openZipArchive', () => {
+  const dir = useTempDir();
+  const PIXELS = Buffer.from('pixels of a map');
+  const HASH = createHash('sha256').update(PIXELS).digest('hex');
+  const MEDIA = `media/${HASH}.png`;
+  const CAMPAIGN = JSON.stringify({
+    schemaVersion: 1,
+    name: 'Les Ombres',
+    theme: 'retro',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  const manifest = (media: { path: string; size: number }[] = [{ path: MEDIA, size: 15 }]) =>
+    JSON.stringify({
+      format: 'regie-jdr-campaign-export',
+      formatVersion: 1,
+      appVersion: '0.1.0',
+      exportedAt: '2026-11-12T20:00:00.000Z',
+      campaignName: 'Les Ombres',
+      documents: [{ path: 'campaign.json', schemaVersion: 1 }],
+      media,
+    });
+
+  const folders = () => ({
+    campaignsFolder: path.join(dir.path, 'data', 'campaigns'),
+    importsFolder: path.join(dir.path, 'data', 'imports'),
+  });
+
+  /** Imports the zip made of `entries`; returns what is left in the data folder. */
+  async function importZip(entries: readonly RawZipEntry[]) {
+    const file = path.join(dir.path, 'Export.zip');
+    await fs.writeFile(file, rawZip(entries));
+    const outcome = importCampaign({
+      openArchive: openZipArchive(file),
+      ...folders(),
+      existingNames: [],
+    });
+    return outcome;
+  }
+
+  async function expectRefused(entries: readonly RawZipEntry[], message: RegExp) {
+    await expect(importZip(entries)).rejects.toThrow(message);
+    const left = await fs.readdir(path.join(dir.path, 'data'), { recursive: true });
+    expect(left.sort()).toEqual(['imports']);
+    // Nothing written next to the zip either (a zip-slip would land here or above).
+    expect((await fs.readdir(dir.path)).sort()).toEqual(['Export.zip', 'data']);
+  }
+
+  const valid = (): RawZipEntry[] => [
+    { name: 'regie-export.json', content: manifest(), deflate: true },
+    { name: 'campaign.json', content: CAMPAIGN, deflate: true },
+    { name: MEDIA, content: PIXELS },
+  ];
+
+  it('imports a hand-made zip of the Export format', async () => {
+    const { id } = await importZip(valid());
+    const folder = path.join(folders().campaignsFolder, id);
+    expect(await fs.readFile(path.join(folder, 'media', `${HASH}.png`))).toEqual(PIXELS);
+  });
+
+  it('brings back what an Export wrote', async () => {
+    const source = path.join(dir.path, 'source');
+    await fs.mkdir(path.join(source, 'media'), { recursive: true });
+    await fs.writeFile(path.join(source, 'campaign.json'), CAMPAIGN);
+    await fs.writeFile(path.join(source, 'scenes.json'), '{"schemaVersion":3,"scenes":[]}');
+    await fs.writeFile(path.join(source, 'media', `${HASH}.png`), PIXELS);
+    const zip = path.join(dir.path, 'Les Ombres.zip');
+    await exportCampaign({
+      campaignFolder: source,
+      campaignName: 'Les Ombres',
+      media: [{ contentHash: HASH, extension: '.png' }],
+      appVersion: '0.1.0',
+      writeArchive: writeZipArchive(zip),
+    });
+
+    const { id, name } = await importCampaign({
+      openArchive: openZipArchive(zip),
+      ...folders(),
+      existingNames: ['Les Ombres'],
+    });
+
+    expect(name).toBe('Les Ombres (importée)');
+    const folder = path.join(folders().campaignsFolder, id);
+    expect((await fs.readdir(folder)).sort()).toEqual(['campaign.json', 'media', 'scenes.json']);
+    expect(await fs.readFile(path.join(folder, 'media', `${HASH}.png`))).toEqual(PIXELS);
+    expect(JSON.parse(await fs.readFile(path.join(folder, 'scenes.json'), 'utf8'))).toEqual({
+      schemaVersion: 3,
+      scenes: [],
+    });
+  });
+
+  const UNREADABLE = /n’a pas pu être lu/;
+  const REFUSED = /fichier non autorisé/;
+
+  it.each([
+    '../evil.json',
+    '../../evil.json',
+    '/evil.json',
+    'C:/evil.json',
+    'media\\..\\..\\evil.png',
+    'C:\\evil.json',
+  ])('refuses a zip with an entry named %j', async (hostile) => {
+    await expectRefused([...valid(), { name: hostile, content: 'evil' }], UNREADABLE);
+  });
+
+  it('refuses a zip with an entry outside the Export layout', async () => {
+    await expectRefused([...valid(), { name: 'thumbnails/x.png', content: 'x' }], REFUSED);
+  });
+
+  it('refuses a link, even under a listed path', async () => {
+    const link = { name: MEDIA, content: '/etc/passwd', unixMode: 0o120777 };
+    await expectRefused([valid()[0], valid()[1], link], REFUSED);
+  });
+
+  it('refuses an encrypted entry', async () => {
+    // yauzl may already find it unreadable; either way it is refused.
+    await expectRefused(
+      [valid()[0], valid()[1], { ...valid()[2], encrypted: true }],
+      /fichier non autorisé|n’a pas pu être lu/,
+    );
+  });
+
+  it('refuses the same entry twice', async () => {
+    await expectRefused([...valid(), valid()[2]], /endommagée/);
+  });
+
+  it('refuses a Media entry that unpacks to more than it declares', async () => {
+    const lying = {
+      name: MEDIA,
+      content: Buffer.alloc(1024 * 1024),
+      deflate: true,
+      declaredSize: 15,
+    };
+    await expectRefused([valid()[0], valid()[1], lying], /endommagée|n’a pas pu être lu/);
+  });
+
+  it('refuses a zip bomb before unpacking it', async () => {
+    const size = 64 * 1024 * 1024;
+    await expectRefused(
+      [
+        { name: 'regie-export.json', content: manifest([{ path: MEDIA, size }]) },
+        { name: 'campaign.json', content: CAMPAIGN },
+        { name: MEDIA, content: Buffer.alloc(size), deflate: true },
+      ],
+      /anormalement volumineuse/,
+    );
+  });
+
+  it('refuses a file that is not a zip', async () => {
+    const file = path.join(dir.path, 'Export.zip');
+    await fs.writeFile(file, 'not a zip at all');
+    await expect(
+      importCampaign({ openArchive: openZipArchive(file), ...folders(), existingNames: [] }),
+    ).rejects.toThrow(UNREADABLE);
   });
 });
