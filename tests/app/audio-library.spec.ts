@@ -136,3 +136,31 @@ test('importing the same sound again keeps one Media, with its first role', asyn
   const [campaignId] = await fs.readdir(path.join(dataDir, 'campaigns'));
   expect(await fs.readdir(path.join(dataDir, 'campaigns', campaignId, 'media'))).toHaveLength(2);
 });
+
+test('sounds dropped while the role is still being asked are asked about in turn, none lost', async ({
+  regie,
+}) => {
+  const { controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow);
+  const library = controlWindow.getByRole('region', { name: 'Bibliothèque' });
+  const roleDialog = controlWindow.getByRole('dialog', { name: 'Rôle des sons' });
+
+  await dropFiles(library, [await soundOnDisk(dataDir, 'Taverne.wav', wavFile(3))]);
+  await expect(roleDialog).toContainText('ce son');
+  // A second drop before the first question is answered.
+  await dropFiles(library, [
+    await soundOnDisk(dataDir, 'Pluie.wav', wavFile(4)),
+    await soundOnDisk(dataDir, 'Vent.wav', wavFile(5)),
+  ]);
+
+  // The first drop's question stays until answered, then the second's comes.
+  await expect(roleDialog).toContainText('ce son');
+  await chooseRole(controlWindow, 'Musique');
+  await expect(roleDialog).toContainText('ces 2 sons');
+  await chooseRole(controlWindow, 'Ambiance');
+
+  await expect(roleDialog).toHaveCount(0);
+  await expect(sound(controlWindow, 'Taverne')).toContainText('Musique');
+  await expect(sound(controlWindow, 'Pluie')).toContainText('Ambiance');
+  await expect(sound(controlWindow, 'Vent')).toContainText('Ambiance');
+});

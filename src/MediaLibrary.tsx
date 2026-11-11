@@ -45,6 +45,8 @@ const audioFilterLabels: Record<AudioFilter, string> = {
 
 /** Sounds waiting for the Game Master to choose their role, and what to do with the answer. */
 interface RoleRequest {
+  /** Tells requests apart, so each question shows afresh. */
+  id: number;
   /** How many dropped sounds; 0 when they are still to be picked. */
   count: number;
   answer: (role: AudioRole | null) => void;
@@ -79,7 +81,9 @@ export function MediaLibrary({
   const [query, setQuery] = useState('');
   const [audioFilter, setAudioFilter] = useState<AudioFilter>('all');
   const [audioQuery, setAudioQuery] = useState('');
-  const [roleRequest, setRoleRequest] = useState<RoleRequest | null>(null);
+  /** Questions about sounds' roles, asked one at a time in order: a drop never replaces one. */
+  const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
+  const nextRoleRequest = useRef(0);
   /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
   const [pending, setPending] = useState<{ media: Media; scenes: string[] } | null>(null);
 
@@ -129,16 +133,23 @@ export function MediaLibrary({
     refused.forEach(showNotice);
   }
 
-  /** Asks the Game Master which role `count` sounds get; null when they cancel. */
+  /**
+   * Asks the Game Master which role `count` sounds get; null when they cancel. Asked after any
+   * question still open (sounds dropped again meanwhile), so no sounds are forgotten.
+   */
   function askRole(count: number): Promise<AudioRole | null> {
     return new Promise((resolve) => {
-      setRoleRequest({
+      nextRoleRequest.current += 1;
+      const id = nextRoleRequest.current;
+      const request: RoleRequest = {
+        id,
         count,
         answer: (role) => {
-          setRoleRequest(null);
+          setRoleRequests((current) => current.filter((open) => open.id !== id));
           resolve(role);
         },
-      });
+      };
+      setRoleRequests((current) => [...current, request]);
     });
   }
 
@@ -249,7 +260,7 @@ export function MediaLibrary({
           </button>
         </div>
       </div>
-      {roleRequest && <RoleChoice request={roleRequest} />}
+      {roleRequests[0] && <RoleChoice key={roleRequests[0].id} request={roleRequests[0]} />}
       {hasImages && (
         <div className="library-toolbar">
           <div className="library-filter" role="group" aria-label="Filtrer les images">
