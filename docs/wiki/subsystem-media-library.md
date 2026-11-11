@@ -19,3 +19,11 @@ Source: #25 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@5cbaeb5`.
 - Unreadable path (gone, folder) gives a French refusal per file instead of failing the batch, for picker imports too.
 - `src/main.tsx` has a page-wide guard refusing drops no target took; that is why the Broadcast window ignores drops.
 - Tests: `dropFiles` in `tests/app/harness.ts` simulates Explorer drops via a hidden file input, so files carry real paths. Synthetic drops ignore `dropEffect`.
+
+## Audio library (#34, 2026-11-11, `m2-audio-mvp@398a0dd`)
+
+- Supersedes the #27 note above for M2: as of `398a0dd`, audio dropped on the library (or imported with "Importer des sons") opens a role dialog (Musique / Ambiance / Bruitage / Annuler); cancelling imports nothing. Audio dropped on the Scene editor is still refused.
+- `media:import-dropped` carries the import kind; bridge `importDroppedImages` renamed `importDroppedMedia(campaignId, files, kind)`.
+- Duration: `core/audioDuration.ts` reads file headers (MP3, WAV, OGG Vorbis/Opus, FLAC, M4A), no dependency; unreadable → imports anyway, shows "–".
+- Media index schema 2 (existing audio gets `durationSeconds: null`). Settings schema 3 adds `masterVolume` (default 1).
+- Soundboard type gained `volume`; pads ordered by array position.

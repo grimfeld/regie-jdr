@@ -21,6 +21,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 ## Recurring problems
 
 - [Piped merge hides a failed fast-forward](problem-piped-merge-hides-failure.md)
+- [Flaky whole-app tests](problem-flaky-app-tests.md)
 
 ## Process
 

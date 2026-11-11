@@ -13,3 +13,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 5. #44 is ready-for-human: the PR leaves it open.
 
 ## Outcomes
+- 2026-11-11: #34 audio library merged at `398a0dd` (547 unit, 101 app tests). See [library page](subsystem-media-library.md).
