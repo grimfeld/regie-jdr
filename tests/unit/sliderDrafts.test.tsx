@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Background } from '../../shared/domain';
 import { BackgroundControls } from '../../src/BackgroundControls';
+import { LevelSlider } from '../../src/LevelSlider';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -93,5 +94,23 @@ describe('a slider released, saved and undone before the window renders again', 
     });
 
     expect(slider('Zoom de Carre').value).toBe('1');
+  });
+
+  it('a level slider shows the restored level', async () => {
+    const save = pendingSave();
+    const level = (value: number) => (
+      <LevelSlider label="Niveau" value={value} onLive={ignore} onCommit={() => save.saved} />
+    );
+    render(level(0.5));
+    dragAndRelease(slider('Niveau'), '90');
+    expect(slider('Niveau').value).toBe('90');
+
+    await act(() => {
+      save.settle();
+      root.render(level(0.5));
+      return save.saved;
+    });
+
+    expect(slider('Niveau').value).toBe('50');
   });
 });

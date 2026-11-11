@@ -1,32 +1,92 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AudioLines, ImagePlus, Music2, Pencil, Search, Trash2 } from 'lucide-react';
+import { AudioLines, ImagePlus, Music2, Pencil, Search, Star, Trash2 } from 'lucide-react';
 import type { AudioRole, CampaignId, ImageCategory, ImageMedia, Media } from '../shared/domain';
 import type { ControlBridge, MediaDeletion, MediaImportKind } from '../shared/contract';
-import { imageLibrary, type LibraryFilter } from '../core/librarySearch';
-import { thumbnailAddress } from '../core/mediaAddress';
+import {
+  audioLibrary,
+  formatDuration,
+  imageLibrary,
+  type AudioFilter,
+  type LibraryFilter,
+} from '../core/librarySearch';
+import { mediaKindOfFileName, thumbnailAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
-import { carriesFiles, droppedFiles, startMediaDrag } from './mediaDrag';
+import { carriesFiles, droppedFiles, startAudioDrag, startMediaDrag } from './mediaDrag';
 import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
+import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
+import { ListenButton, ListeningWarning, type Listening } from './Listening';
 import { gridColumns, gridWindow } from './virtualGrid';
 
 const categoryLabels: Record<ImageCategory, string> = {
   scenery: 'Décors',
   character: 'Personnage',
+  reference: 'Référence',
 };
 
 const filterLabels: Record<LibraryFilter, string> = {
   all: 'Tous',
   scenery: 'Décors',
   character: 'Personnages',
+  reference: 'Références',
 };
+
+/** A Media in use, and the names of what uses it, waiting for the Game Master's confirmation. */
+interface PendingDeletion {
+  media: Media;
+  /** Scenes placing it. */
+  scenes: string[];
+  pads: string[];
+  /** Scenes whose Notes show it. */
+  notes: string[];
+}
+
+/**
+ * What deleting a used Media takes with it, for the confirmation: the Scenes it is placed in
+ * (and the broadcast, if shown there), its images in Scene Notes and the Soundboard pads playing
+ * it.
+ */
+function deletionWarning({ media, scenes, pads, notes }: PendingDeletion) {
+  const inScenes = scenes.length > 1 ? 'ces scènes' : 'cette scène';
+  const byPads = pads.length > 1 ? 'ces pads' : 'ce pad';
+  const uses = [
+    scenes.length > 0 && `dans ${inScenes}`,
+    notes.length > 0 && `dans les notes de ${notes.length > 1 ? 'ces scènes' : 'cette scène'}`,
+    pads.length > 0 && `par ${byPads} de la table de bruitages`,
+  ].filter((use) => use !== false);
+  const removed = [
+    scenes.length > 0 &&
+      `Le supprimer le retire aussi de ${inScenes}, et de la diffusion s’il y est affiché.`,
+    notes.length > 0 && 'Son image est retirée de ces notes.',
+    pads.length > 0 &&
+      (pads.length > 1 ? 'Ces pads sont retirés de la table.' : 'Ce pad est retiré de la table.'),
+  ].filter(Boolean);
+  const listed = uses.length > 1 ? `${uses.slice(0, -1).join(', ')} et ${uses.at(-1)}` : uses[0];
+  return `« ${media.name} » est utilisé ${listed}. ${removed.join(' ')}`;
+}
 
 const roleLabels: Record<AudioRole, string> = {
   music: 'Musique',
-  soundEffect: 'Bruitage',
   ambience: 'Ambiance',
+  soundEffect: 'Bruitage',
 };
+
+const audioFilterLabels: Record<AudioFilter, string> = {
+  all: 'Tous',
+  music: 'Musiques',
+  ambience: 'Ambiances',
+  soundEffect: 'Bruitages',
+};
+
+/** Sounds waiting for the Game Master to choose their role, and what to do with the answer. */
+interface RoleRequest {
+  /** Tells requests apart, so each question shows afresh. */
+  id: number;
+  /** How many dropped sounds; 0 when they are still to be picked. */
+  count: number;
+  answer: (role: AudioRole | null) => void;
+}
 
 interface Props {
   campaignId: CampaignId;
@@ -37,12 +97,16 @@ interface Props {
   onMediaRenamed: () => void;
   /** Changes when Media were imported elsewhere (dropped on the Scene editor): read again. */
   importRevision: number;
+  /** Listening to a library sound (shared with the "En cours" strip, which lists it). */
+  listening: Listening;
 }
 
 /**
- * The open Campaign's Media library: import (with the picker, or by dropping image files from
- * Explorer on it), the image library (thumbnails, filter by Image category, search by name), the
- * sounds, renaming, changing an image's category, deleting.
+ * The open Campaign's Media library: import (with the picker, or by dropping files from Explorer
+ * on it; sounds get the role the Game Master chooses then, for good), the image library
+ * (thumbnails, filter by Image category, search by name), the audio library (filter by role,
+ * search by name, duration), both with a "Favoris" filter; starring, renaming, changing an
+ * image's category, deleting.
  */
 export function MediaLibrary({
   campaignId,
@@ -50,17 +114,33 @@ export function MediaLibrary({
   onMediaDeleted,
   onMediaRenamed,
   importRevision,
+  listening,
 }: Props) {
   const [media, setMedia] = useState<Media[]>([]);
-  const [audioRole, setAudioRole] = useState<AudioRole>('music');
   const [filter, setFilter] = useState<LibraryFilter>('all');
   const [query, setQuery] = useState('');
-  /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
-  const [pending, setPending] = useState<{ media: Media; scenes: string[] } | null>(null);
+  const [audioFilter, setAudioFilter] = useState<AudioFilter>('all');
+  const [audioQuery, setAudioQuery] = useState('');
+  /** The "Favoris" filters: only starred images, only starred sounds. */
+  const [favouriteImages, setFavouriteImages] = useState(false);
+  const [favouriteSounds, setFavouriteSounds] = useState(false);
+  /** Questions about sounds' roles, asked one at a time in order: a drop never replaces one. */
+  const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
+  const nextRoleRequest = useRef(0);
+  /** A Media in use, waiting for the Game Master to confirm its deletion. */
+  const [pending, setPending] = useState<PendingDeletion | null>(null);
 
-  const images = useMemo(() => imageLibrary(media, filter, query), [media, filter, query]);
-  const sounds = useMemo(() => media.filter((item) => item.kind === 'audio'), [media]);
+  const images = useMemo(
+    () => imageLibrary(media, filter, query, favouriteImages),
+    [media, filter, query, favouriteImages],
+  );
+  const sounds = useMemo(
+    () => audioLibrary(media, audioFilter, audioQuery, favouriteSounds),
+    [media, audioFilter, audioQuery, favouriteSounds],
+  );
   const hasImages = media.some((item) => item.kind === 'image');
+  const hasSounds = media.some((item) => item.kind === 'audio');
+  const missingSounds = useMissingMedia(sounds);
 
   useEffect(() => {
     if (!control) return;
@@ -98,10 +178,55 @@ export function MediaLibrary({
     refused.forEach(showNotice);
   }
 
-  /** Image files dropped from Explorer, imported like picked ones. Failures: as above. */
+  /**
+   * Asks the Game Master which role `count` sounds get; null when they cancel. Asked after any
+   * question still open (sounds dropped again meanwhile), so no sounds are forgotten.
+   */
+  function askRole(count: number): Promise<AudioRole | null> {
+    return new Promise((resolve) => {
+      nextRoleRequest.current += 1;
+      const id = nextRoleRequest.current;
+      const request: RoleRequest = {
+        id,
+        count,
+        answer: (role) => {
+          setRoleRequests((current) => current.filter((open) => open.id !== id));
+          resolve(role);
+        },
+      };
+      setRoleRequests((current) => [...current, request]);
+    });
+  }
+
+  /** Picks sounds once the Game Master has chosen their role. */
+  async function importSounds() {
+    const role = await askRole(0);
+    if (role) await importMedia({ accept: 'audio', role });
+  }
+
+  /**
+   * Files dropped from Explorer, imported like picked ones: sounds with the role the Game Master
+   * then chooses, everything else as images (other types are refused there, with a message).
+   * Failures: as above.
+   */
   async function importDropped(files: readonly File[]) {
     if (!control || files.length === 0) return;
-    const { imported, refused } = await control.importDroppedImages(campaignId, files);
+    const dropped = files.filter((file) => mediaKindOfFileName(file.name) === 'audio');
+    const others = files.filter((file) => !dropped.includes(file));
+    if (others.length > 0) {
+      const { imported, refused } = await control.importDroppedMedia(campaignId, others, {
+        accept: 'image',
+      });
+      merge(imported);
+      refused.forEach(showNotice);
+    }
+    if (dropped.length === 0) return;
+    const role = await askRole(dropped.length);
+    if (!role) return;
+    const { imported, refused } = await control.importDroppedMedia(campaignId, dropped, {
+      accept: 'audio',
+      role,
+    });
     merge(imported);
     refused.forEach(showNotice);
   }
@@ -117,6 +242,19 @@ export function MediaLibrary({
     }
   }
 
+  async function setFavourite(item: Media, favourite: boolean) {
+    if (!control) return;
+    try {
+      merge([await control.setMediaFavourite(campaignId, item.id, favourite)]);
+    } catch (error) {
+      showNotice(errorMessage(error));
+    }
+  }
+
+  const favouriteButton = (item: Media) => (
+    <FavouriteButton item={item} onChange={(favourite) => void setFavourite(item, favourite)} />
+  );
+
   async function rename(item: Media, name: string) {
     if (!control || name.trim() === item.name) return;
     try {
@@ -127,7 +265,10 @@ export function MediaLibrary({
     }
   }
 
-  /** Deletes at once when no Scene uses the Media; otherwise asks first, listing the Scenes. */
+  /**
+   * Deletes at once when no Scene nor pad uses the Media; otherwise asks first, listing the
+   * Scenes and the pads.
+   */
   async function remove(item: Media, confirmed: boolean) {
     if (!control) return;
     try {
@@ -137,7 +278,12 @@ export function MediaLibrary({
         setMedia((current) => current.filter((m) => m.id !== item.id));
         onMediaDeleted(deletion);
       } else {
-        setPending({ media: item, scenes: deletion.affectedScenes.map((scene) => scene.name) });
+        setPending({
+          media: item,
+          scenes: deletion.affectedScenes.map((scene) => scene.name),
+          pads: deletion.affectedPads.map((pad) => pad.name),
+          notes: deletion.affectedNotes.map((scene) => scene.name),
+        });
       }
     } catch (error) {
       setPending(null);
@@ -175,37 +321,28 @@ export function MediaLibrary({
           >
             <ImagePlus size={16} /> Importer des images
           </button>
-          <label className="library-role">
-            Rôle des sons importés
-            <select value={audioRole} onChange={(e) => setAudioRole(e.target.value as AudioRole)}>
-              {Object.entries(roleLabels).map(([role, label]) => (
-                <option key={role} value={role}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="secondary-button"
-            onClick={() => void importMedia({ accept: 'audio', role: audioRole })}
-          >
+          <button className="secondary-button" onClick={() => void importSounds()}>
             <AudioLines size={16} /> Importer des sons
           </button>
         </div>
       </div>
+      {roleRequests[0] && <RoleChoice key={roleRequests[0].id} request={roleRequests[0]} />}
       {hasImages && (
         <div className="library-toolbar">
-          <div className="library-filter" role="group" aria-label="Filtrer les images">
-            {(Object.keys(filterLabels) as LibraryFilter[]).map((option) => (
-              <button
-                key={option}
-                aria-pressed={filter === option}
-                className={filter === option ? 'selected' : ''}
-                onClick={() => setFilter(option)}
-              >
-                {filterLabels[option]}
-              </button>
-            ))}
+          <div className="library-filters">
+            <div className="library-filter" role="group" aria-label="Filtrer les images">
+              {(Object.keys(filterLabels) as LibraryFilter[]).map((option) => (
+                <button
+                  key={option}
+                  aria-pressed={filter === option}
+                  className={filter === option ? 'selected' : ''}
+                  onClick={() => setFilter(option)}
+                >
+                  {filterLabels[option]}
+                </button>
+              ))}
+            </div>
+            <FavouritesFilter what="images" on={favouriteImages} onChange={setFavouriteImages} />
           </div>
           <label className="library-search">
             <Search size={14} aria-hidden />
@@ -231,7 +368,11 @@ export function MediaLibrary({
             >
               <MediaImage address={thumbnailAddress(image)} alt={image.name} window="control" />
             </span>
-            <MediaName item={image} onRename={(name) => void rename(image, name)} />
+            <MediaName
+              item={image}
+              star={favouriteButton(image)}
+              onRename={(name) => void rename(image, name)}
+            />
             <select
               aria-label={`Catégorie de ${image.name}`}
               value={image.category}
@@ -252,18 +393,71 @@ export function MediaLibrary({
           Aucune image ne correspond à ce filtre ou à cette recherche.
         </div>
       )}
+      {hasSounds && (
+        <div className="library-toolbar sound-toolbar">
+          <div className="library-filters">
+            <div className="library-filter" role="group" aria-label="Filtrer les sons">
+              {(Object.keys(audioFilterLabels) as AudioFilter[]).map((option) => (
+                <button
+                  key={option}
+                  aria-pressed={audioFilter === option}
+                  className={audioFilter === option ? 'selected' : ''}
+                  onClick={() => setAudioFilter(option)}
+                >
+                  {audioFilterLabels[option]}
+                </button>
+              ))}
+            </div>
+            <FavouritesFilter what="sons" on={favouriteSounds} onChange={setFavouriteSounds} />
+          </div>
+          <label className="library-search">
+            <Search size={14} aria-hidden />
+            <input
+              type="search"
+              aria-label="Rechercher un son"
+              placeholder="Rechercher par nom"
+              value={audioQuery}
+              onChange={(e) => setAudioQuery(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
+      {hasSounds && <ListeningWarning listening={listening} />}
+      {listening.player}
       <ul className="media-library sound-library" aria-label="Sons">
         {sounds.map((item) => (
           <li className="media-item" key={item.id}>
-            <span className="media-audio-icon">
+            <span
+              className="media-audio-icon"
+              draggable
+              title="Glissez le son sur la scène ouverte pour l’y ajouter"
+              onDragStart={(event) => startAudioDrag(event, item)}
+            >
               <Music2 size={20} />
             </span>
-            <MediaName item={item} onRename={(name) => void rename(item, name)} />
-            <span className="media-role">{roleLabels[item.role]}</span>
+            <MediaName
+              item={item}
+              star={favouriteButton(item)}
+              onRename={(name) => void rename(item, name)}
+            />
+            <span className="media-sound-facts">
+              <span className="media-role">{roleLabels[item.role]}</span>
+              {missingSounds.has(item.id) && <MissingMediaBadge name={item.name} />}
+              <span
+                className="media-duration"
+                title={item.durationSeconds === null ? 'Durée inconnue' : 'Durée'}
+              >
+                {formatDuration(item.durationSeconds)}
+              </span>
+            </span>
+            <ListenButton sound={item} listening={listening} missing={missingSounds.has(item.id)} />
             {deleteButton(item)}
           </li>
         ))}
       </ul>
+      {hasSounds && sounds.length === 0 && (
+        <div className="asset-empty">Aucun son ne correspond à ce filtre ou à cette recherche.</div>
+      )}
       {pending && (
         <div
           className="media-delete-confirm"
@@ -271,17 +465,28 @@ export function MediaLibrary({
           aria-label="Supprimer le média"
           aria-describedby="media-delete-message"
         >
-          <p id="media-delete-message">
-            « {pending.media.name} » est utilisé dans{' '}
-            {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}. Le supprimer le retire aussi
-            de {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}, et de la diffusion s’il y
-            est affiché.
-          </p>
-          <ul aria-label="Scènes concernées">
-            {pending.scenes.map((name, index) => (
-              <li key={index}>{name}</li>
-            ))}
-          </ul>
+          <p id="media-delete-message">{deletionWarning(pending)}</p>
+          {pending.scenes.length > 0 && (
+            <ul aria-label="Scènes concernées">
+              {pending.scenes.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
+          {pending.notes.length > 0 && (
+            <ul aria-label="Notes concernées">
+              {pending.notes.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
+          {pending.pads.length > 0 && (
+            <ul aria-label="Pads concernés">
+              {pending.pads.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
           <div className="media-delete-actions">
             <button className="secondary-button" autoFocus onClick={() => setPending(null)}>
               Annuler
@@ -295,9 +500,46 @@ export function MediaLibrary({
       {media.length === 0 && (
         <div className="asset-empty">
           Vos décors, personnages, musiques, bruitages et ambiances apparaîtront ici après import.
-          Vous pouvez aussi glisser des images ici depuis l’Explorateur.
+          Vous pouvez aussi glisser des images et des sons ici depuis l’Explorateur.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Asks which role imported sounds get: Music, Ambience or Sound effect. The role cannot be
+ * changed afterwards, so the question says so. Escape cancels.
+ */
+function RoleChoice({ request }: { request: RoleRequest }) {
+  const { count, answer } = request;
+  const what = count === 0 ? 'ces sons' : count > 1 ? `ces ${count} sons` : 'ce son';
+  return (
+    <div
+      className="media-role-choice"
+      role="dialog"
+      aria-label="Rôle des sons"
+      aria-describedby="media-role-message"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') answer(null);
+      }}
+    >
+      <p id="media-role-message">Quel rôle donner à {what} ? Il ne pourra plus être changé.</p>
+      <div className="media-delete-actions">
+        {(Object.keys(roleLabels) as AudioRole[]).map((role, index) => (
+          <button
+            key={role}
+            className="primary-button"
+            autoFocus={index === 0}
+            onClick={() => answer(role)}
+          >
+            {roleLabels[role]}
+          </button>
+        ))}
+        <button className="secondary-button" onClick={() => answer(null)}>
+          Annuler
+        </button>
+      </div>
     </div>
   );
 }
@@ -380,8 +622,70 @@ function ImageGrid({
   );
 }
 
-/** A Media's name, with its original file name in the tooltip, and renaming in place. */
-function MediaName({ item, onRename }: { item: Media; onRename: (name: string) => void }) {
+/**
+ * The "Favoris" filter of one library: on, it shows only starred Media, combined with the
+ * category or role filter and the search.
+ */
+function FavouritesFilter({
+  what,
+  on,
+  onChange,
+}: {
+  what: 'images' | 'sons';
+  on: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div className="library-filter" role="group" aria-label={`Favoris parmi les ${what}`}>
+      <button
+        aria-pressed={on}
+        className={on ? 'selected' : ''}
+        title={on ? `Montrer tous les ${what}` : `Montrer seulement les ${what} favoris`}
+        onClick={() => onChange(!on)}
+      >
+        <Star size={12} aria-hidden fill={on ? 'currentColor' : 'none'} /> Favoris
+      </button>
+    </div>
+  );
+}
+
+/** The star of a Media: filled when it is a favourite; a click stars or unstars it. */
+function FavouriteButton({
+  item,
+  onChange,
+}: {
+  item: Media;
+  onChange: (favourite: boolean) => void;
+}) {
+  const label = item.favourite
+    ? `Retirer ${item.name} des favoris`
+    : `Ajouter ${item.name} aux favoris`;
+  return (
+    <button
+      className={`media-favourite${item.favourite ? ' starred' : ''}`}
+      aria-pressed={item.favourite}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!item.favourite)}
+    >
+      <Star size={12} aria-hidden fill={item.favourite ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
+/**
+ * A Media's name, with its original file name in the tooltip, and renaming in place. `star`
+ * (its favourite button) goes before the name.
+ */
+function MediaName({
+  item,
+  star,
+  onRename,
+}: {
+  item: Media;
+  star: ReactNode;
+  onRename: (name: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   /** Set once the edit is committed or cancelled, so a later blur does not commit again. */
   const finished = useRef(false);
@@ -413,6 +717,7 @@ function MediaName({ item, onRename }: { item: Media; onRename: (name: string) =
 
   return (
     <span className="media-name-row">
+      {star}
       <span
         className="media-name"
         title={`${item.name}\nFichier d’origine : ${item.originalName}${item.extension}`}

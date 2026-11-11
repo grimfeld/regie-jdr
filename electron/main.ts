@@ -1,31 +1,54 @@
-import { app, BrowserWindow, dialog, protocol, screen, type WebContents } from 'electron';
-import fs from 'node:fs/promises';
+import { app, BrowserWindow, dialog, protocol, screen, shell, type WebContents } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
-import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { CampaignError, createCampaignInHomeTheme, updateCampaign } from '../core/campaigns.js';
+import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
+import { EXPORT_FILE_FILTER, exportCampaign, exportFileName } from '../core/campaignExport.js';
+import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
+import { createCampaignTransfers, type ByteProgress } from '../core/campaignTransfer.js';
+import { createPartialFiles, type PartialFiles } from '../core/partialFiles.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
+import { mediaFileResponse } from '../core/mediaResponse.js';
+import { createAudioOnAir } from '../core/audioOnAir.js';
+import { createEngineLink } from '../core/engineLink.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
+import { createPadVoices } from '../core/padVoices.js';
+import { createSoundboardStore, SoundboardError } from '../core/soundboard.js';
 import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
-import { openStorage } from '../core/storage/index.js';
+import { isSameCampaignId, openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
-import type { MediaImportKind } from '../shared/contract.js';
+import { openZipArchive, writeZipArchive } from './zipArchive.js';
+import type { CampaignImportResult, MediaImportKind, SoundboardEdit } from '../shared/contract.js';
+import type { OnAirState, PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
 // Global Settings (home theme, window bounds, last Active Scenes); set when the app starts.
 let settings: SettingsStore | null = null;
-// Settings writes still running: the app waits for them before it quits.
+// Settings writes and window calls still running: the app waits for them before it quits.
 const pendingWrites = new Set<Promise<unknown>>();
+
+/** Keeps `write` among the pending writes until it settles; it must not fail. */
+function trackWrite(write: Promise<unknown>) {
+  pendingWrites.add(write);
+  void write.finally(() => pendingWrites.delete(write));
+}
 // What is on air: in memory only, so nothing is on air after a restart.
 const onAir = createOnAir();
+// What plays (the audio part of the on-air state): in memory only, so nothing plays after a restart.
+const audio = createAudioOnAir();
+// What the Soundboard's pads play: in memory only, like the mix.
+const padVoices = createPadVoices();
+// What the audio engine (in the Control window, ADR-0002) last reported sounding.
+const engine = createEngineLink(audio, padVoices);
 
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
@@ -36,8 +59,19 @@ installErrorLogging();
 
 // Media are served via a custom scheme (core/mediaAddress.ts): file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
+// `stream` lets audio stream from it; `corsEnabled` lets the audio engine route it through Web
+// Audio (a media element from another origin without CORS would play silence there).
 protocol.registerSchemesAsPrivileged([
-  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  {
+    scheme: MEDIA_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
 ]);
 
 // The page every window loads: the dev server, or the built index.html on disk.
@@ -71,8 +105,9 @@ app.on('web-contents-created', (_event, contents) => {
 /**
  * Serves Media files from the open Campaign's media folder only, with an explicit content type.
  * Anything else (another Campaign, malformed address, missing file, disallowed type, outside
- * the folder) is a 404.
- * Whole files only: range requests (audio seeking) come with the audio engine.
+ * the folder) is a 404. Byte ranges are served, so audio streams, seeks and loops; bodies stream
+ * from disk (core/mediaResponse.ts). Any app page may read the files (CORS), so the audio engine
+ * can route them through Web Audio.
  */
 function registerMediaProtocol(library: MediaLibrary) {
   protocol.handle(MEDIA_SCHEME, async (request) => {
@@ -80,10 +115,15 @@ function registerMediaProtocol(library: MediaLibrary) {
     try {
       const resolved = await library.resolveAddress(request.url, onAir.current().campaignId);
       if (!resolved) return notFound();
-      const content = await fs.readFile(resolved.file);
-      return new Response(content, {
-        headers: { 'content-type': resolved.mimeType, 'cache-control': 'no-cache' },
-      });
+      return await mediaFileResponse(
+        resolved.file,
+        {
+          'content-type': resolved.mimeType,
+          'cache-control': 'no-cache',
+          'access-control-allow-origin': '*',
+        },
+        request.headers.get('range'),
+      );
     } catch (error) {
       log.warn(`Media request failed: ${request.url}`, error);
       return notFound();
@@ -106,8 +146,7 @@ function saveSetting(write: (store: SettingsStore) => Promise<unknown>) {
   const pending = write(settings).catch((error: unknown) => {
     log.error('Saving the settings failed', error);
   });
-  pendingWrites.add(pending);
-  void pending.finally(() => pendingWrites.delete(pending));
+  trackWrite(pending);
 }
 
 /**
@@ -158,6 +197,12 @@ async function createControlWindow() {
     webPreferences: secureWebPreferences('control'),
   });
   rememberBounds(controlWindow, 'control');
+  // Each load of the page starts a new audio engine (ADR-0002), holding nothing yet: what the
+  // old one reported is stale.
+  controlWindow.webContents.on('did-navigate', () => {
+    engine.engineStarted();
+    sendEvent(controlWindow?.webContents, 'audio:sounding-changed', engine.sounding());
+  });
   if (process.env.VITE_DEV_SERVER_URL) {
     loadPage('control', controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL));
     controlWindow.webContents.openDevTools({ mode: 'detach' });
@@ -172,7 +217,8 @@ async function createBroadcastWindow() {
     return;
   }
   const placement = await savedPlacement('broadcast');
-  // A second click while the bounds were being read: the first one opened it.
+  const alwaysOnTop = await savedBroadcastAlwaysOnTop();
+  // A second click while the Settings were being read: the first one opened it.
   if (broadcastWindow && !broadcastWindow.isDestroyed()) {
     broadcastWindow.focus();
     return;
@@ -186,6 +232,7 @@ async function createBroadcastWindow() {
     // of the screen.
     backgroundColor: '#000000',
     autoHideMenuBar: true,
+    alwaysOnTop,
     webPreferences: secureWebPreferences('broadcast'),
   });
   rememberBounds(broadcastWindow, 'broadcast');
@@ -201,6 +248,27 @@ async function createBroadcastWindow() {
   broadcastWindow.on('closed', () => {
     broadcastWindow = null;
   });
+}
+
+/** Whether the Broadcast window should open on top; off when the Settings cannot be read. */
+async function savedBroadcastAlwaysOnTop(): Promise<boolean> {
+  if (!settings) return false;
+  try {
+    return (await settings.get()).broadcastAlwaysOnTop;
+  } catch (error) {
+    log.warn('Reading the Broadcast window always-on-top setting failed', error);
+    return false;
+  }
+}
+
+/**
+ * Keeps the open Broadcast window above other windows, or stops (ADR-0002: covered by another
+ * application, Discord streams it black and silent). Set from the Control window, like
+ * fullscreen; a Broadcast window opened later reads the saved Settings.
+ */
+function setBroadcastAlwaysOnTop(on: boolean) {
+  if (!broadcastWindow || broadcastWindow.isDestroyed()) return;
+  broadcastWindow.setAlwaysOnTop(on);
 }
 
 /**
@@ -238,6 +306,49 @@ async function pickMediaFiles(kind: MediaImportKind): Promise<string[]> {
   return result.canceled ? [] : result.filePaths;
 }
 
+/**
+ * The Windows Recycle Bin. `shell.trashItem` is looked up at each call, so whole-app tests can
+ * replace it and never reach the real Recycle Bin. A refusal is logged with its technical cause;
+ * the Game Master gets a French reason from the app core.
+ */
+const recycleBin: Trash = {
+  async moveToTrash(folder) {
+    try {
+      await shell.trashItem(folder);
+    } catch (error) {
+      log.warn(`The Recycle Bin refused ${folder}`, error);
+      throw error;
+    }
+  },
+};
+
+/** Where the Game Master saves an Export, from the native save dialog; undefined if cancelled. */
+async function pickExportFile(defaultName: string): Promise<string | undefined> {
+  const options: Electron.SaveDialogOptions = {
+    title: 'Exporter la campagne',
+    defaultPath: path.join(app.getPath('documents'), defaultName),
+    filters: [{ name: EXPORT_FILE_FILTER.name, extensions: [...EXPORT_FILE_FILTER.extensions] }],
+  };
+  const result = controlWindow
+    ? await dialog.showSaveDialog(controlWindow, options)
+    : await dialog.showSaveDialog(options);
+  return result.canceled || !result.filePath ? undefined : result.filePath;
+}
+
+/** The Export the Game Master picks to Import, from the native open dialog; undefined if cancelled. */
+async function pickImportFile(): Promise<string | undefined> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Importer une campagne',
+    defaultPath: app.getPath('documents'),
+    properties: ['openFile'],
+    filters: [{ name: EXPORT_FILE_FILTER.name, extensions: [...EXPORT_FILE_FILTER.extensions] }],
+  };
+  const result = controlWindow
+    ? await dialog.showOpenDialog(controlWindow, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? undefined : result.filePaths[0];
+}
+
 /** A second launch of the app brings the existing Control window forward. */
 function focusControlWindow() {
   if (!controlWindow || controlWindow.isDestroyed()) return;
@@ -249,37 +360,173 @@ function focusControlWindow() {
 function startApp() {
   // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
   const notices: string[] = [];
-  const storage = openStorage(app.getPath('userData'), {
-    notify: (message) => {
-      notices.push(message);
-      log.warn(message);
+  const notify = (message: string) => {
+    notices.push(message);
+    log.warn(message);
+  };
+  const storage = openStorage(app.getPath('userData'), { notify });
+  // An Import interrupted by a crash leaves its staging folder; none runs yet, and the next one
+  // waits for this.
+  const importLeftoversCleared = clearImportLeftovers(storage.importsFolder).catch(
+    (error: unknown) => {
+      log.warn('Could not remove the folders left by an interrupted Import', error);
     },
+  );
+  // An Export's zip is written as a partial file beside its target; one an app killed meanwhile
+  // left is deleted now. Recording them never fails an Export: a failure is only logged.
+  const partialExports = createPartialFiles(
+    storage.documents,
+    path.join(storage.root, 'partial-exports.json'),
+  );
+  partialExports.clear().catch((error: unknown) => {
+    log.warn('Could not remove the partial files left by an interrupted Export', error);
   });
+  const trackedPartials: Pick<PartialFiles, 'add' | 'remove'> = {
+    add: (file) =>
+      partialExports.add(file).catch((error: unknown) => {
+        log.warn(`Could not record the partial file ${file}`, error);
+      }),
+    remove: (file) =>
+      partialExports.remove(file).catch((error: unknown) => {
+        log.warn(`Could not forget the partial file ${file}`, error);
+      }),
+  };
+  // One Export or Import at a time; its progress goes to the Control window, throttled.
+  const transfers = createCampaignTransfers({
+    send: (progress) =>
+      sendEvent(controlWindow?.webContents, 'campaigns:transfer-progress', progress),
+  });
+  // Always a new Campaign (ADR-0005); the zip is untrusted, core/campaignImport.ts checks it.
+  // A cancel or a failure leaves no staging folder and no Campaign (core/campaignImport.ts).
+  async function importCampaignFrom(
+    file: string,
+    signal: AbortSignal,
+    onProgress: (progress: ByteProgress) => void,
+  ): Promise<CampaignImportResult> {
+    await importLeftoversCleared;
+    // Once importCampaign returns, the Campaign is in place: nothing after it may fail the Import.
+    const { id, campaign } = await importCampaign({
+      openArchive: openZipArchive(file),
+      campaignsFolder: storage.campaignsFolder,
+      importsFolder: storage.importsFolder,
+      existingNames: (await storage.campaigns.list()).map((campaign) => campaign.name),
+      signal,
+      onProgress,
+    });
+    log.info(`Imported Campaign ${id}`);
+    return { imported: true, campaign };
+  }
+  /** Runs an Import as the transfer under way; `pick` names the zip, or nothing when cancelled. */
+  async function runImport(pick: () => Promise<string | undefined>): Promise<CampaignImportResult> {
+    const outcome = await transfers.run('import', async (signal, onProgress) => {
+      const file = await pick();
+      return file
+        ? importCampaignFrom(file, signal, onProgress)
+        : { imported: false as const, cancelled: false };
+    });
+    if (outcome.status === 'done') return outcome.value;
+    log.info('Import cancelled by the Game Master');
+    return { imported: false, cancelled: true };
+  }
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
-  const scenes = createSceneLibrary(storage);
+  const scenes = createSceneLibrary(storage, { notify });
+  const soundboards = createSoundboardStore({ storage, library });
   registerMediaProtocol(library);
-  // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
+  const campaignDeletion = createCampaignDeletion({
+    storage,
+    countScenes: async (id) => (await scenes.list(id)).length,
+    countMedia: async (id) => (await library.list(id)).length,
+    settings: settingsStore,
+    trash: recycleBin,
+    openCampaignId: () => onAir.current().campaignId,
+    isTransferring: (id) => transfers.isRunningFor(id),
+  });
   const commands = createOnAirCommands({
     campaigns: storage.campaigns,
     library,
     scenes,
     onAir,
-    audio: {
-      halt: () => {
-        sendEvent(broadcastWindow?.webContents, 'audio:halt', null);
-        sendEvent(controlWindow?.webContents, 'audio:halt', null);
-      },
-    },
+    audio,
+    soundboards,
   });
-  // The renderers fade with the saved duration, carried by the on-air state.
+  // The renderers fade with the saved duration, carried by the on-air state; audio plays at
+  // the saved Master volume; Activate and track changes take the saved durations.
   settingsStore
     .get()
-    .then(({ fadeDurationMs }) => onAir.setFadeDuration(fadeDurationMs))
+    .then(({ fadeDurationMs, masterVolume, activateDurationMs, musicCrossfadeMs }) => {
+      onAir.setFadeDuration(fadeDurationMs);
+      audio.setMasterVolume(masterVolume);
+      commands.setPlayDurations({ activateDurationMs, musicCrossfadeMs });
+    })
     .catch((error: unknown) => {
-      log.error('Reading the fade duration failed', error);
+      log.error('Reading the fade, Master volume and play duration settings failed', error);
     });
+  const currentSounding = () => engine.sounding();
+  // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
+  // Broadcast window gets no audio data.
+  const sendSounding = () =>
+    sendEvent(controlWindow?.webContents, 'audio:sounding-changed', currentSounding());
+  const sendPadCommands = (commands: readonly PadCommand[]) => {
+    for (const command of commands) {
+      sendEvent(controlWindow?.webContents, 'audio:pad-command', command);
+    }
+  };
+  /**
+   * The pad sounds still sounding take the pads' names and levels now (`unsaved`: a slider
+   * being dragged), so a level, pad volume or Master volume change is heard at once. The change
+   * itself is saved already: a failure here is only logged.
+   */
+  const retunePads = async (unsaved?: SoundboardEdit) => {
+    const { campaignId } = onAir.current();
+    if (!campaignId) return;
+    try {
+      const { masterVolume } = await settingsStore.get();
+      const tuning = await soundboards.tuning(campaignId, masterVolume, unsaved);
+      sendPadCommands(padVoices.retune(tuning));
+      sendSounding();
+    } catch (error) {
+      log.warn('Retuning the pad sounds failed', error);
+    }
+  };
+  /** A Campaign opened, switched or closed: its pad sounds stop with the rest of the audio. */
+  const stopPads = () => {
+    sendPadCommands(padVoices.clear());
+    sendSounding();
+  };
+  /**
+   * Tells the engine which Sound effects to keep decoded: those of the open Campaign's pads,
+   * none when no Campaign is open. Sent on Campaign open and close, pad changes and engine
+   * start; a failure only costs the decode on first press.
+   */
+  const preloadPads = () => {
+    const { campaignId } = onAir.current();
+    const sounds = campaignId === null ? Promise.resolve([]) : soundboards.sounds(campaignId);
+    sounds
+      .then((srcs) => sendPadCommands([{ kind: 'preload', srcs }]))
+      .catch((error: unknown) => log.warn('Listing the Sound effects to preload failed', error));
+  };
+  /** Remembers the Active Scene, for highlighting only: nothing goes on air after a restart. */
+  const rememberActive = (state: OnAirState) => {
+    const { campaignId, activeSceneId } = state;
+    if (campaignId && activeSceneId) {
+      saveSetting((store) => store.setLastActiveScene(campaignId, activeSceneId));
+    }
+    return state;
+  };
+  /** Silence was set: when it `started`, the pads sounding fade out too. Returns what sounds. */
+  const silenced = (started: boolean) => {
+    if (started) {
+      sendPadCommands(padVoices.clear('silence'));
+      sendSounding();
+    }
+    return currentSounding();
+  };
+  audio.subscribe((mix) => {
+    sendEvent(controlWindow?.webContents, 'audio:mix-changed', mix);
+    sendSounding();
+  });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
     sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
@@ -289,18 +536,32 @@ function startApp() {
   registerHandlers(
     {
       'onAir:get': () => onAir.current(),
-      'onAir:open-campaign': ({ campaignId }) => commands.openCampaign(campaignId),
-      'onAir:close-campaign': () => commands.closeCampaign(),
-      'onAir:activate-scene': async ({ sceneId }) => {
-        const state = await commands.activateScene(sceneId);
-        // Remembered for highlighting only: nothing goes on air after a restart.
-        const { campaignId } = state;
-        if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));
+      'onAir:open-campaign': async ({ campaignId }) => {
+        const state = await commands.openCampaign(campaignId);
+        stopPads();
+        preloadPads();
+        // Read its Scenes now, so a Scene whose Notes cannot be read is reported as it opens
+        // (the window collects the notices then). A failure shows when the Scenes are listed.
+        await scenes.list(campaignId).catch((error: unknown) => {
+          log.warn('Reading the Scenes of the opened Campaign failed', error);
+        });
         return state;
       },
+      'onAir:close-campaign': async () => {
+        const state = await commands.closeCampaign();
+        stopPads();
+        preloadPads();
+        return state;
+      },
+      'onAir:activate-scene': async ({ sceneId, forceCut }) =>
+        rememberActive(await commands.activateScene(sceneId, { forceCut })),
+      'onAir:activate-next': async ({ direction, forceCut }) =>
+        rememberActive(await commands.activateNextTo(direction, { forceCut })),
       'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
+      'onAir:toggle-blackout': () => commands.toggleBlackout(),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
-      'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
+      'scenes:create': ({ campaignId, name, selectedSceneId }) =>
+        scenes.create(campaignId, name, selectedSceneId),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>
         commands.editScene(campaignId, sceneId, edit),
       'scenes:show-transient': ({ campaignId, sceneId, edit }) =>
@@ -312,6 +573,10 @@ function startApp() {
         await commands.deleteScene(campaignId, sceneId);
         saveSetting((store) => store.forgetScene(campaignId, sceneId));
       },
+      'scenes:running-order': ({ campaignId }) => scenes.runningOrder(campaignId),
+      'scenes:edit-running-order': ({ campaignId, edit }) =>
+        scenes.editRunningOrder(campaignId, edit),
+      'scenes:duplicate': ({ campaignId, sceneId }) => commands.duplicateScene(campaignId, sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
       'media:list': ({ campaignId }) => library.list(campaignId),
@@ -321,19 +586,86 @@ function startApp() {
         result.refused.forEach((message) => log.info(`Media refused: ${message}`));
         return result;
       },
-      'media:import-dropped': async ({ campaignId, files }) => {
-        const result = await library.import(campaignId, files, { accept: 'image' });
+      'media:import-dropped': async ({ campaignId, files, ...kind }) => {
+        const result = await library.import(campaignId, files, kind);
+        result.refused.forEach((message) => log.info(`Media refused: ${message}`));
+        return result;
+      },
+      'media:import-pasted': async ({ campaignId, data, name }) => {
+        const result = await library.importPasted(campaignId, data, name);
         result.refused.forEach((message) => log.info(`Media refused: ${message}`));
         return result;
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
-      'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
-      'media:delete': ({ campaignId, mediaId, confirmed }) =>
-        commands.deleteMedia(campaignId, mediaId, confirmed),
+      'media:set-favourite': ({ campaignId, mediaId, favourite }) =>
+        library.setFavourite(campaignId, mediaId, favourite),
+      'media:rename': async ({ campaignId, mediaId, name }) => {
+        const renamed = await commands.renameMedia(campaignId, mediaId, name);
+        await retunePads();
+        return renamed;
+      },
+      // The on-air commands remove its pads too (pads are uses): preload what is left.
+      'media:delete': async ({ campaignId, mediaId, confirmed }) => {
+        const deletion = await commands.deleteMedia(campaignId, mediaId, confirmed);
+        if (deletion.deleted) preloadPads();
+        return deletion;
+      },
       'campaigns:list': () => storage.campaigns.list(),
-      'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
+      'campaigns:create': ({ name }) =>
+        createCampaignInHomeTheme(storage.campaigns, settingsStore, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
+      'campaigns:deletion-summary': ({ id }) => campaignDeletion.summary(id),
+      'campaigns:move-to-trash': ({ id }) => campaignDeletion.moveToTrash(id),
+      'campaigns:delete-permanently': ({ id }) => campaignDeletion.deletePermanently(id),
+      // Offered on the Campaign list only (ADR-0005): the Campaign is closed, nothing writes to it.
+      'campaigns:export': async ({ id: campaignId }) => {
+        if (isSameCampaignId(onAir.current().campaignId, campaignId)) {
+          throw new CampaignError('Revenez à la liste des campagnes pour exporter celle-ci.');
+        }
+        const campaign = await storage.campaigns.get(campaignId);
+        if (!campaign) throw new CampaignError('Cette campagne n’existe plus.');
+        // A cancel or a failure leaves no file: the zip is renamed into place once complete.
+        const outcome = await transfers.run(
+          'export',
+          async (signal, onProgress) => {
+            const file = await pickExportFile(exportFileName(campaign.name, new Date()));
+            if (!file) return undefined;
+            return exportCampaign({
+              campaignFolder: storage.campaignFolder(campaignId),
+              campaignName: campaign.name,
+              media: await library.list(campaignId),
+              appVersion: app.getVersion(),
+              writeArchive: writeZipArchive(file, trackedPartials),
+              signal,
+              onProgress,
+            });
+          },
+          campaignId,
+        );
+        if (outcome.status === 'cancelled') {
+          log.info(`Export of Campaign ${campaignId} cancelled by the Game Master`);
+          return { saved: false, cancelled: true };
+        }
+        if (!outcome.value) return { saved: false, cancelled: false };
+        const { missingMedia } = outcome.value;
+        log.info(`Exported Campaign ${campaignId}, ${missingMedia} missing Media left out`);
+        return { saved: true, missingMedia };
+      },
+      // Picked in the native open dialog: the window never names a file.
+      'campaigns:import': () => runImport(pickImportFile),
+      // The path was checked like a dropped Media's (core/ipc.ts); then the same Import as above.
+      'campaigns:import-dropped': async ({ file }) => {
+        if (path.extname(file).toLowerCase() !== '.zip') {
+          throw new CampaignError(
+            `« ${path.basename(file)} » n’a pas été importé : ce n’est pas une campagne exportée (.zip).`,
+          );
+        }
+        return runImport(() => Promise.resolve(file));
+      },
+      'campaigns:cancel-transfer': () => {
+        transfers.cancel();
+      },
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
       'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),
@@ -342,9 +674,72 @@ function startApp() {
         onAir.setFadeDuration(saved.fadeDurationMs);
         return saved;
       },
+      'settings:set-activate-duration': async ({ activateDurationMs }) => {
+        const saved = await settingsStore.setActivateDuration(activateDurationMs);
+        commands.setPlayDurations(saved);
+        return saved;
+      },
+      'settings:set-music-crossfade': async ({ musicCrossfadeMs }) => {
+        const saved = await settingsStore.setMusicCrossfade(musicCrossfadeMs);
+        commands.setPlayDurations(saved);
+        return saved;
+      },
+      'settings:set-master-volume': async ({ masterVolume }) => {
+        const saved = await settingsStore.setMasterVolume(masterVolume);
+        audio.setMasterVolume(saved.masterVolume);
+        // Listening to a library sound follows it too, through the sounding state.
+        sendSounding();
+        await retunePads();
+        return saved;
+      },
+      'settings:set-broadcast-always-on-top': async ({ on }) => {
+        const saved = await settingsStore.setBroadcastAlwaysOnTop(on);
+        setBroadcastAlwaysOnTop(saved.broadcastAlwaysOnTop);
+        return saved;
+      },
+      'settings:set-shortcuts': ({ shortcuts }) => settingsStore.setShortcuts(shortcuts),
+      // The engine reads the mix as it starts (or restarts, with the Control window): it is
+      // told which Sound effects to keep decoded (its last report is forgotten on did-navigate).
+      'audio:get-mix': () => {
+        preloadPads();
+        return audio.mix();
+      },
+      'audio:report': (report) => {
+        engine.engineReported(report);
+        sendSounding();
+      },
+      'audio:get-sounding': () => currentSounding(),
+      // Silence fades out the pads sounding too; pads pressed during it play as usual. It
+      // goes through the on-air commands, in turn: an Activate just before cannot lift it.
+      'audio:set-silence': async ({ on }) => silenced(await commands.setSilence(on)),
+      'audio:toggle-silence': async () => silenced(await commands.toggleSilence()),
+      'audio:report-pads': (report) => {
+        if (padVoices.report(report)) sendSounding();
+      },
+      'soundboard:get': ({ campaignId }) => soundboards.get(campaignId),
+      'soundboard:edit': async ({ campaignId, edit }) => {
+        const saved = await soundboards.edit(campaignId, edit);
+        if (edit.kind === 'add-pad' || edit.kind === 'remove-pad') preloadPads();
+        await retunePads();
+        return saved;
+      },
+      'soundboard:press': async ({ campaignId, padId }) => {
+        if (onAir.current().campaignId !== campaignId) {
+          throw new SoundboardError('Ouvrez cette campagne pour jouer ses bruitages.');
+        }
+        const { masterVolume } = await settingsStore.get();
+        sendPadCommands(padVoices.press(await soundboards.press(campaignId, padId, masterVolume)));
+      },
+      // A level slider being dragged: heard on the pads sounding, never saved.
+      'soundboard:show-transient': async ({ campaignId, edit }) => {
+        if (onAir.current().campaignId === campaignId) await retunePads(edit);
+      },
+      'audio:pick-music': ({ mediaId }) => commands.pickMusic(mediaId),
+      'audio:set-music-playback': ({ playback }) => commands.setMusicPlayback(playback),
     },
     roleOf,
     log,
+    trackWrite,
   );
   void createControlWindow();
   app.on('activate', () => {
@@ -352,7 +747,8 @@ function startApp() {
   });
 }
 
-// Window bounds are saved as the windows close: finish those writes before quitting.
+// Window bounds are saved as the windows close, and a window's last call (Notes typed just
+// before quitting) may still be running: finish them before quitting.
 app.on('will-quit', (event) => {
   if (pendingWrites.size === 0) return;
   event.preventDefault();

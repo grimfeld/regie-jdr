@@ -12,21 +12,43 @@
  *     subscription), plus the bridge interface in shared/contract.ts.
  */
 import type {
+  ActivateOptions,
   CampaignChanges,
   InvokeChannel,
   InvokeChannels,
   MediaImportKind,
   Payload,
+  RunningOrderEdit,
+  SceneDirection,
   SceneEdit,
+  SoundboardEdit,
+  SoundboardLevel,
   TransientEdit,
 } from '../shared/contract.js';
 import path from 'node:path';
-import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
+import type {
+  AudioEngineReport,
+  CampaignId,
+  ImageCategory,
+  MediaId,
+  MusicPlayback,
+  PadReport,
+  SceneId,
+  ShortcutSettings,
+  ThemeId,
+} from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
+import { MAX_PASTED_IMAGE_BYTES } from './mediaAddress.js';
 import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
+import { parseRunningOrderEdit } from './runningOrder.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
-import { parseFadeDuration } from './fades.js';
+import { parseActivateDuration, parseFadeDuration, parseMusicCrossfade } from './fades.js';
+import { parseAudioEngineReport } from './audioMix.js';
+import { parsePadReport } from './padVoices.js';
+import { shortcutSettingsOf } from './keyMap.js';
+import { parseSoundboardEdit } from './soundboard.js';
+import { parseVolume } from './settings.js';
 import { isRecord } from './guards.js';
 
 /** The windows that can send messages. */
@@ -101,6 +123,11 @@ function campaignUpdate(value: unknown): Parsed<{ id: CampaignId; changes: Campa
   return { id: value.id, changes };
 }
 
+function campaignIdOf(value: unknown): Parsed<{ id: CampaignId }> {
+  if (!isRecord(value) || !isCampaignId(value.id)) return INVALID;
+  return { id: value.id };
+}
+
 function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
   if (!isRecord(value) || !isThemeId(value.theme)) return INVALID;
   return { theme: value.theme };
@@ -111,19 +138,111 @@ function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
   return fadeDurationMs === undefined ? INVALID : { fadeDurationMs };
 }
 
+function activateDurationOf(value: unknown): Parsed<{ activateDurationMs: number }> {
+  const activateDurationMs = isRecord(value)
+    ? parseActivateDuration(value.activateDurationMs)
+    : undefined;
+  return activateDurationMs === undefined ? INVALID : { activateDurationMs };
+}
+
+function musicCrossfadeOf(value: unknown): Parsed<{ musicCrossfadeMs: number }> {
+  const musicCrossfadeMs = isRecord(value)
+    ? parseMusicCrossfade(value.musicCrossfadeMs)
+    : undefined;
+  return musicCrossfadeMs === undefined ? INVALID : { musicCrossfadeMs };
+}
+
+function masterVolumeOf(value: unknown): Parsed<{ masterVolume: number }> {
+  const masterVolume = isRecord(value) ? parseVolume(value.masterVolume) : undefined;
+  return masterVolume === undefined ? INVALID : { masterVolume };
+}
+
+function activation(value: unknown): Parsed<{ sceneId: SceneId } & ActivateOptions> {
+  const scene = idOf('sceneId')(value);
+  if (scene === INVALID || !isRecord(value)) return INVALID;
+  const { forceCut } = value;
+  if (forceCut === undefined) return scene;
+  return typeof forceCut === 'boolean' ? { ...scene, forceCut } : INVALID;
+}
+
+function directionOf(value: unknown): Parsed<{ direction: SceneDirection } & ActivateOptions> {
+  if (!isRecord(value)) return INVALID;
+  const { direction, forceCut } = value;
+  if (direction !== 'next' && direction !== 'previous') return INVALID;
+  if (forceCut === undefined) return { direction };
+  return typeof forceCut === 'boolean' ? { direction, forceCut } : INVALID;
+}
+
+function engineReport(value: unknown): Parsed<AudioEngineReport> {
+  return parseAudioEngineReport(value) ?? INVALID;
+}
+
+function musicPick(value: unknown): Parsed<{ mediaId: MediaId }> {
+  if (!isRecord(value)) return INVALID;
+  const { mediaId } = value;
+  return typeof mediaId === 'string' && mediaId !== '' ? { mediaId } : INVALID;
+}
+
+const MUSIC_PLAYBACKS: readonly MusicPlayback[] = ['playing', 'paused', 'stopped'];
+
+function musicPlayback(value: unknown): Parsed<{ playback: MusicPlayback }> {
+  if (!isRecord(value)) return INVALID;
+  const playback = MUSIC_PLAYBACKS.find((known) => known === value.playback);
+  return playback === undefined ? INVALID : { playback };
+}
+
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
   if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
   return { campaignId: value.campaignId };
 }
 
+function padReport(value: unknown): Parsed<PadReport> {
+  return parsePadReport(value) ?? INVALID;
+}
+
+function soundboardEdit(value: unknown): Parsed<{ campaignId: CampaignId; edit: SoundboardEdit }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const edit = parseSoundboardEdit(value.edit);
+  return edit ? { ...campaign, edit } : INVALID;
+}
+
+function soundboardLevel(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; edit: SoundboardLevel }> {
+  const parsed = soundboardEdit(value);
+  if (parsed === INVALID) return INVALID;
+  const { campaignId, edit } = parsed;
+  return edit.kind === 'set-level' || edit.kind === 'set-pad-volume'
+    ? { campaignId, edit }
+    : INVALID;
+}
+
+function padPress(value: unknown): Parsed<{ campaignId: CampaignId; padId: string }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { padId } = value;
+  if (typeof padId !== 'string' || padId === '' || padId.length > MAX_NAME_PAYLOAD) return INVALID;
+  return { ...campaign, padId };
+}
+
+function importKindOf(value: Record<string, unknown>): Parsed<MediaImportKind> {
+  if (value.accept === 'image') {
+    const { category } = value;
+    if (category === undefined) return { accept: 'image' };
+    return isImageCategory(category) ? { accept: 'image', category } : INVALID;
+  }
+  if (value.accept === 'audio' && isAudioRole(value.role)) {
+    return { accept: 'audio', role: value.role };
+  }
+  return INVALID;
+}
+
 function mediaImport(value: unknown): Parsed<{ campaignId: CampaignId } & MediaImportKind> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value)) return INVALID;
-  if (value.accept === 'image') return { ...campaign, accept: 'image' };
-  if (value.accept === 'audio' && isAudioRole(value.role)) {
-    return { ...campaign, accept: 'audio', role: value.role };
-  }
-  return INVALID;
+  const kind = importKindOf(value);
+  return kind === INVALID ? INVALID : { ...campaign, ...kind };
 }
 
 /** More dropped files than this in one message is a malformed message. */
@@ -145,13 +264,38 @@ function isDroppedPath(value: unknown): value is string {
   );
 }
 
-function droppedImport(value: unknown): Parsed<{ campaignId: CampaignId; files: string[] }> {
+function droppedImport(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; files: string[] } & MediaImportKind> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const kind = importKindOf(value);
+  if (kind === INVALID) return INVALID;
   const { files } = value;
   if (!Array.isArray(files) || files.length > MAX_DROPPED_FILES) return INVALID;
   if (!files.every(isDroppedPath)) return INVALID;
-  return { ...campaign, files: [...files] };
+  return { ...campaign, files: [...files], ...kind };
+}
+
+/** A dropped Export to Import: one file, with the same path checks as dropped Media. */
+function droppedExport(value: unknown): Parsed<{ file: string }> {
+  if (!isRecord(value) || !isDroppedPath(value.file)) return INVALID;
+  return { file: value.file };
+}
+
+/**
+ * Pasted image content: bytes (not a list or text), at most MAX_PASTED_IMAGE_BYTES, with a name.
+ * Whether the bytes are an image is the import's check (core/media.ts).
+ */
+function pastedImport(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; data: Uint8Array; name: string }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { data, name } = value;
+  if (!(data instanceof Uint8Array) || !isName(name)) return INVALID;
+  if (data.byteLength === 0 || data.byteLength > MAX_PASTED_IMAGE_BYTES) return INVALID;
+  return { ...campaign, data, name };
 }
 
 function categoryChange(
@@ -174,6 +318,18 @@ function mediaRename(
   return { ...campaign, mediaId, name };
 }
 
+function favouriteChange(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; mediaId: MediaId; favourite: boolean }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { mediaId, favourite } = value;
+  if (typeof mediaId !== 'string' || mediaId === '' || typeof favourite !== 'boolean') {
+    return INVALID;
+  }
+  return { ...campaign, mediaId, favourite };
+}
+
 function mediaDelete(
   value: unknown,
 ): Parsed<{ campaignId: CampaignId; mediaId: MediaId; confirmed: boolean }> {
@@ -186,15 +342,28 @@ function mediaDelete(
   return { ...campaign, mediaId, confirmed };
 }
 
-function blackoutOf(value: unknown): Parsed<{ on: boolean }> {
+/** The shortcut keys to save, every part readable. */
+function shortcutsOf(value: unknown): Parsed<{ shortcuts: ShortcutSettings }> {
+  if (!isRecord(value)) return INVALID;
+  const shortcuts = shortcutSettingsOf(value.shortcuts);
+  return shortcuts ? { shortcuts } : INVALID;
+}
+
+/** A flag turning an on-air state on or off: Blackout, Silence. */
+function onOffOf(value: unknown): Parsed<{ on: boolean }> {
   if (!isRecord(value) || typeof value.on !== 'boolean') return INVALID;
   return { on: value.on };
 }
 
-function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string }> {
+function newScene(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; name: string; selectedSceneId?: SceneId }> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value) || !isName(value.name)) return INVALID;
-  return { ...campaign, name: value.name };
+  const { selectedSceneId } = value;
+  if (selectedSceneId === undefined) return { ...campaign, name: value.name };
+  if (typeof selectedSceneId !== 'string' || selectedSceneId === '') return INVALID;
+  return { ...campaign, name: value.name, selectedSceneId };
 }
 
 function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: SceneId }> {
@@ -203,6 +372,15 @@ function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: Scen
   const { sceneId } = value;
   if (typeof sceneId !== 'string' || sceneId === '') return INVALID;
   return { ...campaign, sceneId };
+}
+
+function runningOrderEdit(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; edit: RunningOrderEdit }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const edit = parseRunningOrderEdit(value.edit);
+  return edit ? { ...campaign, edit } : INVALID;
 }
 
 function sceneEdit(
@@ -231,8 +409,10 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:get': { from: anyWindow, parse: noPayload },
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
-  'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
-  'onAir:set-blackout': { from: controlOnly, parse: onePayload(blackoutOf) },
+  'onAir:activate-scene': { from: controlOnly, parse: onePayload(activation) },
+  'onAir:activate-next': { from: controlOnly, parse: onePayload(directionOf) },
+  'onAir:set-blackout': { from: controlOnly, parse: onePayload(onOffOf) },
+  'onAir:toggle-blackout': { from: controlOnly, parse: noPayload },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
   'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },
@@ -241,21 +421,51 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'scenes:undo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:redo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:running-order': { from: controlOnly, parse: onePayload(campaignOf) },
+  'scenes:edit-running-order': { from: controlOnly, parse: onePayload(runningOrderEdit) },
+  'scenes:duplicate': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
   'media:import-dropped': { from: controlOnly, parse: onePayload(droppedImport) },
+  'media:import-pasted': { from: controlOnly, parse: onePayload(pastedImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
   'media:rename': { from: controlOnly, parse: onePayload(mediaRename) },
+  'media:set-favourite': { from: controlOnly, parse: onePayload(favouriteChange) },
   'media:delete': { from: controlOnly, parse: onePayload(mediaDelete) },
   'campaigns:list': { from: controlOnly, parse: noPayload },
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
   'campaigns:update': { from: controlOnly, parse: onePayload(campaignUpdate) },
+  'campaigns:deletion-summary': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:move-to-trash': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:delete-permanently': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:export': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:import': { from: controlOnly, parse: noPayload },
+  'campaigns:import-dropped': { from: controlOnly, parse: onePayload(droppedExport) },
+  'campaigns:cancel-transfer': { from: controlOnly, parse: noPayload },
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
   'settings:set-fade-duration': { from: controlOnly, parse: onePayload(fadeDurationOf) },
+  'settings:set-master-volume': { from: controlOnly, parse: onePayload(masterVolumeOf) },
+  'settings:set-activate-duration': { from: controlOnly, parse: onePayload(activateDurationOf) },
+  'settings:set-music-crossfade': { from: controlOnly, parse: onePayload(musicCrossfadeOf) },
+  'settings:set-broadcast-always-on-top': { from: controlOnly, parse: onePayload(onOffOf) },
+  'settings:set-shortcuts': { from: controlOnly, parse: onePayload(shortcutsOf) },
+  // The audio engine runs in the Control window (ADR-0002): the Broadcast window gets no audio.
+  'audio:get-mix': { from: controlOnly, parse: noPayload },
+  'audio:report': { from: controlOnly, parse: onePayload(engineReport) },
+  'audio:get-sounding': { from: controlOnly, parse: noPayload },
+  'audio:set-silence': { from: controlOnly, parse: onePayload(onOffOf) },
+  'audio:toggle-silence': { from: controlOnly, parse: noPayload },
+  'audio:report-pads': { from: controlOnly, parse: onePayload(padReport) },
+  'soundboard:get': { from: controlOnly, parse: onePayload(campaignOf) },
+  'soundboard:edit': { from: controlOnly, parse: onePayload(soundboardEdit) },
+  'soundboard:press': { from: controlOnly, parse: onePayload(padPress) },
+  'soundboard:show-transient': { from: controlOnly, parse: onePayload(soundboardLevel) },
+  'audio:pick-music': { from: controlOnly, parse: onePayload(musicPick) },
+  'audio:set-music-playback': { from: controlOnly, parse: onePayload(musicPlayback) },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

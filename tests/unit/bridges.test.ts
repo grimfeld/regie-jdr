@@ -32,4 +32,23 @@ describe('sender rules and bridges', () => {
     const allowed = invokeChannels.filter((channel) => sendersOf(channel).includes('broadcast'));
     expect(allowed).toEqual(reads);
   });
+
+  it('gives the audio engine a bridge that only reads the mix and pad commands and reports what sounds', () => {
+    const source = readFileSync(
+      new URL('../../electron/preload-control.ts', import.meta.url),
+      'utf8',
+    );
+    const engineBridge = /const audioEngine: AudioEngineBridge = \{([^}]*)\};/.exec(source)?.[1];
+    expect(engineBridge).toBeDefined();
+    const called = [...(engineBridge ?? '').matchAll(/\b(?:invoke|subscribe)\(\s*'([^']+)'/g)].map(
+      (match) => match[1],
+    );
+    expect(called.sort()).toEqual([
+      'audio:get-mix',
+      'audio:mix-changed',
+      'audio:pad-command',
+      'audio:report',
+      'audio:report-pads',
+    ]);
+  });
 });

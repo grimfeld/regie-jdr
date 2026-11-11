@@ -27,3 +27,9 @@ Source: #25 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@5cbaeb5`.
 - Duration: `core/audioDuration.ts` reads file headers (MP3, WAV, OGG Vorbis/Opus, FLAC, M4A), no dependency; unreadable → imports anyway, shows "–".
 - Media index schema 2 (existing audio gets `durationSeconds: null`). Settings schema 3 adds `masterVolume` (default 1).
 - Soundboard type gained `volume`; pads ordered by array position.
+
+## Favourites (#69, 2026-11-12, `m4-campaign-themes-qol@a3682ae`)
+
+- `favourite` boolean on each Media in `media.json`; Media index schema v4 (v3→v4 sets false). Survives Export→Import (app test); v1 and v3 Exports still import.
+- Control-only `media:set-favourite` (bridge `setMediaFavourite`). `imageLibrary`/`audioLibrary` take `favouritesOnly`, combined with category/role filter and search. `setImageCategory`, `rename`, `setFavourite` share one update helper.
+- UI: star button before each name (`aria-pressed`), « Favoris » toggle in Images and Sons toolbars (toggle not saved).

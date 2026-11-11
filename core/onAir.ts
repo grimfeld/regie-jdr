@@ -16,8 +16,11 @@ import type {
   OnAirState,
   Scene,
   SceneId,
+  Transition,
+  TransitionKind,
 } from '../shared/domain.js';
-import { FADE_DURATION_MS } from './fades.js';
+import type { ActivateOptions } from '../shared/contract.js';
+import { ACTIVATE_DURATION_MS, FADE_DURATION_MS } from './fades.js';
 import { mediaAddress } from './mediaAddress.js';
 
 export interface OnAir {
@@ -27,8 +30,13 @@ export interface OnAir {
   openCampaign(campaignId: CampaignId): OnAirState;
   /** Closes the open Campaign: nothing is on air. */
   closeCampaign(): OnAirState;
-  /** Puts a Scene of the open Campaign on air. Throws when no Campaign is open. */
-  activateScene(sceneId: SceneId, scene: OnAirScene): OnAirState;
+  /**
+   * Puts a Scene of the open Campaign on air, starting a new Transition of `kind` to it from
+   * whatever is on air: black when nothing is, the picture of a Transition still in progress
+   * (there is no queue). A Crossfade dissolves over the Activate duration; a Cut takes no time.
+   * Blackout stays as it is: the Transition runs underneath. Throws when no Campaign is open.
+   */
+  activateScene(sceneId: SceneId, scene: OnAirScene, kind?: TransitionKind): OnAirState;
   /**
    * Shows the new picture of the Active Scene after an edit. Returns undefined, changing
    * nothing, when `sceneId` is not the Active Scene.
@@ -50,6 +58,11 @@ export interface OnAir {
    * duration changes nothing, so reading it from Settings at start-up starts no new version.
    */
   setFadeDuration(fadeDurationMs: number): OnAirState;
+  /**
+   * Sets the Activate duration a Crossfade takes (the Settings value, already checked), from
+   * the next Activate on: a Transition carries its own duration, so nothing on air changes.
+   */
+  setActivateDuration(activateDurationMs: number): void;
   /** Calls `listener` with each new snapshot. Returns the unsubscribe function. */
   subscribe(listener: (snapshot: OnAirState) => void): () => void;
 }
@@ -59,13 +72,22 @@ function copy(state: OnAirState): OnAirState {
   return structuredClone(state);
 }
 
-export function createOnAir(): OnAir {
+/** What the on-air state depends on: the clock Transitions are timed by (Date.now). */
+export interface OnAirOptions {
+  now?: () => number;
+}
+
+export function createOnAir({ now = Date.now }: OnAirOptions = {}): OnAir {
+  // Never reset, so a renderer never mistakes a new Transition for one it already ran.
+  let transitions = 0;
+  let activateDurationMs: number = ACTIVATE_DURATION_MS.default;
   let state: OnAirState = {
     campaignId: null,
     activeSceneId: null,
     scene: null,
     blackout: false,
     fadeDurationMs: FADE_DURATION_MS.default,
+    transition: null,
     version: 0,
   };
   const listeners = new Set<(snapshot: OnAirState) => void>();
@@ -79,13 +101,36 @@ export function createOnAir(): OnAir {
   return {
     current: () => copy(state),
     openCampaign: (campaignId) =>
-      change({ ...state, campaignId, activeSceneId: null, scene: null, blackout: false }),
+      change({
+        ...state,
+        campaignId,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        transition: null,
+      }),
     closeCampaign: () =>
-      change({ ...state, campaignId: null, activeSceneId: null, scene: null, blackout: false }),
-    activateScene: (sceneId, scene) => {
+      change({
+        ...state,
+        campaignId: null,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        transition: null,
+      }),
+    activateScene: (sceneId, scene, kind = 'crossfade') => {
       const { campaignId } = state;
       if (campaignId === null) throw new Error('Cannot Activate a Scene: no Campaign is open');
-      return change({ ...state, campaignId, activeSceneId: sceneId, scene });
+      transitions += 1;
+      const transition: Transition = {
+        id: transitions,
+        kind,
+        from: state.activeSceneId,
+        to: sceneId,
+        startedAt: now(),
+        durationMs: kind === 'cut' ? 0 : activateDurationMs,
+      };
+      return change({ ...state, campaignId, activeSceneId: sceneId, scene, transition });
     },
     showActiveScene: (sceneId, scene) => {
       if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
@@ -98,6 +143,9 @@ export function createOnAir(): OnAir {
     setBlackout: (on) => change({ ...state, blackout: on }),
     setFadeDuration: (fadeDurationMs) =>
       fadeDurationMs === state.fadeDurationMs ? copy(state) : change({ ...state, fadeDurationMs }),
+    setActivateDuration: (durationMs) => {
+      activateDurationMs = durationMs;
+    },
     subscribe: (listener) => {
       const own = (snapshot: OnAirState) => listener(snapshot);
       listeners.add(own);
@@ -106,6 +154,17 @@ export function createOnAir(): OnAir {
       };
     },
   };
+}
+
+/**
+ * The Transition Activating `scene` starts: a Cut when `forceCut` (Shift held on Activate),
+ * otherwise the Scene's own entry Transition. The Scene itself is never changed.
+ */
+export function transitionOnActivate(
+  scene: Pick<Scene, 'transition'>,
+  { forceCut = false }: ActivateOptions = {},
+): TransitionKind {
+  return forceCut ? 'cut' : scene.transition;
 }
 
 /**

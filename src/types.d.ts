@@ -1,4 +1,4 @@
-import type { BroadcastBridge, ControlBridge } from '../shared/contract';
+import type { AudioEngineBridge, BroadcastBridge, ControlBridge } from '../shared/contract';
 
 declare global {
   interface Window {
@@ -7,5 +7,7 @@ declare global {
      * BroadcastBridge in the Broadcast window. Absent outside Electron.
      */
     regie?: ControlBridge | BroadcastBridge;
+    /** The audio engine's bridge, in the Control window only (ADR-0002). */
+    regieAudio?: AudioEngineBridge;
   }
 }

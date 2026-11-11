@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ImageOff } from 'lucide-react';
+import { MISSING_MEDIA_TITLE } from './MissingMedia';
 
 interface Props {
   /** The image's Media address (`mediaAddress` in core/mediaAddress.ts). */
@@ -31,17 +32,7 @@ export function MediaImage(props: Props) {
 
   if (status === 'missing') {
     if (shownIn === 'broadcast') return null;
-    return (
-      <span
-        className={['media-missing', className].filter(Boolean).join(' ')}
-        role="img"
-        aria-label={alt ? `Média manquant : ${alt}` : 'Média manquant'}
-        title="Le fichier de ce média a été supprimé ou déplacé hors de l’application."
-      >
-        <ImageOff size={18} aria-hidden="true" />
-        <span aria-hidden="true">Média manquant</span>
-      </span>
-    );
+    return <MissingImage alt={alt} className={className} />;
   }
 
   return (
@@ -65,5 +56,23 @@ export function MediaImage(props: Props) {
         onMissing?.();
       }}
     />
+  );
+}
+
+/**
+ * What the Control window shows in place of an image Media whose file is missing, or of an image
+ * the library no longer has: "Média manquant".
+ */
+export function MissingImage({ alt, className }: { alt: string; className?: string }) {
+  return (
+    <span
+      className={['media-missing', className].filter(Boolean).join(' ')}
+      role="img"
+      aria-label={alt ? `Média manquant : ${alt}` : 'Média manquant'}
+      title={MISSING_MEDIA_TITLE}
+    >
+      <ImageOff size={18} aria-hidden="true" />
+      <span aria-hidden="true">Média manquant</span>
+    </span>
   );
 }

@@ -8,7 +8,11 @@
  *   <root>/campaigns/<campaignId>/media.json      Media index (core/media.ts)
  *   <root>/campaigns/<campaignId>/media/          Media files, named <sha256><extension>
  *   <root>/campaigns/<campaignId>/scenes.json     Scenes (core/scenes.ts)
+ *   <root>/campaigns/<campaignId>/soundboard.json Soundboard (core/soundboard.ts)
+ *   <root>/campaigns/<campaignId>/notes-illisibles/ unreadable Notes kept aside (core/scenes.ts)
  *   <root>/settings.json                          global Settings (core/settings.ts)
+ *   <root>/imports/                               Imports being checked (core/campaignImport.ts)
+ *   <root>/partial-exports.json                   Export zips being written (core/partialFiles.ts)
  * Every document has a `<file>.bak` (previous good version) next to it once rewritten.
  */
 import path from 'node:path';
@@ -31,15 +35,28 @@ export interface Storage {
   /** Generic document store, for documents other than Campaigns (Media, Scenes, Settings). */
   documents: DocumentStore;
   campaigns: CampaignRepository;
+  /** Folder holding every Campaign's folder. */
+  campaignsFolder: string;
   /** Folder of a Campaign. Throws for an id that is not a plain folder name. */
   campaignFolder(id: CampaignId): string;
   /** File of the global settings document. */
   settingsFile: string;
+  /** Where an Import unpacks and checks a zip, beside the campaigns folder (same disk). */
+  importsFolder: string;
 }
 
 /** Campaign ids are folder names: letters, digits, `-` and `_` only (never `..` or a path). */
 export function isCampaignId(value: unknown): value is CampaignId {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
+
+/**
+ * Whether two Campaign ids name the same Campaign folder. Letter case is ignored: Windows'
+ * folders ignore it, so `ABC` and `abc` are one Campaign there. Elsewhere this errs towards
+ * refusing (the open Campaign check) and the app's ids are lowercase UUIDs anyway.
+ */
+export function isSameCampaignId(a: CampaignId | null, b: CampaignId | null): boolean {
+  return a !== null && b !== null && a.toLowerCase() === b.toLowerCase();
 }
 
 export function openStorage(root: string, options: StorageOptions = {}): Storage {
@@ -58,7 +75,9 @@ export function openStorage(root: string, options: StorageOptions = {}): Storage
     root,
     documents,
     campaigns: createCampaignRepository({ documents, campaignsFolder, campaignFolder, notify }),
+    campaignsFolder,
     campaignFolder,
     settingsFile: path.join(root, 'settings.json'),
+    importsFolder: path.join(root, 'imports'),
   };
 }

@@ -1,8 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import { FADE_DURATION_MS, parseFadeDuration, withLeaving, withoutLeaving } from '../../core/fades';
+import {
+  ACTIVATE_DURATION_MS,
+  AUDIO_FADE_MS,
+  audioFadeMs,
+  DEFAULT_PLAY_DURATIONS,
+  FADE_DURATION_MS,
+  MUSIC_CROSSFADE_MS,
+  parseActivateDuration,
+  parseMusicCrossfade,
+  dissolveEnded,
+  dissolveStarted,
+  firstLayers,
+  millisecondsOfSecondsText,
+  secondsTextOf,
+  parseFadeDuration,
+  withLeaving,
+  withNewestPicture,
+  withoutLeaving,
+  withTransition,
+} from '../../core/fades';
 
 const keyOf = (item: { id: string }) => item.id;
 const shown = (...ids: string[]) => ids.map((id) => ({ key: id, item: { id }, leaving: false }));
+
+describe('the Activate and Music crossfade durations', () => {
+  it('default to 1.5 s and 2 s', () => {
+    expect(DEFAULT_PLAY_DURATIONS).toEqual({ activateDurationMs: 1500, musicCrossfadeMs: 2000 });
+    expect(ACTIVATE_DURATION_MS.default).toBe(1500);
+    expect(MUSIC_CROSSFADE_MS.default).toBe(2000);
+  });
+
+  it.each([
+    ['the Activate duration', parseActivateDuration, ACTIVATE_DURATION_MS],
+    ['the Music crossfade duration', parseMusicCrossfade, MUSIC_CROSSFADE_MS],
+  ])('%s accepts whole milliseconds within its bounds only', (_label, parse, bounds) => {
+    expect(parse(bounds.default)).toBe(bounds.default);
+    expect(parse(bounds.min)).toBe(bounds.min);
+    expect(parse(bounds.max)).toBe(bounds.max);
+    expect(parse(bounds.min - 1)).toBeUndefined();
+    expect(parse(bounds.max + 1)).toBeUndefined();
+    expect(parse(1500.5)).toBeUndefined();
+    expect(parse('1500')).toBeUndefined();
+    expect(parse(undefined)).toBeUndefined();
+  });
+
+  it('time an Activate with a Crossfade and a track picked; every other fade stays fixed', () => {
+    const durations = { activateDurationMs: 3000, musicCrossfadeMs: 4500 };
+    expect(audioFadeMs('activate', durations)).toBe(3000);
+    expect(audioFadeMs('crossfade', durations)).toBe(4500);
+    expect(audioFadeMs('cut', durations)).toBe(AUDIO_FADE_MS.cut);
+    expect(audioFadeMs('silence', durations)).toBe(AUDIO_FADE_MS.silence);
+    expect(audioFadeMs('ambience', durations)).toBe(AUDIO_FADE_MS.ambience);
+    expect(audioFadeMs('pause', durations)).toBe(AUDIO_FADE_MS.pause);
+  });
+});
 
 describe('the fade duration', () => {
   it('defaults to 0.6 s, within its bounds', () => {
@@ -87,5 +138,89 @@ describe('the items a renderer draws while they fade', () => {
   it('stops drawing items once they have faded out', () => {
     const fading = withLeaving(shown('a', 'b'), [{ id: 'b' }], keyOf);
     expect(withoutLeaving(fading)).toEqual(shown('b'));
+  });
+});
+
+describe('the picture layers a renderer draws through Transitions', () => {
+  const DURATION = 1000;
+  const [cantina] = firstLayers(0, 'cantina');
+  const keys = (layers: readonly { key: number }[]) => layers.map((layer) => layer.key);
+
+  it('draws the first picture as it is, with no dissolve', () => {
+    expect(firstLayers(0, 'cantina')).toEqual([
+      { key: 0, picture: 'cantina', durationMs: 0, phase: 'shown' },
+    ]);
+  });
+
+  it('adds the incoming picture on top, transparent until its images are decoded', () => {
+    expect(withTransition([cantina], 1, 'hangar', DURATION)).toEqual([
+      cantina,
+      { key: 1, picture: 'hangar', durationMs: DURATION, phase: 'waiting' },
+    ]);
+  });
+
+  it('dissolves the incoming picture in, then draws it alone', () => {
+    const waiting = withTransition([cantina], 1, 'hangar', DURATION);
+    const dissolving = dissolveStarted(waiting, 1, 200);
+    expect(dissolving.at(-1)).toMatchObject({ phase: 'dissolving', startedAt: 200 });
+    expect(dissolveEnded(dissolving, 1)).toEqual([
+      { key: 1, picture: 'hangar', durationMs: DURATION, phase: 'shown' },
+    ]);
+  });
+
+  it('starts a new Transition from the frame on screen: a dissolve in progress stops where it is', () => {
+    const dissolving = dissolveStarted(withTransition([cantina], 1, 'hangar', DURATION), 1, 0);
+    const layers = withTransition(dissolving, 2, 'forest', DURATION);
+    expect(keys(layers)).toEqual([0, 1, 2]);
+    expect(layers[1]).toMatchObject({ phase: 'frozen' });
+    expect(layers[2]).toMatchObject({ phase: 'waiting' });
+  });
+
+  it('drops an incoming picture still waiting for its images: nothing of it was seen', () => {
+    const waiting = withTransition([cantina], 1, 'hangar', DURATION);
+    expect(keys(withTransition(waiting, 2, 'forest', DURATION))).toEqual([0, 2]);
+  });
+
+  it('ignores the end or start of a dissolve a newer Transition replaced', () => {
+    const first = dissolveStarted(withTransition([cantina], 1, 'hangar', DURATION), 1, 0);
+    const layers = withTransition(first, 2, 'forest', DURATION);
+    expect(dissolveEnded(layers, 1)).toEqual(layers);
+    expect(dissolveStarted(layers, 1, 600)).toEqual(layers);
+  });
+
+  it('keeps the newest picture up to date, older ones as they were last drawn', () => {
+    const layers = withTransition([cantina], 1, 'hangar', DURATION);
+    expect(withNewestPicture(layers, 'hangar, edited').map((layer) => layer.picture)).toEqual([
+      'cantina',
+      'hangar, edited',
+    ]);
+  });
+});
+
+describe('a duration typed in seconds', () => {
+  it.each([
+    ['4,5', 4500],
+    ['4.5', 4500],
+    [' 3 ', 3000],
+    ['0,25', 250],
+    [',5', 500],
+    ['2.', 2000],
+    ['0,0004', 0],
+  ])('reads "%s" as %i ms', (text, milliseconds) => {
+    expect(millisecondsOfSecondsText(text)).toBe(milliseconds);
+  });
+
+  it.each(['', ' ', ',', '1,2,3', '1.2,3', '-1', 'abc', '1e3', 'Infinity', '4 5'])(
+    'refuses "%s"',
+    (text) => {
+      expect(millisecondsOfSecondsText(text)).toBeUndefined();
+    },
+  );
+
+  it('shows milliseconds as seconds with a French decimal comma', () => {
+    expect(secondsTextOf(4500)).toBe('4,5');
+    expect(secondsTextOf(3000)).toBe('3');
+    expect(secondsTextOf(250)).toBe('0,25');
+    expect(millisecondsOfSecondsText(secondsTextOf(1500))).toBe(1500);
   });
 });

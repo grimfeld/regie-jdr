@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { createOnAir, editorPictureOf, latestOnAir, onAirSceneOf } from '../../core/onAir';
+import {
+  createOnAir,
+  editorPictureOf,
+  latestOnAir,
+  onAirSceneOf,
+  transitionOnActivate,
+} from '../../core/onAir';
 import { applySceneEdit } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { Media, OnAirScene, Scene } from '../../shared/domain';
+import { notesFromPlainText } from '../../core/notes';
 
 const cantina: OnAirScene = {
   backgrounds: [
@@ -23,22 +30,35 @@ const nothing = {
   scene: null,
   blackout: false,
   fadeDurationMs: 600,
+  transition: null,
 };
+/** The clock of the on-air state in these tests: every Transition starts at NOW. */
+const NOW = 1_700_000_000_000;
+const clock = { now: () => NOW };
+const crossfade = (id: number, from: string | null, to: string) => ({
+  id,
+  kind: 'crossfade',
+  from,
+  to,
+  startedAt: NOW,
+  durationMs: 1500,
+});
 
 describe('on-air state', () => {
   it('starts with nothing on air', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     expect(onAir.current()).toEqual({ ...nothing, version: 0 });
   });
 
   it('opens a Campaign with no Active Scene, then Activates a Scene, one version each', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     expect(onAir.openCampaign('star-wars')).toEqual({
       campaignId: 'star-wars',
       activeSceneId: null,
       scene: null,
       blackout: false,
       fadeDurationMs: 600,
+      transition: null,
       version: 1,
     });
     expect(onAir.activateScene('cantina', cantina)).toEqual({
@@ -47,6 +67,7 @@ describe('on-air state', () => {
       scene: cantina,
       blackout: false,
       fadeDurationMs: 600,
+      transition: crossfade(1, null, 'cantina'),
       version: 2,
     });
     expect(onAir.current()).toEqual({
@@ -55,12 +76,13 @@ describe('on-air state', () => {
       scene: cantina,
       blackout: false,
       fadeDurationMs: 600,
+      transition: crossfade(1, null, 'cantina'),
       version: 2,
     });
   });
 
   it('clears the Active Scene, keeping the Campaign open and Blackout as it is', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     onAir.setBlackout(true);
@@ -70,12 +92,14 @@ describe('on-air state', () => {
       scene: null,
       blackout: true,
       fadeDurationMs: 600,
+      // The latest Transition stays recorded: the renderers fade the deleted Scene out.
+      transition: crossfade(1, null, 'cantina'),
       version: 4,
     });
   });
 
   it('leaves the state alone when clearing a Scene that is not the Active Scene', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     expect(onAir.clearActiveScene('hangar')).toBeUndefined();
@@ -83,7 +107,7 @@ describe('on-air state', () => {
   });
 
   it('shows the edited Active Scene as a new version', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', blank);
     expect(onAir.showActiveScene('cantina', cantina)).toEqual({
@@ -92,12 +116,13 @@ describe('on-air state', () => {
       scene: cantina,
       blackout: false,
       fadeDurationMs: 600,
+      transition: crossfade(1, null, 'cantina'),
       version: 3,
     });
   });
 
   it('ignores an edit of a Scene that is not the Active Scene', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', blank);
     expect(onAir.showActiveScene('hangar', cantina)).toBeUndefined();
@@ -107,12 +132,13 @@ describe('on-air state', () => {
       scene: blank,
       blackout: false,
       fadeDurationMs: 600,
+      transition: crossfade(1, null, 'cantina'),
       version: 2,
     });
   });
 
   it('switching Campaign clears the Active Scene', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     expect(onAir.openCampaign('warhammer')).toEqual({
@@ -121,19 +147,20 @@ describe('on-air state', () => {
       scene: null,
       blackout: false,
       fadeDurationMs: 600,
+      transition: null,
       version: 3,
     });
   });
 
   it('closing the Campaign takes everything off air', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     expect(onAir.closeCampaign()).toEqual({ ...nothing, version: 3 });
   });
 
   it('carries the fade duration setting, kept when the Campaign changes', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     expect(onAir.setFadeDuration(1500)).toEqual({
@@ -142,6 +169,7 @@ describe('on-air state', () => {
       scene: cantina,
       blackout: false,
       fadeDurationMs: 1500,
+      transition: crossfade(1, null, 'cantina'),
       version: 3,
     });
     expect(onAir.openCampaign('warhammer')).toMatchObject({ fadeDurationMs: 1500 });
@@ -149,12 +177,12 @@ describe('on-air state', () => {
   });
 
   it('changes nothing when the fade duration is the one it has', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     expect(onAir.setFadeDuration(600)).toEqual({ ...nothing, version: 0 });
   });
 
   it('refuses to Activate a Scene when no Campaign is open, leaving the state unchanged', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     expect(() => onAir.activateScene('cantina', cantina)).toThrow(/no Campaign is open/);
     onAir.openCampaign('star-wars');
     onAir.closeCampaign();
@@ -163,7 +191,7 @@ describe('on-air state', () => {
   });
 
   it('Blackout leaves the Active Scene as it is and stays on when another Scene is Activated', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.activateScene('cantina', cantina);
     expect(onAir.setBlackout(true)).toEqual({
@@ -172,6 +200,7 @@ describe('on-air state', () => {
       scene: cantina,
       blackout: true,
       fadeDurationMs: 600,
+      transition: crossfade(1, null, 'cantina'),
       version: 3,
     });
     expect(onAir.activateScene('hangar', blank)).toMatchObject({ scene: blank, blackout: true });
@@ -180,7 +209,7 @@ describe('on-air state', () => {
   });
 
   it('opening, switching or closing a Campaign clears Blackout', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.openCampaign('star-wars');
     onAir.setBlackout(true);
     expect(onAir.openCampaign('warhammer').blackout).toBe(false);
@@ -189,7 +218,7 @@ describe('on-air state', () => {
   });
 
   it('tells subscribers every new snapshot until they unsubscribe', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     const seen: unknown[] = [];
     const unsubscribe = onAir.subscribe((snapshot) => seen.push(snapshot));
     onAir.openCampaign('star-wars');
@@ -203,6 +232,7 @@ describe('on-air state', () => {
         scene: null,
         blackout: false,
         fadeDurationMs: 600,
+        transition: null,
         version: 1,
       },
       {
@@ -211,13 +241,14 @@ describe('on-air state', () => {
         scene: cantina,
         blackout: false,
         fadeDurationMs: 600,
+        transition: crossfade(1, null, 'cantina'),
         version: 2,
       },
     ]);
   });
 
   it('hands out snapshots that callers cannot use to change the state', () => {
-    const onAir = createOnAir();
+    const onAir = createOnAir(clock);
     onAir.subscribe((snapshot) => {
       snapshot.version = 99;
       snapshot.scene?.backgrounds.pop();
@@ -233,8 +264,126 @@ describe('on-air state', () => {
       scene: cantina,
       blackout: false,
       fadeDurationMs: 600,
+      transition: crossfade(1, null, 'cantina'),
       version: 2,
     });
+  });
+});
+
+describe('a Transition on Activate', () => {
+  function opened(now = clock.now) {
+    const onAir = createOnAir({ now });
+    onAir.openCampaign('star-wars');
+    return onAir;
+  }
+
+  it('fades in from black when nothing is on air', () => {
+    expect(opened().activateScene('cantina', cantina).transition).toEqual(
+      crossfade(1, null, 'cantina'),
+    );
+  });
+
+  it('crossfades from the Active Scene to the incoming one over the Activate duration', () => {
+    const onAir = opened();
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.activateScene('hangar', blank)).toMatchObject({
+      activeSceneId: 'hangar',
+      scene: blank,
+      transition: crossfade(2, 'cantina', 'hangar'),
+    });
+  });
+
+  it('starts a new Transition from the incoming Scene when Activated mid-Transition', () => {
+    let now = NOW;
+    const onAir = opened(() => now);
+    onAir.activateScene('cantina', cantina);
+    onAir.activateScene('hangar', blank);
+    now += 500;
+    expect(onAir.activateScene('cantina', cantina).transition).toEqual({
+      ...crossfade(3, 'hangar', 'cantina'),
+      startedAt: NOW + 500,
+    });
+  });
+
+  it('runs under Blackout, leaving Blackout on', () => {
+    const onAir = opened();
+    onAir.activateScene('cantina', cantina);
+    onAir.setBlackout(true);
+    expect(onAir.activateScene('hangar', blank)).toMatchObject({
+      blackout: true,
+      transition: crossfade(2, 'cantina', 'hangar'),
+    });
+  });
+
+  it('starts no Transition for an edit of the Active Scene, Blackout or the fade duration', () => {
+    const onAir = opened();
+    const { transition } = onAir.activateScene('cantina', blank);
+    expect(onAir.showActiveScene('cantina', cantina)?.transition).toEqual(transition);
+    expect(onAir.setBlackout(true).transition).toEqual(transition);
+    expect(onAir.setFadeDuration(900).transition).toEqual(transition);
+  });
+
+  it('crossfades over the Activate duration setting from the next Activate on; a Cut stays instant', () => {
+    const onAir = opened();
+    const { transition, version } = onAir.activateScene('cantina', cantina);
+    onAir.setActivateDuration(4000);
+    // A Transition carries its own duration: nothing on air changes.
+    expect(onAir.current()).toMatchObject({ transition, version });
+    expect(onAir.activateScene('hangar', blank).transition).toMatchObject({
+      kind: 'crossfade',
+      durationMs: 4000,
+    });
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      kind: 'cut',
+      durationMs: 0,
+    });
+  });
+
+  it('cuts to the incoming Scene at once: a Cut takes no time', () => {
+    const onAir = opened();
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.activateScene('hangar', blank, 'cut')).toMatchObject({
+      activeSceneId: 'hangar',
+      scene: blank,
+      transition: { ...crossfade(2, 'cantina', 'hangar'), kind: 'cut', durationMs: 0 },
+    });
+  });
+
+  it('cuts in from black, or mid-Transition, like a Crossfade would start', () => {
+    const onAir = opened();
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      kind: 'cut',
+      from: null,
+    });
+    onAir.activateScene('hangar', blank);
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      id: 3,
+      kind: 'cut',
+      from: 'hangar',
+    });
+  });
+
+  it('forgets the latest Transition when the Campaign changes, and keeps counting', () => {
+    const onAir = opened();
+    onAir.activateScene('cantina', cantina);
+    expect(onAir.openCampaign('warhammer').transition).toBeNull();
+    expect(onAir.activateScene('forge', blank).transition).toEqual(crossfade(2, null, 'forge'));
+    expect(onAir.closeCampaign().transition).toBeNull();
+  });
+});
+
+describe('the Transition Activate starts', () => {
+  it('is the Scene’s own Transition', () => {
+    expect(transitionOnActivate({ transition: 'crossfade' })).toBe('crossfade');
+    expect(transitionOnActivate({ transition: 'cut' }, {})).toBe('cut');
+  });
+
+  it('is a Cut when forced, whatever the Scene’s Transition, which stays as it is', () => {
+    const scene = { transition: 'crossfade' } as const;
+    expect(transitionOnActivate(scene, { forceCut: true })).toBe('cut');
+    expect(transitionOnActivate({ transition: 'cut' }, { forceCut: true })).toBe('cut');
+    expect(transitionOnActivate(scene, { forceCut: false })).toBe('crossfade');
+    expect(scene).toEqual({ transition: 'crossfade' });
   });
 });
 
@@ -248,6 +397,7 @@ describe('what of a Scene goes on air', () => {
     originalName: id,
     name: id,
     extension: '.png',
+    favourite: false,
   });
   const hashA = 'a'.repeat(64);
   const hashB = 'b'.repeat(64);
@@ -258,6 +408,7 @@ describe('what of a Scene goes on air', () => {
     campaignId: 'c1',
     name: 'Embuscade des cultistes',
     title: 'Le vieux moulin',
+    transition: 'crossfade',
     backgrounds: [
       { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1.5, focus: centre, visible: true },
       { id: 'b2', mediaId: 'm2', fit: 'contain', zoom: 1, focus: { x: 0, y: 1 }, visible: false },
@@ -293,7 +444,7 @@ describe('what of a Scene goes on air', () => {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: 'Notes privées',
+    notes: notesFromPlainText('Notes privées'),
   };
 
   it('keeps only visible placements of known images, bottom to top, with their addresses', () => {
@@ -395,6 +546,7 @@ describe('what of a Scene the editor draws', () => {
     originalName: id,
     name: id,
     extension: '.png',
+    favourite: false,
   });
   const hash = 'a'.repeat(64);
   const src = `regie-media://media/c1/${hash}.png`;
@@ -404,6 +556,7 @@ describe('what of a Scene the editor draws', () => {
     campaignId: 'c1',
     name: 'Embuscade des cultistes',
     title: 'Le vieux moulin',
+    transition: 'crossfade',
     backgrounds: [
       { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 1, focus: centre, visible: true },
       { id: 'b2', mediaId: 'm1', fit: 'contain', zoom: 2, focus: centre, visible: false },
@@ -438,7 +591,7 @@ describe('what of a Scene the editor draws', () => {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: 'Notes privées',
+    notes: notesFromPlainText('Notes privées'),
   };
 
   it('draws every placement of a known image, marking Hidden ones and Hidden Labels', () => {
@@ -484,6 +637,7 @@ describe('the snapshot a window shows', () => {
     scene: null,
     blackout: false,
     fadeDurationMs: 600,
+    transition: null,
     version: 1,
   };
   const v2 = { ...v1, activeSceneId: 'cantina', version: 2 };

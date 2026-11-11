@@ -24,7 +24,7 @@ export function isThemeId(value: unknown): value is ThemeId {
 /** The id is not stored: it is the folder's name, so a copied folder is a separate Campaign. */
 type CampaignFields = Omit<Campaign, 'id'>;
 
-const campaignDocument: DocumentType<CampaignFields> = {
+export const campaignDocument: DocumentType<CampaignFields> = {
   name: 'campaign',
   version: 1,
   migrations: {},

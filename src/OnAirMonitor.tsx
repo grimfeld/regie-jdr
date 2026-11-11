@@ -1,6 +1,7 @@
 import { Moon, Radio } from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
 import { errorMessage } from './CampaignList';
+import { ariaKeyShortcutsOf, keyLabelOf, useKeyMap, useShortcuts } from './keyboard';
 import { SceneCanvas } from './SceneCanvas';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
@@ -16,10 +17,16 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
   const blackout = onAir?.blackout ?? false;
   const badge = blackout ? 'NOIR' : !onAir?.activeSceneId ? 'Rien à l’antenne' : null;
 
+  const keyMap = useKeyMap();
+  const blackoutKey = keyLabelOf('blackout', keyMap);
+  useShortcuts({ blackout: () => void toggleBlackout() });
+
+  // Decided in the main process, from the state the commands before left: two quick presses
+  // start then end Blackout, whatever snapshot this window has seen yet.
   async function toggleBlackout() {
     if (!control) return;
     try {
-      await control.setBlackout(!blackout);
+      await control.toggleBlackout();
     } catch (error) {
       showNotice(errorMessage(error));
     }
@@ -45,16 +52,18 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
           blackout={blackout}
           window="control"
           fadeDurationMs={onAir?.fadeDurationMs}
+          transition={onAir?.transition}
         />
         {badge && <span className="on-air-badge">{badge}</span>}
       </div>
       <button
         className={blackout ? 'primary-button' : 'secondary-button'}
         aria-pressed={blackout}
-        title="Fondre la diffusion au noir, ou revenir à la scène active"
+        title={`Fondre la diffusion au noir, ou revenir à la scène active (touche ${blackoutKey ?? 'aucune'})`}
+        aria-keyshortcuts={ariaKeyShortcutsOf('blackout', keyMap)}
         onClick={() => void toggleBlackout()}
       >
-        <Moon size={14} /> Noir
+        <Moon size={14} /> Noir {blackoutKey && <kbd aria-hidden>{blackoutKey}</kbd>}
       </button>
     </section>
   );

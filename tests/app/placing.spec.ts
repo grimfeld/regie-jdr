@@ -1,6 +1,7 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -33,7 +34,7 @@ function overlayList(page: Page) {
 }
 
 /** The drop area around a placement list (the list itself is empty, so has no height). */
-function dropZone(list: ReturnType<typeof backgroundList>) {
+function dropZone(list: Locator) {
   return list.locator('xpath=..');
 }
 
@@ -57,13 +58,21 @@ async function createScene(page: Page, name: string) {
   await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
-/** Drags the library thumbnail onto the editor canvas, at fractions `x`, `y` of the canvas. */
-async function dropOnCanvas(page: Page, x: number, y: number) {
+/**
+ * Drags the library thumbnail onto the editor canvas, at fractions `x`, `y` of the canvas; done
+ * once `dropped` (the placement's row) is shown.
+ */
+async function dropOnCanvas(page: Page, x: number, y: number, dropped: Locator) {
   const box = await editorCanvas(page).locator('.scene-canvas').boundingBox();
   if (!box) throw new Error('The editor canvas is not shown.');
-  await thumbnail(page).dragTo(editorCanvas(page).locator('.scene-canvas'), {
+  await dropAndWait(thumbnail(page), editorCanvas(page).locator('.scene-canvas'), dropped, {
     targetPosition: { x: box.width * x, y: box.height * y },
   });
+}
+
+/** Drags the library thumbnail onto `list`'s drop area; done once the list has `rows` rows. */
+async function dropOnList(page: Page, list: Locator, rows: number) {
+  await dropAndWait(thumbnail(page), dropZone(list), list.getByRole('listitem').nth(rows - 1));
 }
 
 /** Centre of the editor's only Overlay, as fractions of the canvas. */
@@ -95,7 +104,12 @@ test('dropping on the canvas places Scenery as a Background and a Character as a
   await createScene(controlWindow, 'Cantina');
 
   await setCategory(controlWindow, 'Décors');
-  await dropOnCanvas(controlWindow, 0.5, 0.5);
+  await dropOnCanvas(
+    controlWindow,
+    0.5,
+    0.5,
+    backgroundList(controlWindow).getByRole('listitem').first(),
+  );
   await expect(toggle(backgroundList(controlWindow))).not.toBeChecked();
   await expect(backgroundList(controlWindow)).toContainText('Masqué');
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(0);
@@ -104,7 +118,12 @@ test('dropping on the canvas places Scenery as a Background and a Character as a
   await expect(background).toHaveClass(/is-hidden/);
 
   await setCategory(controlWindow, 'Personnage');
-  await dropOnCanvas(controlWindow, 0.25, 0.75);
+  await dropOnCanvas(
+    controlWindow,
+    0.25,
+    0.75,
+    overlayList(controlWindow).getByRole('listitem').first(),
+  );
   await expect(toggle(overlayList(controlWindow))).not.toBeChecked();
   await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(1);
   const overlay = editorCanvas(controlWindow).locator('.canvas-overlay');
@@ -130,14 +149,14 @@ test('dropping on a list places the image as that list’s type, whatever its ca
   await createScene(controlWindow, 'Cantina');
   await setCategory(controlWindow, 'Décors');
 
-  await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  await dropOnList(controlWindow, overlayList(controlWindow), 1);
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(1);
-  await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  await dropOnList(controlWindow, overlayList(controlWindow), 2);
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(2);
   await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(0);
 
   await setCategory(controlWindow, 'Personnage');
-  await thumbnail(controlWindow).dragTo(dropZone(backgroundList(controlWindow)));
+  await dropOnList(controlWindow, backgroundList(controlWindow), 1);
   await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(2);
 
@@ -163,9 +182,9 @@ test('on the Active Scene, placements stay off the broadcast until shown; show, 
   await expect(broadcastScreen(broadcastWindow)).not.toHaveAttribute('data-active-scene-id', '');
 
   // Each drop's row pushes the library (the drag source) down: wait for it before the next drag.
-  await thumbnail(controlWindow).dragTo(dropZone(backgroundList(controlWindow)));
+  await dropOnList(controlWindow, backgroundList(controlWindow), 1);
   await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(1);
-  await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  await dropOnList(controlWindow, overlayList(controlWindow), 1);
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await expect(broadcastWindow.locator('.canvas-background, .canvas-overlay')).toHaveCount(0);
 
@@ -200,9 +219,9 @@ test('placing, showing and removing on a Scene that is not active leaves the bro
 
   await createScene(controlWindow, 'Hangar');
   // Each drop's row pushes the library (the drag source) down: wait for it before the next drag.
-  await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  await dropOnList(controlWindow, overlayList(controlWindow), 1);
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(1);
-  await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  await dropOnList(controlWindow, overlayList(controlWindow), 2);
   // The list reads front first: wait for the second Overlay's row before picking rows.
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(2);
   await toggle(overlayList(controlWindow), 0).check();
@@ -227,11 +246,16 @@ test('placements, their visibility and drop position survive a restart', async (
   await createCampaign(controlWindow, 'Star Wars');
   await importImage(regie);
   await createScene(controlWindow, 'Cantina');
-  await thumbnail(controlWindow).dragTo(dropZone(backgroundList(controlWindow)));
+  await dropOnList(controlWindow, backgroundList(controlWindow), 1);
   // The new row pushes the library (the drag source) down: wait for it before the next drag.
   await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await setCategory(controlWindow, 'Personnage');
-  await dropOnCanvas(controlWindow, 0.25, 0.75);
+  await dropOnCanvas(
+    controlWindow,
+    0.25,
+    0.75,
+    overlayList(controlWindow).getByRole('listitem').first(),
+  );
   await toggle(overlayList(controlWindow)).check();
   await expect(toggle(overlayList(controlWindow))).toBeChecked();
   const before = await overlayCentre(controlWindow);

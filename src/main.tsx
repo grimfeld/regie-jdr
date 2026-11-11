@@ -1,8 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { startAudioEngine } from './audioEngine';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Notices } from './notices';
+// Theme tokens first (CODING_STANDARDS.md, "Themes"), then the components that use them.
+import './themes/tokens.css';
+import './themes/unthemed.css';
+import './themes/retro.css';
+import './themes/imperium.css';
+import './themes/fantasy.css';
 import './styles.css';
 
 const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
@@ -17,6 +24,10 @@ window.addEventListener('dragover', (event) => {
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
 });
 window.addEventListener('drop', (event) => event.preventDefault());
+
+// All app audio plays here, in the Control window (ADR-0002), outside React: it lives as long
+// as the page. The Broadcast window has no audio engine and gets no audio data.
+if (!isBroadcast && window.regieAudio) startAudioEngine(window.regieAudio);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('index.html has no #root element');

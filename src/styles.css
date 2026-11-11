@@ -1,19 +1,10 @@
 :root {
-  font-family: Arial, Helvetica, sans-serif;
-  color: #e9e5dc;
-  background: #101217;
+  font-family: var(--font-body);
+  color: var(--text);
+  background: var(--page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   font-smooth: always;
-  --bg: #101217;
-  --panel: #191c23;
-  --panel2: #20242d;
-  --line: #343944;
-  --text: #e9e5dc;
-  --muted: #999ba4;
-  --accent: #b58a46;
-  --accent2: #e0bd79;
-  --display: 'Arial Narrow', Impact, sans-serif;
 }
 * {
   box-sizing: border-box;
@@ -22,7 +13,7 @@ body {
   margin: 0;
   min-width: 980px;
   min-height: 100vh;
-  background: var(--bg);
+  background: var(--page);
   color: var(--text);
 }
 button,
@@ -32,24 +23,34 @@ input {
 button {
   cursor: pointer;
 }
+/*
+ * Every field is dressed by the Theme, whether or not its own rule says more: left to the
+ * system, a field is a light or grey box on a dark Theme (the Fondus durations, M4 closeout).
+ * :where() keeps this at no specificity, so any component rule overrides it.
+ * tests/app/theme-fields.spec.ts checks every visible field in each Theme.
+ */
+:where(
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+  select,
+  textarea
+) {
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
 .app-shell {
   min-height: 100vh;
-  background:
-    radial-gradient(
-      ellipse at 80% -20%,
-      color-mix(in srgb, var(--accent) 12%, transparent),
-      transparent 45%
-    ),
-    var(--bg);
+  background: var(--texture), var(--frame), var(--page);
 }
 .topbar {
   height: 70px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 34px;
-  background: #111319;
+  background: var(--title-bar);
 }
 .brand {
   display: flex;
@@ -61,13 +62,13 @@ button {
   height: 36px;
   display: grid;
   place-items: center;
-  color: var(--accent2);
+  color: var(--accent-strong);
   border: 1px solid var(--accent);
   border-radius: 8px;
 }
 .brand strong {
   display: block;
-  font: 700 19px var(--display);
+  font: 700 19px var(--font-display);
   letter-spacing: 2px;
 }
 .brand small,
@@ -75,7 +76,7 @@ button {
 .eyebrow {
   font-size: 9px;
   letter-spacing: 1.7px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .brand small {
   font-size: 8px;
@@ -88,15 +89,15 @@ button {
 .status-dot {
   width: 7px;
   height: 7px;
-  background: #83a77c;
+  background: var(--status-session);
   border-radius: 50%;
   display: inline-block;
 }
 .top-separator {
-  color: #555;
+  color: var(--border);
 }
 .theme-name {
-  color: var(--accent2);
+  color: var(--accent-strong);
 }
 .workspace {
   max-width: 1600px;
@@ -119,7 +120,7 @@ button {
 .section-heading h1,
 .section-heading h2,
 .panel h2 {
-  font: 600 29px var(--display);
+  font: 600 29px var(--font-display);
   letter-spacing: 0.4px;
   margin: 3px 0 0;
 }
@@ -135,20 +136,20 @@ button {
   border-radius: 5px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #17130d;
+  color: var(--on-accent);
   font-weight: 700;
   font-size: 11px;
 }
 .secondary-button {
   background: transparent;
   color: var(--text);
-  border-color: var(--line);
+  border-color: var(--border);
   cursor: pointer;
 }
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 .compact {
@@ -163,19 +164,35 @@ button {
   align-items: center;
   gap: 10px;
 }
-.library-role {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  color: var(--muted);
+.media-role-choice {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  font-size: 12px;
 }
-.library-role select,
+.media-role-choice p {
+  margin: 0 0 8px;
+}
+.sound-toolbar {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+.media-sound-facts {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.media-duration {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 .media-item select {
-  background: var(--panel);
+  background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
   padding: 5px 6px;
   font: inherit;
 }
@@ -186,8 +203,8 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 10px;
   padding: 12px;
-  background: var(--panel);
-  border: 1px dashed var(--line);
+  background: var(--surface);
+  border: 1px dashed var(--border);
   border-radius: 6px;
 }
 .media-library:empty {
@@ -202,8 +219,8 @@ button {
   max-height: 520px;
   overflow-y: auto;
   padding: 12px;
-  background: var(--panel);
-  border: 1px dashed var(--line);
+  background: var(--surface);
+  border: 1px dashed var(--border);
   border-radius: 6px;
 }
 .image-library-scroll.empty {
@@ -231,26 +248,34 @@ button {
   gap: 10px;
   margin-bottom: 10px;
 }
+.library-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .library-filter {
   display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
   overflow: hidden;
 }
 .library-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 5px 12px;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-secondary);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
 .library-filter button + button {
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--border);
 }
 .library-filter button.selected {
-  background: var(--panel2);
+  background: var(--surface-raised);
   color: var(--text);
 }
 .library-search {
@@ -258,10 +283,10 @@ button {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel);
-  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text-secondary);
 }
 .library-search input {
   border: 0;
@@ -286,11 +311,31 @@ button {
   border: 1px solid transparent;
   border-radius: 3px;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 .media-rename-button:hover,
 .media-rename-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+/* A Media's star: filled when it is a favourite (the shape, not only the colour, says so). */
+.media-favourite {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.media-favourite.starred {
+  color: var(--accent);
+}
+.media-favourite:hover,
+.media-favourite:focus-visible {
   border-color: var(--accent);
   color: var(--text);
 }
@@ -299,7 +344,7 @@ button {
   padding: 2px 4px;
   border: 1px solid var(--accent);
   border-radius: 3px;
-  background: var(--panel);
+  background: var(--surface);
   color: var(--text);
   font: inherit;
 }
@@ -321,12 +366,12 @@ button {
   display: grid;
   place-items: center;
   height: 68px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
   color: var(--accent);
 }
 .media-role {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .media-delete {
   display: inline-flex;
@@ -334,10 +379,10 @@ button {
   gap: 5px;
   align-self: flex-start;
   padding: 3px 6px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
   background: transparent;
-  color: var(--muted);
+  color: var(--text-secondary);
   font: inherit;
   cursor: pointer;
 }
@@ -346,12 +391,53 @@ button {
   border-color: var(--accent);
   color: var(--text);
 }
+.media-listen {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.media-listen:hover:not(:disabled),
+.media-listen:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.media-listen[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.media-listen:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.listening-player {
+  display: none;
+}
+.listening-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border: 1px solid var(--status-warning);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--accent-strong);
+  font-size: 12px;
+}
 .media-delete-confirm {
   margin-top: 10px;
   padding: 12px 14px;
   border: 1px solid var(--accent);
   border-radius: 6px;
-  background: var(--panel2);
+  background: var(--surface-raised);
   font-size: 12px;
 }
 .media-delete-confirm p {
@@ -368,22 +454,33 @@ button {
 }
 .asset-empty {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-secondary);
   padding: 8px;
 }
 .asset-thumb {
   width: 105px;
   height: 68px;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
   overflow: hidden;
-  background: #111;
+  background: var(--image-backdrop);
 }
 .asset-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* A listed Media (audio) whose file is missing (src/MissingMedia.tsx). */
+.media-missing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  color: var(--status-missing);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 /* A Media whose file is missing, in the Control window (src/MediaImage.tsx). */
 .media-missing {
@@ -395,11 +492,17 @@ button {
   width: 100%;
   height: 100%;
   padding: 4px;
-  color: var(--accent2);
+  color: var(--status-missing);
   font-size: 11px;
   font-weight: 600;
   text-align: center;
-  background: repeating-linear-gradient(-45deg, #1a1a1f, #1a1a1f 6px, #22222a 6px, #22222a 12px);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--status-missing-fill),
+    var(--status-missing-fill) 6px,
+    var(--status-missing-fill-alt) 6px,
+    var(--status-missing-fill-alt) 12px
+  );
 }
 .control-column {
   display: flex;
@@ -414,7 +517,7 @@ button {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 15px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .panel-heading h2 {
   display: flex;
@@ -427,8 +530,8 @@ button {
   color: var(--accent);
 }
 .theme-options {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 7px;
 }
 .theme-option {
@@ -438,16 +541,16 @@ button {
   gap: 11px;
   text-align: left;
   padding: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #15181e;
+  background: var(--surface-sunken);
   color: var(--text);
 }
 .theme-option.selected {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, #15181e);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-sunken));
 }
-.theme-option > span:nth-child(2) {
+.theme-option-text {
   flex: 1;
 }
 .theme-option strong,
@@ -459,39 +562,71 @@ button {
 }
 .theme-option small {
   font-size: 9px;
-  color: var(--muted);
+  color: var(--text-secondary);
   margin-top: 3px;
 }
-.theme-swatch {
-  width: 29px;
-  height: 29px;
-  border-radius: 4px;
-  border: 1px solid #777;
+/*
+ * A Theme's sample panel. Its element carries data-theme, so every token below is that Theme's,
+ * not the window's: it sets its own colours and fonts rather than inheriting them.
+ */
+.theme-sample {
+  flex: none;
+  width: 92px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--texture), var(--frame), var(--page);
+  color: var(--text);
+  font-family: var(--font-body);
 }
-.theme-swatch.retro {
-  background: linear-gradient(135deg, #101b17 50%, #78a47b 50%);
+.theme-sample-bar {
+  height: 7px;
+  background: var(--title-bar);
+  border-bottom: 1px solid var(--border);
 }
-.theme-swatch.imperium {
-  background: linear-gradient(135deg, #241719 50%, #b58a46 50%);
+.theme-sample-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 6px;
+  padding: 5px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
 }
-.theme-swatch.fantasy {
-  background: linear-gradient(135deg, #30251b 50%, #9a8060 50%);
+.theme-sample-heading {
+  font: 600 11px var(--font-display);
+}
+.theme-sample-line {
+  font-size: 8px;
+  color: var(--text-secondary);
+}
+.theme-sample-button {
+  padding: 1px 5px;
+  border-radius: var(--radius-small);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 8px;
+  font-weight: 700;
 }
 .radio-indicator {
   width: 12px;
   height: 12px;
-  border: 1px solid #777;
+  border: 1px solid var(--control-border);
   border-radius: 50%;
 }
 .selected .radio-indicator {
-  border: 4px solid var(--accent2);
+  border: 4px solid var(--accent-strong);
 }
 .fade-setting-field {
   display: flex;
   gap: 8px;
   align-items: center;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .fade-setting-field span:first-child {
   flex: 1;
@@ -499,10 +634,13 @@ button {
 .fade-setting-field input {
   width: 64px;
 }
+.fade-setting-field + .fade-setting-field {
+  margin-top: 8px;
+}
 .theme-footnote {
   font-size: 9px;
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--text-secondary);
   margin: 12px 0 0;
 }
 .footer {
@@ -511,12 +649,9 @@ button {
   padding: 0 34px 20px;
   display: flex;
   justify-content: space-between;
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 9px;
   letter-spacing: 0.6px;
-}
-.footer-muted {
-  color: #666;
 }
 .campaign-bar {
   max-width: 1600px;
@@ -527,7 +662,7 @@ button {
   align-items: end;
 }
 .campaign-bar h1 {
-  font: 600 32px var(--display);
+  font: 600 32px var(--font-display);
   margin: 3px 0 0;
 }
 .campaign-home {
@@ -546,6 +681,7 @@ button {
 }
 .campaign-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -563,10 +699,50 @@ button {
   border: 0;
 }
 .campaign-open strong {
-  font: 600 20px var(--display);
+  font: 600 20px var(--font-display);
+}
+.campaign-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+/* An imported Campaign: outlined and labelled "Importée", never opened for the Game Master. */
+.campaign-item-imported {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.campaign-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.campaign-delete-confirm {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+/* The Export or Import under way: what it does, a progress bar, how far, and its Cancel. */
+.campaign-transfer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+}
+.campaign-transfer progress {
+  flex: 1 1 200px;
+  accent-color: var(--accent);
+}
+.campaign-transfer-amount {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 .campaign-open:hover strong {
-  color: var(--accent2);
+  color: var(--accent-strong);
 }
 .campaign-form {
   display: flex;
@@ -587,24 +763,24 @@ button {
   gap: 6px;
   font-size: 10px;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .campaign-form input {
   padding: 9px 10px;
   color: var(--text);
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
 }
 .form-error {
-  color: #e08a7a;
+  color: var(--status-error);
   font-size: 12px;
 }
 /* The Broadcast window: only the canvas. No theme, no minimum width, no cursor. */
 :root[data-view='broadcast'],
 :root[data-view='broadcast'] body {
   min-width: 0;
-  background: #000;
+  background: var(--canvas-black);
 }
 :root[data-view='broadcast'],
 :root[data-view='broadcast'] * {
@@ -613,7 +789,7 @@ button {
 .broadcast-screen {
   position: fixed;
   inset: 0;
-  background: #000;
+  background: var(--canvas-black);
   overflow: hidden;
 }
 
@@ -627,12 +803,12 @@ button {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #000;
+  background: var(--canvas-black);
 }
 .scene-canvas-stage {
   position: absolute;
   overflow: hidden;
-  background: #000;
+  background: var(--canvas-black);
   font-family: Arial, Helvetica, sans-serif;
 }
 .canvas-background,
@@ -656,8 +832,8 @@ button {
   padding: calc(4px * var(--canvas-scale)) calc(14px * var(--canvas-scale));
   white-space: nowrap;
   font-size: calc(30px * var(--canvas-scale));
-  color: #fff;
-  background: rgb(0 0 0 / 0.6);
+  color: var(--canvas-label-text);
+  background: var(--canvas-label-scrim);
   border-radius: calc(4px * var(--canvas-scale));
 }
 .canvas-title {
@@ -666,20 +842,20 @@ button {
   bottom: calc(28px * var(--canvas-scale));
   font-size: calc(26px * var(--canvas-scale));
   letter-spacing: 0.04em;
-  color: rgb(255 255 255 / 0.72);
-  text-shadow: 0 0 calc(6px * var(--canvas-scale)) rgb(0 0 0 / 0.8);
+  color: var(--canvas-title-text);
+  text-shadow: 0 0 calc(6px * var(--canvas-scale)) var(--canvas-title-shadow);
 }
 .canvas-blackout {
   position: absolute;
   inset: 0;
-  background: #000;
+  background: var(--canvas-black);
 }
 /* The On-air monitor (Control window only): the broadcast at 16:9, its badges, the Blackout button. */
 .on-air-screen {
   position: relative;
   aspect-ratio: 16 / 9;
   margin-bottom: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
 }
 .on-air-badge {
   position: absolute;
@@ -688,10 +864,10 @@ button {
   padding: 3px 8px;
   font-size: 11px;
   letter-spacing: 1px;
-  color: var(--accent2);
-  background: rgb(0 0 0 / 0.7);
-  border: 1px solid var(--accent2);
-  border-radius: 4px;
+  color: var(--status-blackout);
+  background: var(--monitor-badge-scrim);
+  border: 1px solid var(--status-blackout);
+  border-radius: var(--radius-small);
 }
 /* Overlays in the editor: picked and dragged with the pointer, resized by their handle. */
 .editor-canvas .canvas-overlay {
@@ -711,11 +887,11 @@ button {
   height: 12px;
   cursor: nwse-resize;
   background: var(--accent);
-  border: 2px solid #fff;
+  border: 2px solid var(--canvas-handle-border);
   border-radius: 2px;
 }
 .editor-canvas:focus-visible {
-  outline: 2px solid var(--accent2);
+  outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
 /* Hidden placements and Labels, in the editor only: the Game Master sees them, faded. */
@@ -723,7 +899,7 @@ button {
 .canvas-overlay.is-hidden,
 .canvas-label.is-hidden {
   opacity: 0.4;
-  outline: 2px dashed rgb(255 255 255 / 0.6);
+  outline: 2px dashed var(--canvas-hidden-outline);
 }
 /*
  * Fades (src/SceneCanvas.tsx data-fade), over the fade duration setting: an item fades in when
@@ -740,40 +916,35 @@ button {
 .scene-canvas-stage [data-fade='leaving'] {
   opacity: 0;
 }
+/* A steady item (it dissolves in with its picture): not drawn until decoded, then drawn at once. */
+.scene-canvas-stage [data-fade='pending'] {
+  visibility: hidden;
+}
+/*
+ * Transitions (src/SceneCanvas.tsx data-transition): each picture is a layer on a black
+ * backdrop. The incoming one waits transparent until its images are decoded, then dissolves in
+ * linearly over the Transition's duration. A newer Transition pauses a dissolve where it is
+ * (frozen), so it starts from the frame on screen.
+ */
+.canvas-layer {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-black);
+}
+.canvas-layer[data-transition='waiting'] {
+  opacity: 0;
+}
+.canvas-layer[data-transition='dissolving'],
+.canvas-layer[data-transition='frozen'] {
+  animation: canvas-fade-in var(--transition-duration, 0ms) linear backwards;
+}
+.canvas-layer[data-transition='frozen'] {
+  animation-play-state: paused;
+}
 @keyframes canvas-fade-in {
   from {
     opacity: 0;
   }
-}
-:root[data-theme='imperium'] {
-  --bg: #111013;
-  --panel: #1d191b;
-  --panel2: #292124;
-  --line: #49363a;
-  --accent: #a43b3f;
-  --accent2: #d5b16d;
-  --text: #eee5d8;
-  --muted: #b0a29a;
-}
-:root[data-theme='retro'] {
-  --bg: #0c1411;
-  --panel: #111e19;
-  --panel2: #182820;
-  --line: #29483a;
-  --accent: #73a982;
-  --accent2: #b8d7a7;
-  --text: #dcebdd;
-  --muted: #91aa99;
-}
-:root[data-theme='fantasy'] {
-  --bg: #17130f;
-  --panel: #241d17;
-  --panel2: #30271f;
-  --line: #504233;
-  --accent: #987348;
-  --accent2: #d0b184;
-  --text: #eee4d2;
-  --muted: #b1a18c;
 }
 /* Errors: short notices (src/notices.tsx) and the error boundary (src/ErrorBoundary.tsx). */
 .notices {
@@ -793,16 +964,16 @@ button {
   padding: 12px 14px;
   border: 1px solid var(--accent);
   border-radius: 5px;
-  background: var(--panel2);
+  background: var(--surface-raised);
   color: var(--text);
   font-size: 13px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 .notice button {
   flex: none;
   padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -815,7 +986,7 @@ button {
   gap: 12px;
   min-height: 100vh;
   padding: 24px;
-  background: var(--bg);
+  background: var(--page);
   color: var(--text);
   text-align: center;
 }
@@ -825,7 +996,7 @@ button {
 }
 .error-screen p {
   margin: 0 0 8px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 @media (max-width: 1150px) {
   .workspace {
@@ -860,9 +1031,20 @@ button {
   text-align: left;
   padding: 8px 10px;
   color: var(--text);
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
+.scene-list li[draggable='true'] {
+  cursor: grab;
+}
+.scene-list li.drop-ready .scene-open {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.scene-grip {
+  flex: none;
+  color: var(--text-secondary);
 }
 .scene-list li.selected .scene-open {
   border-color: var(--accent);
@@ -873,10 +1055,10 @@ button {
   gap: 4px;
   font-size: 11px;
   letter-spacing: 1px;
-  color: var(--accent2);
+  color: var(--accent-strong);
 }
 .scene-list li.last-active .scene-open {
-  border-color: var(--accent2);
+  border-color: var(--accent-strong);
 }
 .scene-last-badge {
   display: inline-flex;
@@ -884,23 +1066,67 @@ button {
   gap: 4px;
   font-size: 11px;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
-.home-theme {
+/* Chapters: a heading, then its Scenes indented; the Scenes in no Chapter come last. */
+.scene-list li.scene-chapter {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.scene-chapter-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.scene-chapter-heading[draggable='true'] {
+  cursor: grab;
+}
+.scene-chapter-heading.drop-ready,
+.scene-list li.scene-loose-heading.drop-ready {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.scene-chapter-toggle {
+  flex: 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--muted);
-}
-.home-theme select {
-  padding: 6px 8px;
+  padding: 6px 4px;
+  text-align: left;
+  font-weight: 600;
   color: var(--text);
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: transparent;
+  border: none;
+}
+.scene-chapter-heading input {
+  flex: 1;
+}
+.scene-chapter-count {
+  font-weight: normal;
+  color: var(--text-secondary);
+}
+.scene-chapter-scenes {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scene-list li.scene-loose-heading {
+  padding: 6px 4px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.home-theme {
+  margin-top: 30px;
 }
 .scene-editor {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border);
   padding-top: 12px;
 }
 .scene-editor-heading {
@@ -935,8 +1161,8 @@ button {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
-  color: #fff;
-  background: #c62828;
+  color: var(--on-status-live);
+  background: var(--status-live);
   border-radius: 3px;
 }
 /* The Selected Scene on the shared renderer: the letterboxed 16:9 canvas. */
@@ -944,14 +1170,14 @@ button {
   width: 100%;
   aspect-ratio: 16 / 9;
   margin-bottom: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
 }
 .scene-editor-empty {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .scene-editor-empty p {
   margin: 0;
@@ -969,14 +1195,14 @@ button {
   gap: 6px;
   font-size: 10px;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .background-picker select {
   padding: 8px;
   color: var(--text);
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
 }
 /* Background and Overlay lists of the Selected Scene; each is also a drop target. */
 .placement-lists {
@@ -986,14 +1212,14 @@ button {
 }
 .placement-list {
   padding: 8px;
-  border: 1px dashed var(--line);
-  border-radius: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-small);
 }
 .placement-list h4 {
   margin: 0 0 8px;
   font-size: 11px;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 .placement-list li {
@@ -1013,14 +1239,14 @@ button {
   align-items: center;
   gap: 8px;
   padding-left: 22px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .placement-label input:not([type='checkbox']) {
   flex: 1;
   min-width: 0;
 }
 .placement-label.is-hidden input:not([type='checkbox']) {
-  opacity: 0.6;
+  opacity: var(--status-hidden-opacity);
 }
 .scene-title-field {
   display: flex;
@@ -1029,13 +1255,13 @@ button {
   margin-bottom: 12px;
   font-size: 11px;
   letter-spacing: 1px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .scene-title-field input {
   flex: 1;
 }
 .placement-list li.is-hidden .placement-name {
-  opacity: 0.6;
+  opacity: var(--status-hidden-opacity);
 }
 .placement-visible {
   flex: 1;
@@ -1051,18 +1277,18 @@ button {
 }
 .placement-remove {
   padding: 4px 6px;
-  color: var(--muted);
+  color: var(--text-secondary);
   background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
 }
 /* A placement's place in its stack (Backgrounds and Overlays); a Background's fit and framing. */
 .placement-move {
   padding: 4px 6px;
-  color: var(--muted);
+  color: var(--text-secondary);
   background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
 }
 .placement-move:disabled {
   opacity: 0.4;
@@ -1082,7 +1308,7 @@ button {
   flex-direction: column;
   gap: 2px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .framing-slider input {
   width: 100%;
@@ -1090,14 +1316,453 @@ button {
 .placement-empty {
   margin: 0;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 .placement-list.drop-ready,
 .editor-canvas.drop-ready,
-.library-drop.drop-ready {
+.library-drop.drop-ready,
+.campaign-home.drop-ready {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .image-library .asset-thumb[draggable='true'] {
   cursor: grab;
+}
+
+/* "En cours" strip: what the audio engine reports sounding, and the Master volume. */
+.media-audio-icon[draggable='true'] {
+  cursor: grab;
+}
+.now-playing-list {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.now-playing-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.now-playing-list li small {
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+.now-playing-list li[data-state='failed'] small {
+  color: var(--status-error);
+}
+.now-playing-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.now-playing-empty {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.master-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.master-volume input {
+  flex: 1;
+  min-width: 0;
+}
+.scene-music li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Each Ambience's own volume, on a line under its name. */
+.scene-ambiences li .level-slider {
+  order: 1;
+  flex-basis: 100%;
+  padding-left: 22px;
+}
+
+/* Soundboard ("Table de bruitages"): one pad per Sound effect, lit while it sounds. */
+.soundboard.drop-ready {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.soundboard-pads {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.soundboard-pads li {
+  display: grid;
+  gap: 4px;
+}
+.soundboard-pad {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  transition:
+    background 80ms,
+    border-color 80ms;
+}
+.soundboard-pad kbd {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.now-playing .panel-heading button kbd,
+.scene-editor-heading button kbd,
+.on-air-monitor > button kbd {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.soundboard-pad.is-sounding {
+  background: color-mix(in srgb, var(--accent) 35%, var(--surface-raised));
+  border-color: var(--accent-strong);
+}
+.soundboard-pad-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.soundboard-pad-controls input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+.soundboard .level-slider {
+  font-size: 12px;
+}
+.soundboard-pad-controls .level-slider {
+  flex: 1;
+}
+.music-pick {
+  overflow: hidden;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.music-pick:hover {
+  text-decoration: underline;
+}
+/* A list's heading, with the Scene's Music or Ambience level on its own line under it. */
+.scene-music-heading,
+.scene-ambiences-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.scene-music-heading h4,
+.scene-ambiences-heading h4 {
+  margin: 0;
+}
+/* Every level slider (src/LevelSlider.tsx): label, range, value in percent. */
+.level-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.level-slider input {
+  flex: 1;
+  min-width: 0;
+}
+.level-slider output {
+  min-width: 4ch;
+  text-align: right;
+}
+.now-playing-controls {
+  display: flex;
+  gap: 4px;
+}
+
+/* The Selected Scene's Notes: private rich text, never on air. */
+.scene-notes-slot:empty {
+  display: none;
+}
+.scene-notes {
+  overflow: visible;
+}
+.scene-notes-scene {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.scene-notes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.scene-notes-toolbar .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+.scene-notes-toolbar .icon-button[aria-pressed='true'] {
+  color: var(--page);
+  background: var(--accent);
+}
+.scene-notes-toolbar .icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.scene-notes-editor .tiptap {
+  /* The Notes images' widths are % of this text width, as cqi (src/NotesImage.tsx). */
+  container-type: inline-size;
+  min-height: 120px;
+  padding: 8px;
+  color: var(--text);
+  background: var(--surface-raised);
+  border-radius: var(--radius-small);
+  outline: none;
+}
+.scene-notes-editor .tiptap:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.scene-notes-editor .tiptap > :first-child {
+  margin-top: 0;
+}
+.scene-notes-editor blockquote {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
+}
+.scene-notes-editor ul[data-type='taskList'] {
+  padding-left: 4px;
+  list-style: none;
+}
+.scene-notes-editor ul[data-type='taskList'] li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.scene-notes-editor ul[data-type='taskList'] li > div {
+  flex: 1;
+}
+.scene-notes-editor ul[data-type='taskList'] p {
+  margin: 0;
+}
+/* An image in the Notes: a block on its own line, left-aligned, at most the panel's width. */
+.scene-notes-editor .notes-image {
+  margin: 8px 0;
+  line-height: 0;
+}
+/* Its frame is the image's size: its own width at most (default), or the width set by the
+   Game Master; the image fills it, its height following (aspect locked). */
+.scene-notes-editor .notes-image-frame {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+.scene-notes-editor .notes-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+.scene-notes-editor .notes-image-frame.sized img {
+  width: 100%;
+}
+.scene-notes-editor .notes-image-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 2px;
+  background: var(--accent-strong);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.scene-notes-editor .notes-image-handle:focus-visible {
+  outline: 2px solid var(--text);
+}
+.scene-notes-editor .notes-image .media-missing {
+  width: 160px;
+  height: 90px;
+  line-height: normal;
+  border: 1px dashed var(--accent-strong);
+  border-radius: 3px;
+}
+.scene-notes-editor .notes-image.ProseMirror-selectednode .notes-image-frame {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A Notes image enlarged over the Control window (double click). */
+.notes-image-enlarged {
+  max-width: 94vw;
+  max-height: 94vh;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+}
+.notes-image-enlarged::backdrop {
+  background: var(--backdrop);
+}
+.notes-image-enlarged img {
+  display: block;
+  max-width: calc(94vw - 26px);
+  max-height: calc(94vh - 70px);
+  margin-bottom: 8px;
+  object-fit: contain;
+}
+
+/* The Notes editor's base styles, copied from @tiptap/core 3.32.2 (src/style.ts): injecting
+   them would break the window's Content Security Policy (SceneNotes.tsx, injectCSS). */
+.ProseMirror {
+  position: relative;
+}
+
+.ProseMirror {
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  -webkit-font-variant-ligatures: none;
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0; /* the above doesn't seem to work in Edge */
+}
+
+.ProseMirror [contenteditable='false'] {
+  white-space: normal;
+}
+
+.ProseMirror [contenteditable='false'] [contenteditable='true'] {
+  white-space: pre-wrap;
+}
+
+.ProseMirror pre {
+  white-space: pre-wrap;
+}
+
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+  margin: 0;
+}
+
+.ProseMirror-gapcursor:after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 1px solid currentColor;
+  animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+}
+
+@keyframes ProseMirror-cursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+
+.ProseMirror-hideselection *::-moz-selection {
+  background: transparent;
+}
+
+.ProseMirror-hideselection * {
+  caret-color: transparent;
+}
+
+.ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+
+/* The shortcuts page (#71): a modal over the Control window. */
+.shortcuts-page {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+.shortcuts-page::backdrop {
+  background: color-mix(in srgb, var(--page) 75%, transparent);
+}
+.shortcuts-footnote,
+.shortcuts-fixed {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.shortcuts-table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.shortcuts-table th {
+  font-weight: normal;
+  text-align: left;
+}
+.shortcuts-table th,
+.shortcuts-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.shortcuts-table kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  font-family: inherit;
+}
+.shortcuts-message {
+  min-height: 24px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.shortcuts-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.shortcuts-conflict p,
+.shortcuts-message p {
+  margin: 0;
 }

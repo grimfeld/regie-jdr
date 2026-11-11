@@ -12,7 +12,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 | `src/`      | Control and Broadcast windows          | `react`, `shared/` types, and only the Node-free core modules _(lint)_                |
 
 - Domain logic lives in `core/`, testable without Electron. `electron/` wires it to Electron and stays thin.
-- The Node-free core modules are listed in `RENDERER_SAFE_CORE` in `eslint.config.mjs` (`onAir`, `mediaAddress`, `sceneEdits`, `canvas`, `guards`, `librarySearch`, `fades`). A new one imports no `node:*` and only other Node-free modules; add it to that list and to the pattern beside it.
+- The Node-free core modules are listed in `RENDERER_SAFE_CORE` in `eslint.config.mjs` (`onAir`, `mediaAddress`, `sceneEdits`, `canvas`, `guards`, `librarySearch`, `fades`, `audioMix`, `notes`, `runningOrder`, `keyMap`). A new one imports no `node:*` and only other Node-free modules; add it to that list and to the pattern beside it.
 - `shared/` holds no runtime code _(lint)_: the sandboxed preloads load nothing but `electron`.
 
 ## The window contract
@@ -32,6 +32,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 ## Errors
 
 - Core code throws its module's error class (`CampaignError`, `MediaError`, `SceneError`, `DocumentError`) with a French message the Game Master can read; that message reaches the window through the IPC failure.
+- Anything else a handler throws (a file system error such as `EPERM`, a stack overflow, a plain `Error`, a bug) reaches the window as a French sentence from `messageForWindow` (`core/windowErrors.ts`), applied once in `electron/ipc.ts`; the technical detail goes to the log only. A file system error the Game Master can act on gets its own sentence there.
 - Every promise is awaited, returned, or ends in `.catch` _(lint)_. `void promise` is for a call whose failure is already handled: in a window, a bridge call whose `IpcFailure` the notice handler shows (`src/notices.tsx`); in the main process, nothing (use `.catch` and log).
 - A window shows failures with `showNotice(...)`, worded in French; it never shows a stack or a technical message.
 - Every union `switch` handles every member _(lint)_, so a new `ThemeId` or Media kind fails lint where it is not handled.
@@ -42,6 +43,16 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 - Core code does not log on its own: it throws, or reports through a callback it is given (`notify` in `core/storage/`), so tests can pass a fake. Code that does log takes a `Logger` or `Pick<Logger, ...>` parameter (`electron/ipc.ts`).
 - Windows use `console.error`/`console.warn` only _(lint)_; errors printed in a window's console reach the log (`electron/logging.ts`).
 - Log messages are English, for the developer; pass the error as `detail` so its stack is kept.
+
+## Themes
+
+- A Theme is one stylesheet, `src/themes/<id>.css`, setting every token of the list in `src/themes/tokens.css` under `[data-theme='<id>']`. A new `ThemeId` needs its stylesheet; a token added to the list must be set by every theme. `tests/unit/themeContrast.test.ts` checks both.
+- Components (`src/styles.css`, inline styles) use only tokens, `var(--text)`, `var(--surface)`...: no hex, `rgb()`/`hsl()`/other colour function or named colour outside `src/themes/*.css`. `tests/unit/rawColours.test.ts` lists each one by file and line; `transparent` and `currentColor` are allowed. (A unit test, not lint: ESLint does not read CSS.)
+- Every `var(--x)` names a token of `src/themes/tokens.css` or `unthemed.css`, or a property a script sets inline on its element (`'--canvas-scale': scale`). An unknown name is silently dropped by CSS; `tests/unit/tokenNames.test.ts` lists each one by file.
+- Every theme passes WCAG AA (4.5:1) for its text/background token pairs, Hidden names faded by `--status-hidden-opacity` included (`tests/unit/themeContrast.test.ts`). A new text or surface token goes on that test's pair lists.
+- The canvas (Broadcast window, editor canvas, On-air monitor) is never themed: its colours are the tokens in `src/themes/unthemed.css`, which no theme sets. The Broadcast window has no `data-theme` (`tests/app/broadcast.spec.ts`).
+- A status marker (EN DIRECT, Blackout, warning, error, missing Media, Hidden) carries text or an icon besides its colour.
+- `electron/main.ts` keeps its window `backgroundColor` literals: they paint before the page and its tokens load.
 
 ## Language and naming
 
@@ -59,6 +70,7 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 
 - Logic in `core/` or `electron/` gets a unit test in `tests/unit/` (Vitest), written first where there is logic.
 - A change the Game Master can see or do gets a whole-app test in `tests/app/` (Playwright, through `tests/app/harness.ts`).
+- A whole-app test drags and drops only through `dropAndWait` (`tests/app/harness.ts`), naming the drop's visible end state, never a list index or a fixed position _(lint)_.
 - A bug fix comes with the test that failed before it.
 - Gates, all green, none weakened: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run test:app`.
 

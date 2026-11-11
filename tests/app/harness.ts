@@ -1,5 +1,6 @@
 import {
   _electron as electron,
+  expect,
   test as base,
   type ElectronApplication,
   type Locator,
@@ -56,6 +57,45 @@ export function appEnv(dataDir: string): Record<string, string> {
 
 /** Path of the built app, as passed to the Electron executable. */
 export const appPath = repoRoot;
+
+/**
+ * Drags `source` onto `target` (Playwright `dragTo`) after scrolling the page so both are on
+ * screen, half-way between them centred. A drag that must scroll the page on its way loses its
+ * drop, and how far apart two places are changes whenever a panel grows (the Notes, #51): see
+ * docs/wiki/problem-flaky-app-tests.md.
+ */
+async function dragOnScreen(
+  source: Locator,
+  target: Locator,
+  options?: Parameters<Locator['dragTo']>[1],
+): Promise<void> {
+  const extentOf = (locator: Locator) =>
+    locator.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return { top: box.top + window.scrollY, bottom: box.bottom + window.scrollY };
+    });
+  const [from, to] = [await extentOf(source), await extentOf(target)];
+  const middle = (Math.min(from.top, to.top) + Math.max(from.bottom, to.bottom)) / 2;
+  await source.page().evaluate((y) => window.scrollTo(0, y - window.innerHeight / 2), middle);
+  await source.dragTo(target, options);
+}
+
+/**
+ * Drags `source` onto `target` as `dragOnScreen` does, and returns only once `dropped` is
+ * shown: the drop's visible end state (its new row, pad or image; for a refused drop, what
+ * shows nothing changed). Every app-test drag and drop goes through here: the next action
+ * must not start while the drop's answer can still move the page (a new row pushes the drag
+ * source down, and the next drag then drops nothing). See docs/wiki/problem-flaky-app-tests.md.
+ */
+export async function dropAndWait(
+  source: Locator,
+  target: Locator,
+  dropped: Locator,
+  options?: Parameters<Locator['dragTo']>[1],
+): Promise<void> {
+  await dragOnScreen(source, target, options);
+  await expect(dropped).toBeVisible();
+}
 
 /** Replaces the native file picker in the main process: the next pickers return `filePaths`. */
 export async function stubFilePicker(app: ElectronApplication, filePaths: string[]): Promise<void> {
@@ -148,6 +188,42 @@ export function fixture(name: string): string {
   return path.join(__dirname, 'fixtures', name);
 }
 
+/**
+ * Writes a WAV file of a quiet `hz` tone, `seconds` long (8 kHz, 16-bit mono), named
+ * `<name>.wav` in `folder`; returns its path. Audio fixtures are made, not stored. Files with
+ * the same tone have the same content, so an import keeps one: give each its own `hz`.
+ */
+export async function writeToneWav(
+  folder: string,
+  name: string,
+  hz: number,
+  seconds = 2,
+): Promise<string> {
+  const rate = 8000;
+  const samples = Math.round(rate * seconds);
+  const data = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i++) {
+    data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hz * i) / rate) * 3000), i * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  const file = path.join(folder, `${name}.wav`);
+  await fs.writeFile(file, Buffer.concat([header, data]));
+  return file;
+}
+
 /** A colour as red, green and blue from 0 to 255. */
 export interface Colour {
   red: number;
@@ -201,4 +277,4 @@ export const test = base.extend<{ regie: RunningApp }>({
   },
 });
 
-export { expect } from '@playwright/test';
+export { expect };

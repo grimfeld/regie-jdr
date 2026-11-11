@@ -1,0 +1,50 @@
+/*
+ * The theme token list (CODING_STANDARDS.md, "Themes"). A Theme is one stylesheet,
+ * src/themes/<id>.css, that sets every token below under [data-theme='<id>'], and nothing on
+ * the canvas (unthemed.css). Components use only these tokens, never a colour of their own;
+ * tests/unit/rawColours.test.ts and tests/unit/themeContrast.test.ts hold both rules.
+ * The values here dress the Control window before its theme applies (its first frame).
+ */
+:root {
+  /* The window frame: page background, its decoration, title bars. Textures go only here. */
+  --page: #101217;
+  --title-bar: #111319;
+  --frame: radial-gradient(
+    ellipse at 80% -20%,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    transparent 45%
+  );
+  --texture: none;
+
+  /* Solid surfaces: panels, lists, the Scene editor, Notes and the library sit on these. */
+  --surface: #191c23;
+  --surface-raised: #20242d;
+  --surface-sunken: #15181e;
+  --border: #343944;
+  --control-border: #777;
+
+  /* Text, and the accent with the text written on it. */
+  --text: #e9e5dc;
+  --text-secondary: #999ba4;
+  --accent: #b58a46;
+  --accent-strong: #e0bd79;
+  --on-accent: #17130d;
+
+  /* Status markers. Each one also carries text or an icon, never colour alone. */
+  --status-live: #c62828;
+  --on-status-live: #fff;
+  --status-blackout: var(--accent-strong);
+  --status-warning: var(--accent);
+  --status-error: #e08a7a;
+  --status-missing: var(--accent-strong);
+  --status-missing-fill: #1a1a1f;
+  --status-missing-fill-alt: #22222a;
+  --status-hidden-opacity: 0.6;
+  --status-session: #83a77c;
+
+  /* Type and shape. */
+  --font-body: Arial, Helvetica, sans-serif;
+  --font-display: 'Arial Narrow', Impact, sans-serif;
+  --radius: 7px;
+  --radius-small: 4px;
+}

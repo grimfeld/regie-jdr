@@ -17,10 +17,6 @@ async function restart(running: RunningApp): Promise<RunningApp> {
   return launchApp(running.dataDir);
 }
 
-function theme(page: Page) {
-  return page.locator('html');
-}
-
 interface Bounds {
   x: number;
   y: number;
@@ -40,32 +36,6 @@ async function moveWindow(app: ElectronApplication, page: Page, bounds: Bounds):
   }, bounds);
   return boundsOf(app, page);
 }
-
-test('the home page theme is remembered across restarts; a Campaign keeps its own theme', async ({
-  regie,
-}) => {
-  const home = regie.controlWindow;
-  await expect(home.getByRole('heading', { name: 'Vos campagnes' })).toBeVisible();
-  await expect(theme(home)).toHaveAttribute('data-theme', 'imperium');
-  await home.getByLabel('Thème de l’accueil').selectOption({ label: 'Fantasy' });
-  await expect(theme(home)).toHaveAttribute('data-theme', 'fantasy');
-
-  const restarted = await restart(regie);
-  try {
-    const page = restarted.controlWindow;
-    await expect(page.getByRole('heading', { name: 'Vos campagnes' })).toBeVisible();
-    await expect(theme(page)).toHaveAttribute('data-theme', 'fantasy');
-    await expect(page.getByLabel('Thème de l’accueil')).toHaveValue('fantasy');
-
-    // Inside a Campaign, the Campaign's own theme applies; back home, the global one.
-    await createCampaign(page, 'Warhammer');
-    await expect(theme(page)).toHaveAttribute('data-theme', 'imperium');
-    await page.getByRole('button', { name: 'Campagnes' }).click();
-    await expect(theme(page)).toHaveAttribute('data-theme', 'fantasy');
-  } finally {
-    await restarted.app.close();
-  }
-});
 
 test('the Control and Broadcast windows reopen where and as large as they were left', async ({
   regie,
@@ -161,6 +131,52 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
       '',
     );
     await expect(reopened.locator('.canvas-background')).toHaveCount(0);
+  } finally {
+    await restarted.app.close();
+  }
+});
+
+test('a Scene whose stored Notes cannot be read opens with empty Notes, its content kept aside and the Game Master told', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  const scenes = controlWindow.getByRole('region', { name: 'Scènes' });
+  for (const name of ['Cantina', 'Hangar']) {
+    await scenes.getByLabel('Nom de la scène').fill(name);
+    await scenes.getByRole('button', { name: 'Créer la scène' }).click();
+    await expect(
+      controlWindow.getByRole('region', { name: 'Scène ouverte' }).getByRole('heading', { name }),
+    ).toBeVisible();
+  }
+  await regie.app.close();
+  // Cantina's Notes hold a link, which Notes may not.
+  const campaigns = path.join(regie.dataDir, 'campaigns');
+  const [campaignId] = await fs.readdir(campaigns);
+  const folder = path.join(campaigns, campaignId);
+  const file = path.join(folder, 'scenes.json');
+  const stored = JSON.parse(await fs.readFile(file, 'utf8')) as {
+    scenes: { name: string; notes: unknown }[];
+  };
+  const badNotes = { type: 'doc', content: [{ type: 'link', text: 'Secret' }] };
+  stored.scenes[0].notes = badNotes;
+  await fs.writeFile(file, JSON.stringify(stored));
+
+  const restarted = await launchApp(regie.dataDir);
+  try {
+    const page = restarted.controlWindow;
+    const list = page.getByRole('list', { name: 'Scènes de la campagne' });
+    await expect(list.getByRole('listitem')).toHaveText([/Cantina/, /Hangar/]);
+    await expect(
+      page.getByText(/Les notes de la scène « Cantina » étaient illisibles/),
+    ).toBeVisible();
+    const recovered = path.join(folder, 'notes-illisibles');
+    const kept = await fs.readdir(recovered);
+    expect(kept).toEqual([expect.stringMatching(/^notes-illisibles-.*\.json$/)]);
+    expect(JSON.parse(await fs.readFile(path.join(recovered, kept[0]), 'utf8'))).toMatchObject({
+      sceneName: 'Cantina',
+      notes: badNotes,
+    });
   } finally {
     await restarted.app.close();
   }

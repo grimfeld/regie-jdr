@@ -6,6 +6,7 @@
 export type CampaignId = string;
 export type MediaId = string;
 export type SceneId = string;
+export type ChapterId = string;
 
 /** Interface theme, chosen globally (home page) and per Campaign. */
 export type ThemeId = 'retro' | 'imperium' | 'fantasy';
@@ -22,8 +23,11 @@ export interface Campaign {
   updatedAt: Timestamp;
 }
 
-/** How the Game Master intends to use an image. Changeable; never restricts placement. */
-export type ImageCategory = 'scenery' | 'character';
+/**
+ * How the Game Master intends to use an image: Scenery, Character, or Reference (material for the
+ * Game Master's eyes, such as a screenshot in the Notes). Changeable; never restricts placement.
+ */
+export type ImageCategory = 'scenery' | 'character' | 'reference';
 
 /**
  * Role of an audio Media, fixed at import: Music (the looping atmosphere track, one at a time),
@@ -43,6 +47,8 @@ interface MediaBase {
   name: string;
   /** Lower-case, with the dot: `.png`. */
   extension: string;
+  /** Starred by the Game Master, for the library's "Favoris" filter. False at import. */
+  favourite: boolean;
 }
 
 export interface ImageMedia extends MediaBase {
@@ -53,6 +59,8 @@ export interface ImageMedia extends MediaBase {
 export interface AudioMedia extends MediaBase {
   kind: 'audio';
   role: AudioRole;
+  /** Length in seconds, read from the file at import; null when it could not be read. */
+  durationSeconds: number | null;
 }
 
 /** A user-imported image or audio file kept in a Campaign's library. */
@@ -106,19 +114,35 @@ export interface Overlay {
 /** An Ambience listed on a Scene, switched on or off independently of the others. */
 export interface SceneAmbience {
   mediaId: MediaId;
-  /** Whether it plays while the Scene is active; all that are on play together, looping. */
+  /**
+   * Whether it plays while the Scene is active; all that are on play together, looping. An
+   * Ambience added to a Scene starts off.
+   */
   on: boolean;
   /** 0..1 */
   volume: number;
 }
 
-/** Volumes of a Scene, 0..1. */
+/** Levels of a Scene, 0..1: its Music level and its Ambience level. */
 export interface SceneVolumes {
   music: number;
   ambience: number;
 }
 
 /** A reusable, saved audiovisual setup in a Campaign. */
+/**
+ * A named, collapsible group of Scenes in a Campaign's running order (one level only). Its
+ * Scenes, in running order, are `sceneIds`; a Scene belongs to at most one Chapter, and Scenes in
+ * none come after every Chapter. `collapsed` is saved with the Campaign. Not a Scene field: its
+ * changes are Campaign-level commands, outside every Scene's undo history.
+ */
+export interface Chapter {
+  id: ChapterId;
+  name: string;
+  collapsed: boolean;
+  sceneIds: SceneId[];
+}
+
 export interface Scene {
   id: SceneId;
   campaignId: CampaignId;
@@ -135,13 +159,44 @@ export interface Scene {
   ambiences: SceneAmbience[];
   volumes: SceneVolumes;
   /** Private to the Game Master: never shown in the Broadcast window. */
-  notes: string;
+  notes: NotesDocument;
+  /**
+   * How the picture changes when this Scene is Activated (its entry Transition); Crossfade for
+   * a new Scene. A setting of the Scene, never on air itself: Activate puts it in
+   * OnAirState.transition.
+   */
+  transition: TransitionKind;
 }
 
-/** One pad of a Soundboard, triggering a Sound effect. */
+/** A text mark in Scene Notes: bold or italic, nothing else. */
+export interface NotesMark {
+  type: 'bold' | 'italic';
+}
+
+/**
+ * One node of Scene Notes, as the Notes editor (TipTap, ProseMirror) saves it (ADR-0004). Which
+ * types, attributes and nestings are allowed is checked by `parseNotes` (core/notes.ts).
+ */
+export interface NotesNode {
+  type: string;
+  attrs?: Record<string, string | number | boolean | null>;
+  content?: NotesNode[];
+  marks?: NotesMark[];
+  /** Only on a `text` node, never empty. */
+  text?: string;
+}
+
+/** Scene Notes: rich text, a ProseMirror JSON document (ADR-0004). */
+export interface NotesDocument {
+  type: 'doc';
+  content: NotesNode[];
+}
+
+/** One pad of a Soundboard, triggering a Sound effect once (pads never loop). */
 export interface SoundboardPad {
   id: string;
   mediaId: MediaId;
+  /** The name the pad shows; absent: the Sound effect's name. */
   label?: string;
   /** 0..1 */
   volume: number;
@@ -150,7 +205,50 @@ export interface SoundboardPad {
 /** A Campaign's set of pads for triggering Sound effects, whichever Scene is active. */
 export interface Soundboard {
   campaignId: CampaignId;
+  /** In the Game Master's order; keys 1 to 9 trigger the first nine. */
   pads: SoundboardPad[];
+  /** The Soundboard level, 0..1, applied to every pad. */
+  volume: number;
+}
+
+/** The Soundboard pads a number key plays: the first nine, 1 is the first. */
+export type PadKeyPosition = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/** Everything a key can do in the Control window (the key map: core/keyMap.ts). */
+export type Shortcut =
+  | 'undo'
+  | 'redo'
+  | 'activate'
+  | 'activate-next'
+  | 'activate-previous'
+  | 'move-scene-up'
+  | 'move-scene-down'
+  | 'blackout'
+  | 'silence'
+  | `pad-${PadKeyPosition}`;
+
+/**
+ * One key with its modifiers. `code` names a physical key whatever the layout, for the number
+ * row and the numpad (Digit1 is "&" on a French keyboard); `key` names the character typed,
+ * lower case, for every other key (a letter as printed on the key: Ctrl+Z on AZERTY). Ctrl also
+ * stands for Cmd. A missing modifier is not held.
+ */
+export interface KeyChord {
+  code?: string;
+  key?: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}
+
+/** The modifier held with an Activate shortcut to force a Cut. */
+export type CutModifier = 'shift' | 'alt' | 'ctrl';
+
+/** The Game Master's shortcut keys: only what differs from the defaults is kept. */
+export interface ShortcutSettings {
+  /** The keys of each remapped shortcut, in place of its defaults; an empty list unbinds it. */
+  keys: Partial<Record<Shortcut, KeyChord[]>>;
+  cutModifier: CutModifier;
 }
 
 export interface WindowBounds {
@@ -175,6 +273,25 @@ export interface Settings {
    * Blackout, in milliseconds (bounds in core/fades.ts). One setting for the whole app.
    */
   fadeDurationMs: number;
+  /** The Master volume, 0..1, applied to all app audio. */
+  masterVolume: number;
+  /**
+   * The Activate duration, in milliseconds: how long Activating a Scene with a Crossfade takes,
+   * picture and audio together (bounds in core/fades.ts). A Cut stays instant.
+   */
+  activateDurationMs: number;
+  /**
+   * The Music crossfade duration, in milliseconds: how long picking another track of the
+   * Active Scene's Music list crossfades (bounds in core/fades.ts).
+   */
+  musicCrossfadeMs: number;
+  /**
+   * Keep the Broadcast window above other windows, so a single-monitor Game Master never covers
+   * what Discord streams (ADR-0002: covered by another application, it goes silent and black).
+   */
+  broadcastAlwaysOnTop: boolean;
+  /** The Control window's shortcut keys, remapped by the Game Master. */
+  shortcuts: ShortcutSettings;
 }
 
 /** A visible Background as the Broadcast window draws it. */
@@ -227,5 +344,169 @@ export interface OnAirState {
    * Broadcast window reads no Settings.
    */
   fadeDurationMs: number;
+  /**
+   * The latest Transition, started by the latest Activate: in progress until `startedAt` +
+   * `durationMs`. null until a Scene is Activated in the open Campaign.
+   */
+  transition: Transition | null;
   version: number;
+}
+
+/** How the picture changes when a Scene is Activated: Crossfade (dissolve) or Cut (instant). */
+export type TransitionKind = 'crossfade' | 'cut';
+
+/**
+ * A change of picture from the outgoing Scene to the incoming one, started by Activate. Its
+ * renderers dissolve over `durationMs` from whatever they show at that moment (black when
+ * nothing was on air, or a Transition still in progress), so it carries no Scene data.
+ */
+export interface Transition {
+  /** Increases with every Transition: a renderer starts a new one when it sees a new id. */
+  id: number;
+  kind: TransitionKind;
+  /** The Active Scene before Activate; null when nothing was on air. */
+  from: SceneId | null;
+  to: SceneId;
+  /** When it started, in milliseconds since the epoch (main-process clock). */
+  startedAt: number;
+  durationMs: number;
+}
+
+/**
+ * What the current Music of the Active Scene is doing. Stopped: no Music sounds, the Scene's
+ * Ambiences play on.
+ */
+export type MusicPlayback = 'playing' | 'paused' | 'stopped';
+
+/**
+ * The audio part of the on-air state, owned by the main process beside OnAirState and never
+ * sent to the Broadcast window. Never saved: cleared when a Campaign is opened, switched or
+ * closed, and after a restart. Ambience on/off comes from the Active Scene itself.
+ */
+export interface AudioOnAirState {
+  /**
+   * The current Music: an entry of the Active Scene's Music list, or null for none. `take`
+   * counts its starts over (AudioVoice `take`).
+   */
+  music: { mediaId: MediaId; playback: MusicPlayback; take: number } | null;
+}
+
+/**
+ * One long-running sound of the mix: the current Music or a switched-on Ambience, always
+ * looping. A voice is known by its Media: a Media in both the old and the new mix keeps
+ * playing and only changes level.
+ */
+export interface AudioVoice {
+  mediaId: MediaId;
+  role: 'music' | 'ambience';
+  /** The Media's name, for the Control window's "En cours" strip. */
+  name: string;
+  /** Media address (`regie-media:`). */
+  src: string;
+  /** Target level, 0..1, Master volume included. */
+  gain: number;
+  /** False: paused, keeping its position, so it resumes where it was. */
+  playing: boolean;
+  /**
+   * Which start of the sound this is. The engine keeps a voice while both its Media and its
+   * take stay the same; a new take starts the sound over from its beginning (a paused Music
+   * Activated again, #38).
+   */
+  take: number;
+}
+
+/**
+ * The mix: every voice that should be sounding, with its target level, and how long the
+ * engine takes to get there (fading in new voices, ramping changed ones, fading out voices
+ * that left). Computed by the app core (core/audioMix.ts), applied by the audio engine in the
+ * Control window (ADR-0002). `version` increases on every change, like OnAirState's.
+ */
+export interface AudioMix {
+  voices: AudioVoice[];
+  /**
+   * Voices left out because their Media's file is missing (deleted or moved outside the app,
+   * its address answers 404): never played, shown as missing so the Game Master knows.
+   */
+  missing: MissingVoice[];
+  fadeMs: number;
+  version: number;
+}
+
+/** A voice the mix would play but leaves out: its Media's file is missing. */
+export type MissingVoice = Pick<AudioVoice, 'mediaId' | 'role' | 'name'>;
+
+/** What the audio engine says a voice is doing: what is actually sounding, not what was asked. */
+export type VoiceState = 'loading' | 'playing' | 'paused' | 'failed';
+
+/** A voice's state in the "En cours" strip: as the engine reports it, or missing (never played). */
+export type SoundingState = VoiceState | 'missing';
+
+/** The audio engine's report: the state of each voice it holds. */
+export interface AudioEngineReport {
+  voices: { mediaId: MediaId; state: VoiceState }[];
+}
+
+/** A voice of the mix with what the engine reports of it, for the "En cours" strip. */
+export interface SoundingVoice {
+  mediaId: MediaId;
+  role: AudioVoice['role'];
+  name: string;
+  /** Loading until the engine reports it; missing when its file is (AudioMix `missing`). */
+  state: SoundingState;
+}
+
+/**
+ * What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it,
+ * the Soundboard pads the engine reports playing, whether Silence is on, and the Master volume
+ * everything is heard at.
+ */
+export interface AudioSounding {
+  voices: SoundingVoice[];
+  pads: SoundingPad[];
+  /**
+   * Silence: all audio faded out, the mix kept to come back when it is lifted. On air only,
+   * never saved; audio only, apart from Blackout (picture only).
+   */
+  silence: boolean;
+  /** The Master volume (0..1): a library sound listened to plays at it too. */
+  masterVolume: number;
+}
+
+/**
+ * A pad sound: one press of a Soundboard pad, playing its Sound effect once. Pressing a pad
+ * that still sounds starts another, overlapping one. Numbered by the main process, in press
+ * order.
+ */
+export type PadVoiceId = number;
+
+/**
+ * What the main process tells the audio engine about pad sounds (core/padVoices.ts): play one
+ * at `gain` (Master volume included), cut some with a short fade, ramp some to a new level,
+ * or preload the pads' sounds.
+ */
+export type PadCommand =
+  | { kind: 'play'; voiceId: PadVoiceId; src: string; gain: number }
+  | { kind: 'cut'; voiceIds: PadVoiceId[]; fadeMs: number }
+  /**
+   * The Sound effects of the open Campaign's pads (Media addresses): the engine decodes them
+   * ahead of a press and frees every other it holds (Campaign switched, pad removed).
+   */
+  | { kind: 'preload'; srcs: string[] }
+  /** Ramps pad sounds still sounding to a new level (a level slider moved). */
+  | { kind: 'gain'; voiceIds: PadVoiceId[]; gain: number; fadeMs: number };
+
+/**
+ * The audio engine's report on pad sounds: the state of each it holds, and the last pad sound
+ * it was told to play. A pad sound up to that one that it no longer holds has ended.
+ */
+export interface PadReport {
+  voices: { voiceId: PadVoiceId; state: VoiceState }[];
+  upTo: PadVoiceId;
+}
+
+/** A Soundboard pad the engine reports sounding (at least one of its pad sounds playing). */
+export interface SoundingPad {
+  padId: string;
+  /** The pad's name, for the "En cours" strip. */
+  name: string;
 }

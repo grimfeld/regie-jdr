@@ -82,3 +82,47 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - If the saved Scene no longer matches the step, undo is refused in French and that Scene's history cleared. **Rule for every later milestone: any new Scene field (Music, Ambiences, Notes, Transition, Chapter) must change through a `SceneEdit` in `editScene`, or undo breaks.**
 - Moves of the same Overlay within 1 s merge into one step (nudge bursts; also two quick drags).
 - Shared typing check: `isTypingIn` and `editShortcutOf` in `src/keyboard.ts`.
+
+## Running order (#46, 2026-11-12, `m3-transitions-closeout@1a54d3e`)
+
+- Decision: reordering Scenes is a Campaign-level command (`scenes:move`, `SceneLibrary.move`), not a `SceneEdit`, so it never touches Scene undo history. The `editScene` rule covers Scene fields only.
+- The running order is the order of Scenes in `scenes.json`; new Scenes go last. No schema change (stays v3).
+- `core/runningOrder.ts` (renderer-safe): `moveInRunningOrder`, pure `sceneNextTo(order, from, 'next'|'previous')` (nothing on air → first Scene; no wrap). #56 calls it; #70 Chapters group over the same list.
+- UI: Scene list moved to `src/SceneList.tsx`; drag a row onto another to take its place. Gap: no keyboard reorder.
+
+## Duplicate a Scene (#47, 2026-11-12, `3814149`)
+
+- Campaign-level command `scenes:duplicate` (`SceneLibrary.duplicate`), run through `OnAirCommands.duplicateScene` only to join the queue (Notes typed just before are included; no on-air or audio change).
+- `copyOfScene` (`core/scenes.ts`) deep-clones, new Scene/Background/Overlay ids, same Media references (incl. Notes images: no file copied). Name "<name> (copie)", original shortened at the 100-char limit. Placed per the issue; "Dupliquer" sits next to Renommer.
+- Copy starts with an empty undo history (histories are per Scene id).
+- Guard: `sceneFieldInCopy` in `tests/unit/scenes.test.ts` (`satisfies Record<keyof Scene, …>`) plus a no-shared-object walk. A new Scene field fails typecheck there until its copy rule is decided.
+
+## Crossfade on Activate (#48, 2026-11-12, `5258baf`)
+
+- Supersedes #31's "Activating another Scene dissolves over the fade duration".
+- `OnAirState.transition` {id, kind, from, to, startedAt, durationMs} goes on air (Scene ids and timing only; allow-list updated); cleared on Campaign open/switch/close.
+- `ACTIVATE_DURATION_MS` (1.5 s, `core/fades.ts`) drives both the picture Crossfade and `AUDIO_FADE_MS.activate`.
+- Renderer: each on-air picture is a layer on black; the incoming layer waits for image decode, then dissolves. Shared Backgrounds and the Scene title don't flicker; Blackout stays on top. Activate mid-transition freezes the dissolve where it is. Editor fades unchanged.
+- No Transition field on Scene yet. #49: add it (duplicate copies it; it never goes on air) and pass `kind: 'cut'`, `durationMs: 0` from `activateScene` in `core/onAir.ts`; renderer needs no change. #50: replace `ACTIVATE_DURATION_MS` where `core/onAir.ts` and `AUDIO_FADE_MS.activate` read it; carry it like `setFadeDuration`.
+
+## Cut and forced Cut (#49, 2026-11-12, `d30b310`)
+
+- Supersedes the #48 note "No Transition field on Scene yet". `Scene.transition` (`'crossfade' | 'cut'`, new Scenes Crossfade) changes only through `SceneEdit` `set-transition` (undo label "régler la transition sur Cut"). Never on air (allow-list `null`); duplicate copies it. `scenes.json` schema 4: migration from 3 sets Crossfade.
+- One rule for what Activate starts: `transitionOnActivate(scene, {forceCut})` in `core/onAir.ts`. `OnAir.activateScene(id, scene, kind)` puts a Cut on air as `{kind: 'cut', durationMs: 0}`; the renderer still waits for image decode, then shows it with no dissolve.
+- Audio: `AudioOnAir.activateScene(..., kind)` fades over `AUDIO_FADE_MS.cut` (100 ms) on a Cut, `activate` otherwise. #50 replaces only the Crossfade duration.
+- Channel `onAir:activate-scene` takes optional `forceCut`; bridge `activateScene(sceneId, {forceCut})`.
+- UI: "TRANSITION" menu under the Scene title (`src/SceneTransitionField.tsx`). Shift+click on Activer forces a Cut (`title` hint). `src/activate.ts`: `activateScene(control, sceneId, options)` + `activateOptionsOf(press)` (Shift = forced Cut). #56 shortcuts call these two with their KeyboardEvent.
+
+## Activate and Music crossfade durations (#50, 2026-11-12, `4d2d082`)
+
+- Settings schema 4: `activateDurationMs` (default 1500, 0.1–5 s) and `musicCrossfadeMs` (default 2000, 0.1–10 s); bounds are the agent's choice (0.1 s minimum avoids clicks). Control-only `settings:set-activate-duration`, `settings:set-music-crossfade`. Not on air (the Transition carries `durationMs`).
+- `OnAirCommands.setPlayDurations` sets picture and audio together (startup and both channels). `audioFadeMs(change, durations)` replaces `AUDIO_FADE_MS.activate`/`crossfade`; `ACTIVATE_DURATION_MS` is `{default, min, max}`. Cut stays 0 ms picture / 100 ms audio.
+- UI: "Durée d’activation" and "Fondu entre musiques" number fields (seconds) under "Fondus".
+
+## Chapters (#70, 2026-11-12, `m4-campaign-themes-qol@ff0a117`)
+
+- `scenes.json` v5 adds `chapters [{id, name, collapsed, sceneIds}]`; Scenes stored in running order (each Chapter's Scenes, then unchaptered). 4→5 migration: no Chapters. Export/Import carry them; Import refuses unreadable Chapters.
+- Chapter is not a Scene field: Scene undo, broadcast allow-list and duplicate guard unchanged. All Chapter changes via `scenes:edit-running-order` (never an undo step); read via `scenes:running-order`. Supersedes #46's `scenes:move` / `moveScene` (now a `move-scene` command naming the target Chapter). `scenes:create` takes the Selected Scene id.
+- Rules: deleting a Chapter makes its Scenes the first unchaptered Scenes; new Scene goes last in the Selected Scene's Chapter; duplicate right after its source in the same Chapter; Ctrl+↓/↑ walk every Scene incl. collapsed Chapters ("Active" shown on a collapsed heading); Alt+↑/↓ at a group edge enters the next visible group and skips collapsed Chapters; on a Chapter heading Alt+↑/↓ move the Chapter. Unchaptered Scenes always come after all Chapters (simplification).
+- UI: "Nouveau chapitre" button opens the form (a permanent form pushed the canvas down and broke `undo.spec`).
+- Watch: a move is shown at once and the saved answer is ignored (to fix a race under load). If the save fails, the list could disagree with disk: ask the M4 review to check.

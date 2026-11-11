@@ -13,6 +13,10 @@ const RENDERER_SAFE_CORE = [
   'guards',
   'librarySearch',
   'fades',
+  'audioMix',
+  'notes',
+  'runningOrder',
+  'keyMap',
 ];
 
 /**
@@ -192,6 +196,10 @@ export default tseslint.config(
                 '!./guards*',
                 '!./librarySearch*',
                 '!./fades*',
+                '!./audioMix*',
+                '!./notes*',
+                '!./runningOrder*',
+                '!./keyMap*',
               ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',
@@ -272,6 +280,22 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       // Playwright fixtures must destructure their first argument, even when empty: `({}, use)`.
       'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }],
+    },
+  },
+  // Whole-app tests drag and drop only through dropAndWait (tests/app/harness.ts), which returns
+  // once the drop's visible end state shows: a raw drag let the next step race the drop's
+  // answer (docs/wiki/problem-flaky-app-tests.md).
+  {
+    files: ['tests/app/**/*.ts'],
+    ignores: ['tests/app/harness.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='dragTo']",
+          message: 'Drag and drop through dropAndWait (tests/app/harness.ts).',
+        },
+      ],
     },
   },
   {

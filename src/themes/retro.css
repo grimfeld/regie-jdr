@@ -1,0 +1,89 @@
+/*
+ * Rétro SF: a green phosphor terminal (spec #58, #66). Sets every token of tokens.css. Green
+ * only, no amber variant. Its display font is bundled (fonts/, docs/theme-assets.md); its
+ * scanlines are a static CSS texture on the window frame only; its one animation, the
+ * blinking cursor after the title, stops under the reduced-motion system preference.
+ */
+@font-face {
+  font-family: 'Share Tech Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/share-tech-mono-latin-400.woff2') format('woff2');
+}
+
+[data-theme='retro'] {
+  --page: #040a06;
+  --title-bar: #06100a;
+  /* A faint phosphor glow from the top of the screen. */
+  --frame: radial-gradient(
+    ellipse at 50% -15%,
+    color-mix(in srgb, var(--accent) 13%, transparent),
+    transparent 55%
+  );
+  /* Static scanlines: one faint line every 3 px. */
+  --texture: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent) 6%, transparent) 0 1px,
+    transparent 1px 3px
+  );
+
+  --surface: #08130c;
+  --surface-raised: #0c1b11;
+  --surface-sunken: #050d08;
+  --border: #23774a;
+  --control-border: #3c9a5c;
+
+  --text: #bdf7cb;
+  --text-secondary: #78c690;
+  --accent: #3ddc6e;
+  --accent-strong: #9dffb6;
+  --on-accent: #021208;
+
+  --status-live: #c62828;
+  --on-status-live: #fff;
+  --status-blackout: var(--accent-strong);
+  --status-warning: var(--accent);
+  --status-error: #ff9c8a;
+  --status-missing: var(--accent-strong);
+  --status-missing-fill: #0a1a10;
+  --status-missing-fill-alt: #10241a;
+  --status-hidden-opacity: 0.6;
+  --status-session: var(--accent);
+
+  --font-body: Arial, Helvetica, sans-serif;
+  --font-display: 'Share Tech Mono', Consolas, 'Courier New', monospace;
+  --radius: 2px;
+  --radius-small: 1px;
+
+  /* Native controls (sliders, fields, scrollbars) in the theme's dark green, not system blue. */
+  color-scheme: dark;
+  accent-color: var(--accent);
+}
+
+/* Titles glow like phosphor; a soft halo, never a flicker. */
+[data-theme='retro'] .brand strong,
+[data-theme='retro'] h1,
+[data-theme='retro'] h2 {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* The theme's one animation: a cursor blinking after the title in the title bar. */
+[data-theme='retro'] .brand strong::after {
+  content: '_' / '';
+  margin-left: 3px;
+  color: var(--accent-strong);
+  animation: retro-cursor 1.2s steps(1, end) infinite;
+}
+
+@keyframes retro-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='retro'] .brand strong::after {
+    animation: none;
+  }
+}

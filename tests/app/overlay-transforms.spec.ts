@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { Campaign, Scene } from '../../shared/domain';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -49,7 +50,11 @@ async function createScene(page: Page, name: string) {
 /** Places the image as one more Overlay (at the canvas centre), drawn once loaded. */
 async function placeOverlay(page: Page) {
   const count = await overlayList(page).getByRole('listitem').count();
-  await thumbnail(page).dragTo(overlayList(page).locator('xpath=..'));
+  await dropAndWait(
+    thumbnail(page),
+    overlayList(page).locator('xpath=..'),
+    overlayList(page).getByRole('listitem').nth(count),
+  );
   await expect(overlayList(page).getByRole('listitem')).toHaveCount(count + 1);
   await expect(editorCanvas(page).locator('.canvas-overlay img:not([hidden])')).toHaveCount(
     count + 1,
@@ -71,6 +76,8 @@ async function boxOn(canvas: Locator, overlay: Locator) {
 
 /** Presses the mouse on `overlay`'s centre and moves it by fractions `dx`, `dy` of the canvas. */
 async function pressAndMove(page: Page, overlay: Locator, dx: number, dy: number) {
+  // Mouse positions are on screen: bring the canvas there first.
+  await editorCanvas(page).scrollIntoViewIfNeeded();
   const stage = await editorCanvas(page).locator('.scene-canvas-stage').boundingBox();
   const box = await overlay.boundingBox();
   if (!stage || !box) throw new Error('The canvas or the Overlay is not shown.');
@@ -151,8 +158,11 @@ test('Overlays are brought forward and sent back among themselves, always above 
   await sceneWithImage(regie, 'Cantina');
   await placeOverlay(page);
   await placeOverlay(page);
-  await thumbnail(page).dragTo(
-    editor(page).getByRole('list', { name: 'Arrière-plans' }).locator('xpath=..'),
+  const backgrounds = editor(page).getByRole('list', { name: 'Arrière-plans' });
+  await dropAndWait(
+    thumbnail(page),
+    backgrounds.locator('xpath=..'),
+    backgrounds.getByRole('listitem').first(),
   );
   const drawn = editorCanvas(page).locator('.canvas-background, .canvas-overlay');
   await expect(drawn).toHaveCount(3);
@@ -263,4 +273,31 @@ test('dragging an Overlay on a Scene that is not active never touches the broadc
     0.5,
     2,
   );
+});
+
+test('Ctrl+arrow on a selected Overlay nudges it and never Activates a Scene', async ({
+  regie,
+}) => {
+  const { controlWindow: page } = regie;
+  await sceneWithImage(regie, 'Cantina');
+  await placeOverlay(page);
+  const canvas = editorCanvas(page);
+  const overlay = canvas.locator('.canvas-overlay');
+  await pressAndMove(page, overlay, 0, 0);
+  await page.mouse.up();
+  await expect(overlay).toHaveClass(/is-selected/);
+
+  const before = await boxOn(canvas, overlay);
+  await canvas.press('Control+ArrowDown');
+  await canvas.press('Control+ArrowUp');
+  await canvas.press('Control+ArrowDown');
+
+  const box = await boxOn(canvas, overlay);
+  expect(box.y).toBeCloseTo(before.y + 10 / 1080, 3);
+  const onAir = await page.evaluate(() =>
+    (
+      window as unknown as { regie: { getOnAir(): Promise<{ activeSceneId: string | null }> } }
+    ).regie.getOnAir(),
+  );
+  expect(onAir.activeSceneId).toBeNull();
 });

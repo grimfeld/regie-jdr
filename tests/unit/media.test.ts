@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
-import { mediaAddress } from '../../core/mediaAddress';
+import { MAX_PASTED_IMAGE_BYTES, mediaAddress } from '../../core/mediaAddress';
 import { openStorage } from '../../core/storage';
+import { wavFile } from './audioFiles';
 import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
@@ -22,7 +24,7 @@ describe('media library', () => {
   }
 
   /** Writes a file to pick, outside the data folder. */
-  async function sourceFile(name: string, content = 'abc'): Promise<string> {
+  async function sourceFile(name: string, content: string | Buffer = 'abc'): Promise<string> {
     const folder = path.join(dir.path, 'picked');
     await fs.mkdir(folder, { recursive: true });
     const file = path.join(folder, name);
@@ -47,6 +49,7 @@ describe('media library', () => {
         originalName: 'Cantina',
         name: 'Cantina',
         extension: '.png',
+        favourite: false,
       }),
     ]);
     const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
@@ -321,6 +324,327 @@ describe('media library', () => {
       'Seules les images ont une catégorie',
     );
     expect(await library.list(campaign.id)).toEqual([sound]);
+  });
+
+  it('records an audio Media’s duration at import, and keeps it after a restart', async () => {
+    const { campaign, library } = await setup();
+
+    const { imported } = await library.import(
+      campaign.id,
+      [await sourceFile('Taverne.wav', wavFile(125))],
+      { accept: 'audio', role: 'music' },
+    );
+
+    expect(imported).toEqual([expect.objectContaining({ kind: 'audio', durationSeconds: 125 })]);
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
+    expect(await reopened.list(campaign.id)).toEqual(imported);
+  });
+
+  it('imports audio whose duration cannot be read, with no duration', async () => {
+    const { campaign, library } = await setup();
+
+    const { imported, refused } = await library.import(
+      campaign.id,
+      [await sourceFile('abime.ogg', 'pas un son')],
+      { accept: 'audio', role: 'ambience' },
+    );
+
+    expect(refused).toEqual([]);
+    expect(imported).toEqual([expect.objectContaining({ kind: 'audio', durationSeconds: null })]);
+  });
+
+  it('keeps one audio Media, with its first role, when the same sound is imported again', async () => {
+    const { campaign, library } = await setup();
+    const sound = await sourceFile('Pluie.wav', wavFile(3));
+    const [first] = (
+      await library.import(campaign.id, [sound], { accept: 'audio', role: 'ambience' })
+    ).imported;
+
+    const again = await library.import(campaign.id, [await sourceFile('copie.wav', wavFile(3))], {
+      accept: 'audio',
+      role: 'music',
+    });
+
+    expect(again.imported).toEqual([first]);
+    expect(await library.list(campaign.id)).toEqual([first]);
+  });
+
+  it('gives audio imported before durations were recorded no duration, until imported again', async () => {
+    const { storage, campaign, library } = await setup();
+    const hash = createHash('sha256').update(wavFile(4)).digest('hex');
+    const stored = {
+      contentHash: hash,
+      originalName: 'Feu',
+      name: 'Feu de camp',
+      extension: '.wav',
+    };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'media.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        media: [
+          { ...stored, id: 'feu', kind: 'audio', role: 'ambience' },
+          { ...stored, contentHash: ABC_SHA256, id: 'carte', kind: 'image', category: 'scenery' },
+        ],
+      }),
+    );
+
+    const [sound, image] = await library.list(campaign.id);
+    expect(sound).toEqual(expect.objectContaining({ id: 'feu', durationSeconds: null }));
+    expect(image).not.toHaveProperty('durationSeconds');
+
+    const { imported } = await library.import(
+      campaign.id,
+      [await sourceFile('Feu.wav', wavFile(4))],
+      {
+        accept: 'audio',
+        role: 'ambience',
+      },
+    );
+    expect(imported).toEqual([{ ...sound, durationSeconds: 4 }]);
+    expect((await library.list(campaign.id))[0]).toEqual({ ...sound, durationSeconds: 4 });
+  });
+
+  it('imports images as Reference when the import asks for it, keeping one copy of known content', async () => {
+    const { storage, campaign, library } = await setup();
+    const [scenery] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+
+    const { imported } = await library.import(
+      campaign.id,
+      [await sourceFile('Carte secrète.png', 'carte'), await sourceFile('copie.png')],
+      { accept: 'image', category: 'reference' },
+    );
+
+    // New content is Reference; content already there keeps its Media and its category.
+    expect(imported).toEqual([
+      expect.objectContaining({ kind: 'image', name: 'Carte secrète', category: 'reference' }),
+      scenery,
+    ]);
+    expect(await library.list(campaign.id)).toEqual([scenery, imported[0]]);
+    const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+    expect(await fs.readdir(mediaFolder)).toHaveLength(2);
+  });
+
+  it('changes a Reference image to Scenery or Character, and back', async () => {
+    const { campaign, library } = await setup();
+    const [reference] = (
+      await library.import(campaign.id, [await sourceFile('Plan.png')], {
+        accept: 'image',
+        category: 'reference',
+      })
+    ).imported;
+
+    expect(await library.setImageCategory(campaign.id, reference.id, 'scenery')).toEqual({
+      ...reference,
+      category: 'scenery',
+    });
+    await library.setImageCategory(campaign.id, reference.id, 'character');
+    expect(await library.setImageCategory(campaign.id, reference.id, 'reference')).toEqual(
+      reference,
+    );
+  });
+
+  it('reads a Media index from before the Reference category unchanged', async () => {
+    const { storage, campaign, library } = await setup();
+    const stored = {
+      id: 'port',
+      contentHash: ABC_SHA256,
+      originalName: 'Port',
+      name: 'Port',
+      extension: '.png',
+      kind: 'image',
+      category: 'scenery',
+    };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'media.json'),
+      JSON.stringify({ schemaVersion: 2, media: [stored] }),
+    );
+
+    expect(await library.list(campaign.id)).toEqual([
+      { ...stored, campaignId: campaign.id, favourite: false },
+    ]);
+  });
+
+  it('stars and unstars an image or a sound, and keeps its favourite after a restart', async () => {
+    const { campaign, library } = await setup();
+    const [image] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+    const [sound] = (
+      await library.import(campaign.id, [await sourceFile('pluie.mp3', 'pluie')], {
+        accept: 'audio',
+        role: 'ambience',
+      })
+    ).imported;
+    expect([image.favourite, sound.favourite]).toEqual([false, false]);
+
+    const starredImage = await library.setFavourite(campaign.id, image.id, true);
+    const starredSound = await library.setFavourite(campaign.id, sound.id, true);
+    expect(starredImage).toEqual({ ...image, favourite: true });
+    expect(starredSound).toEqual({ ...sound, favourite: true });
+
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
+    expect(await reopened.list(campaign.id)).toEqual([starredImage, starredSound]);
+    expect(await reopened.setFavourite(campaign.id, image.id, false)).toEqual(image);
+    expect(await reopened.list(campaign.id)).toEqual([image, starredSound]);
+  });
+
+  it('keeps a favourite when its content is imported again', async () => {
+    const { campaign, library } = await setup();
+    const [image] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+    const starred = await library.setFavourite(campaign.id, image.id, true);
+
+    const { imported } = await library.import(campaign.id, [await sourceFile('copie.png')], {
+      accept: 'image',
+    });
+
+    expect(imported).toEqual([starred]);
+  });
+
+  it('refuses to star a Media that no longer exists', async () => {
+    const { campaign, library } = await setup();
+
+    await expect(library.setFavourite(campaign.id, 'gone', true)).rejects.toThrow(
+      'Ce média n’existe plus.',
+    );
+  });
+
+  it('gives Media from before favourites no favourite', async () => {
+    const { storage, campaign, library } = await setup();
+    const image = {
+      id: 'port',
+      contentHash: ABC_SHA256,
+      originalName: 'Port',
+      name: 'Port',
+      extension: '.png',
+      kind: 'image',
+      category: 'reference',
+    };
+    const sound = {
+      id: 'pluie',
+      contentHash: ABC_SHA256,
+      originalName: 'Pluie',
+      name: 'Pluie',
+      extension: '.mp3',
+      kind: 'audio',
+      role: 'ambience',
+      durationSeconds: 12,
+    };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'media.json'),
+      JSON.stringify({ schemaVersion: 3, media: [image, sound] }),
+    );
+
+    expect(await library.list(campaign.id)).toEqual([
+      { ...image, campaignId: campaign.id, favourite: false },
+      { ...sound, campaignId: campaign.id, favourite: false },
+    ]);
+  });
+
+  describe('pasted images', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 4, 5, 6]);
+    const WEBP = Buffer.concat([
+      Buffer.from('RIFF'),
+      Buffer.from([9, 0, 0, 0]),
+      Buffer.from('WEBPVP8 '),
+    ]);
+
+    it('imports pasted bytes as a Reference image, its type read from its content', async () => {
+      const { storage, campaign, library } = await setup();
+
+      const result = await library.importPasted(campaign.id, PNG, 'Plan du fort.jpg');
+
+      expect(result.refused).toEqual([]);
+      const hash = createHash('sha256').update(PNG).digest('hex');
+      expect(result.imported).toEqual([
+        expect.objectContaining({
+          kind: 'image',
+          category: 'reference',
+          contentHash: hash,
+          extension: '.png',
+          originalName: 'Plan du fort',
+          name: 'Plan du fort',
+        }),
+      ]);
+      const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+      expect(await fs.readFile(path.join(mediaFolder, `${hash}.png`))).toEqual(PNG);
+    });
+
+    it.each([
+      ['JPEG', JPEG, '.jpg'],
+      ['WebP', WEBP, '.webp'],
+    ])('imports pasted %s', async (_type, bytes, extension) => {
+      const { campaign, library } = await setup();
+      const { imported } = await library.importPasted(campaign.id, bytes, 'capture.png');
+      expect(imported).toEqual([expect.objectContaining({ extension, category: 'reference' })]);
+    });
+
+    it('keeps one Media when the same image is pasted twice, or was imported before', async () => {
+      const { campaign, library } = await setup();
+      const [picked] = (
+        await library.import(campaign.id, [await sourceFile('Carte.png', PNG)], {
+          accept: 'image',
+        })
+      ).imported;
+
+      expect((await library.importPasted(campaign.id, PNG, 'image.png')).imported).toEqual([
+        picked,
+      ]);
+      expect((await library.importPasted(campaign.id, PNG, 'autre.png')).imported).toEqual([
+        picked,
+      ]);
+      expect(await library.list(campaign.id)).toEqual([picked]);
+    });
+
+    it.each([
+      ['image.png', 'Image collée'],
+      ['', 'Image collée'],
+      ['  ', 'Image collée'],
+      ['..\\..\\Windows\\carte.png', 'carte'],
+      ['../../carte.png', 'carte'],
+      ['CON', 'CON'],
+      ['a<b>:c"d|e?f*g.png', 'abcdefg'],
+      ['x'.repeat(300), 'x'.repeat(100)],
+    ])('names a pasted image %j as %j', async (name, expected) => {
+      const { campaign, library } = await setup();
+      const { imported } = await library.importPasted(campaign.id, PNG, name);
+      expect(imported[0]?.name).toBe(expected);
+    });
+
+    it('refuses pasted content that is not a PNG, JPEG or WebP image, and stores nothing', async () => {
+      const { storage, campaign, library } = await setup();
+      for (const bytes of [Buffer.from('abc'), Buffer.from('GIF89a......'), Buffer.alloc(0)]) {
+        expect(await library.importPasted(campaign.id, bytes, 'capture.png')).toEqual({
+          imported: [],
+          refused: [
+            '« capture.png » n’a pas été importé : ce n’est pas une image PNG, JPEG ou WebP.',
+          ],
+        });
+      }
+      expect(await library.list(campaign.id)).toEqual([]);
+      const folder = storage.campaignFolder(campaign.id);
+      expect(await fs.readdir(folder)).not.toContain('media');
+    });
+
+    it('refuses a pasted image larger than the limit', async () => {
+      const { campaign, library } = await setup();
+      const huge = Buffer.concat([PNG, Buffer.alloc(MAX_PASTED_IMAGE_BYTES)]);
+      expect(await library.importPasted(campaign.id, huge, 'énorme.png')).toEqual({
+        imported: [],
+        refused: ['« énorme.png » n’a pas été importé : l’image est trop volumineuse.'],
+      });
+    });
   });
 
   it('refuses to import into a Campaign that does not exist', async () => {

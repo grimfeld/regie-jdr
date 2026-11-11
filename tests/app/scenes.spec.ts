@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dropAndWait,
   expect,
   fixture,
   launchApp,
@@ -188,21 +189,12 @@ test('opening a Campaign puts nothing on air; switching Campaign clears the Broa
   await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await expect(shownBackgrounds(broadcastWindow)).toHaveCount(1);
-  // Every on-air change from here on, as the Broadcast window receives it.
-  await broadcastWindow.evaluate(() => {
-    const bridge = (window as unknown as { regie: { onAudioHalt(l: () => void): void } }).regie;
-    const record = window as unknown as { audioHalts: number };
-    record.audioHalts = 0;
-    bridge.onAudioHalt(() => record.audioHalts++);
-  });
-  const audioHalts = () =>
-    broadcastWindow.evaluate(() => (window as unknown as { audioHalts: number }).audioHalts);
 
   await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
   await createCampaign(controlWindow, 'Warhammer');
   await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
   await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
-  await expect.poll(audioHalts).toBe(2); // back to the list, then into Warhammer
+  // Audio stops too: tests/app/audio.spec.ts.
 
   // Back into Star Wars: nothing goes on air until a Scene is Activated.
   await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
@@ -305,6 +297,176 @@ test('Scenes are created, renamed and deleted, and the changes survive a restart
   }
 });
 
+test('Scenes are dragged into their running order, new ones go last, and the order survives a restart', async ({
+  regie,
+}) => {
+  const { app, controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  await createScene(controlWindow, 'Cantina');
+  await createScene(controlWindow, 'Hangar');
+  await createScene(controlWindow, 'Désert');
+  await renameSelectedScene(controlWindow, 'Dune');
+  const row = (name: string) => sceneEntry(controlWindow, name).locator('xpath=..');
+  const names = (page: Page) =>
+    scenesPanel(page).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
+
+  await dropAndWait(
+    row('Dune'),
+    row('Cantina'),
+    names(controlWindow).first().and(sceneEntry(controlWindow, 'Dune')),
+  );
+  await expect(names(controlWindow)).toHaveText(['Dune', 'Cantina', 'Hangar']);
+  await dropAndWait(
+    row('Cantina'),
+    row('Hangar'),
+    names(controlWindow).last().and(sceneEntry(controlWindow, 'Cantina')),
+  );
+  await expect(names(controlWindow)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+
+  // Reordering is not a Scene edit: undo still undoes the rename, and the order stays.
+  await editor(controlWindow)
+    .getByRole('toolbar', { name: 'Historique de la scène' })
+    .getByRole('button', { name: /^Annuler : / })
+    .click();
+  await expect(names(controlWindow)).toHaveText(['Désert', 'Hangar', 'Cantina']);
+
+  await createScene(controlWindow, 'Épilogue');
+  await expect(names(controlWindow)).toHaveText(['Désert', 'Hangar', 'Cantina', 'Épilogue']);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    await expect(names(restarted.controlWindow)).toHaveText([
+      'Désert',
+      'Hangar',
+      'Cantina',
+      'Épilogue',
+    ]);
+  } finally {
+    await restarted.app.close();
+  }
+});
+
+test('a focused Scene moves up with Alt+Up and down with Alt+Down, and keeps its place after a restart', async ({
+  regie,
+}) => {
+  const { app, controlWindow: page, dataDir } = regie;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Cantina');
+  await createScene(page, 'Hangar');
+  await createScene(page, 'Dune');
+  const names = (on: Page) =>
+    scenesPanel(on).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
+
+  await sceneEntry(page, 'Dune').focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Cantina', 'Dune', 'Hangar']);
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Dune', 'Cantina', 'Hangar']);
+  // The moved Scene keeps the focus; the first one goes no higher.
+  await expect(sceneEntry(page, 'Dune')).toBeFocused();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Dune', 'Cantina', 'Hangar']);
+
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(names(page)).toHaveText(['Cantina', 'Dune', 'Hangar']);
+  await expect(sceneEntry(page, 'Dune')).toBeFocused();
+  await sceneEntry(page, 'Cantina').focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(names(page)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+
+  // Away from the list the keys move nothing.
+  await page.locator('body').click({ position: { x: 1, y: 1 } });
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    await expect(names(restarted.controlWindow)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+  } finally {
+    await restarted.app.close();
+  }
+});
+
+test('a duplicated Scene is a private copy right after its source, edited on its own, and kept after a restart', async ({
+  regie,
+}) => {
+  const { app, controlWindow: page, dataDir } = regie;
+  const names = (window: Page) =>
+    scenesPanel(window).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
+  const title = (window: Page) => editor(window).getByLabel('Titre affiché');
+  const notes = (window: Page) =>
+    window
+      .getByRole('region', { name: 'Notes', exact: true })
+      .getByRole('textbox', { name: 'Notes de la scène' });
+  const history = (window: Page) =>
+    editor(window).getByRole('toolbar', { name: 'Historique de la scène' });
+  await createCampaign(page, 'Star Wars');
+  await importImage(regie);
+  await createScene(page, 'Cantina');
+  await addBackground(page);
+  await title(page).fill('Le vieux moulin');
+  await title(page).press('Enter');
+  await createScene(page, 'Hangar');
+  await selectScene(page, 'Cantina');
+  await editor(page).getByRole('button', { name: 'Activer' }).click();
+  await expect(editor(page)).toContainText('EN DIRECT');
+  const broadcastWindow = await openBroadcastWindow(app, page);
+  const activeId = await broadcastScreen(broadcastWindow).getAttribute('data-active-scene-id');
+  expect(activeId).not.toBe('');
+  // Notes typed just before duplicating are in the copy.
+  await notes(page).click();
+  await page.keyboard.type('Le traître');
+
+  await editor(page).getByRole('button', { name: 'Dupliquer' }).click();
+
+  await expect(editor(page).getByRole('heading', { name: 'Cantina (copie)' })).toBeVisible();
+  await expect(names(page)).toHaveText(['Cantina', 'Cantina (copie)', 'Hangar']);
+  await expect(editor(page)).not.toContainText('EN DIRECT');
+  await expect(broadcastScreen(broadcastWindow)).toHaveAttribute(
+    'data-active-scene-id',
+    activeId ?? '',
+  );
+  await expect(backgroundToggle(page)).not.toBeChecked();
+  await expect(title(page)).toHaveValue('Le vieux moulin');
+  await expect(notes(page)).toHaveText('Le traître');
+  // Not an undo step: the copy starts with nothing to undo.
+  await expect(history(page).getByRole('button', { name: 'Rien à annuler' })).toBeDisabled();
+
+  await backgroundToggle(page).check();
+  await title(page).fill('Après le combat');
+  await title(page).press('Enter');
+  await expect(history(page).getByRole('button', { name: /^Annuler : / })).toBeVisible();
+
+  // The source is unchanged, still on air, and its own history is untouched.
+  await selectScene(page, 'Cantina');
+  await expect(backgroundToggle(page)).not.toBeChecked();
+  await expect(title(page)).toHaveValue('Le vieux moulin');
+  await expect(history(page).getByRole('button', { name: /^Annuler : / })).toHaveText(
+    'Annuler : modifier le titre affiché',
+  );
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    const window = restarted.controlWindow;
+    await expect(names(window)).toHaveText(['Cantina', 'Cantina (copie)', 'Hangar']);
+    await selectScene(window, 'Cantina (copie)');
+    await expect(backgroundToggle(window)).toBeChecked();
+    await expect(title(window)).toHaveValue('Après le combat');
+    await expect(notes(window)).toHaveText('Le traître');
+    await selectScene(window, 'Cantina');
+    await expect(backgroundToggle(window)).not.toBeChecked();
+    await expect(title(window)).toHaveValue('Le vieux moulin');
+  } finally {
+    await restarted.app.close();
+  }
+});
+
 test('the editor draws the Selected Scene, Hidden placements included; "EN DIRECT" only when it is the Active Scene', async ({
   regie,
 }) => {
@@ -354,6 +516,85 @@ test('opening a Campaign selects its last Active Scene and puts nothing on air',
     await expect(editor(page)).not.toContainText('EN DIRECT');
     const broadcastWindow = await openBroadcastWindow(restarted.app, page);
     await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
+  } finally {
+    await restarted.app.close();
+  }
+});
+
+/** From a Campaign's screen, opens another Campaign through the Campaign list. */
+async function switchCampaign(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Campagnes' }).click();
+  await page
+    .getByRole('list', { name: 'Campagnes' })
+    .getByRole('button', { name, exact: true })
+    .click();
+  await page.getByRole('heading', { name, exact: true }).waitFor();
+}
+
+/** Expects `name` to be the Selected Scene, open in the editor and not on air. */
+async function expectSelectedOffAir(page: Page, name: string) {
+  await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(sceneEntry(page, name)).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor(page)).not.toContainText('EN DIRECT');
+}
+
+test('switching Campaign and restarting select each Campaign’s last Active Scene, else the first Scene', async ({
+  regie,
+}) => {
+  const { app, controlWindow, dataDir } = regie;
+  // Star Wars: Hangar was Active, Cantina is left selected.
+  await createCampaign(controlWindow, 'Star Wars');
+  await createScene(controlWindow, 'Cantina');
+  await createScene(controlWindow, 'Hangar');
+  await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
+  await expect(editor(controlWindow)).toContainText('EN DIRECT');
+  await selectScene(controlWindow, 'Cantina');
+  // Warhammer: Crypte was Active, Cathédrale is left selected.
+  await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
+  await createCampaign(controlWindow, 'Warhammer');
+  await createScene(controlWindow, 'Cathédrale');
+  await createScene(controlWindow, 'Crypte');
+  await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
+  await expect(editor(controlWindow)).toContainText('EN DIRECT');
+  await selectScene(controlWindow, 'Cathédrale');
+  // Dune: no Scene was ever Active.
+  await controlWindow.getByRole('button', { name: 'Campagnes' }).click();
+  await createCampaign(controlWindow, 'Dune');
+  await createScene(controlWindow, 'Arrakis');
+  await createScene(controlWindow, 'Caladan');
+
+  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
+  await switchCampaign(controlWindow, 'Star Wars');
+  await expectSelectedOffAir(controlWindow, 'Hangar');
+  await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
+  await switchCampaign(controlWindow, 'Warhammer');
+  await expectSelectedOffAir(controlWindow, 'Crypte');
+  await expect(broadcastScreen(broadcastWindow)).toHaveAttribute('data-active-scene-id', '');
+  await switchCampaign(controlWindow, 'Dune');
+  await expectSelectedOffAir(controlWindow, 'Arrakis');
+
+  // The last Active Scene deleted: Warhammer falls back to its first Scene.
+  await switchCampaign(controlWindow, 'Warhammer');
+  await expectSelectedOffAir(controlWindow, 'Crypte');
+  await deleteSelectedScene(controlWindow);
+  await expect(sceneEntry(controlWindow, 'Crypte')).toHaveCount(0);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    const page = restarted.controlWindow;
+    const reopened = await openBroadcastWindow(restarted.app, page);
+    await page
+      .getByRole('list', { name: 'Campagnes' })
+      .getByRole('button', { name: 'Star Wars', exact: true })
+      .click();
+    await expectSelectedOffAir(page, 'Hangar');
+    await expect(broadcastScreen(reopened)).toHaveAttribute('data-active-scene-id', '');
+    await switchCampaign(page, 'Warhammer');
+    await expectSelectedOffAir(page, 'Cathédrale');
+    await switchCampaign(page, 'Dune');
+    await expectSelectedOffAir(page, 'Arrakis');
+    await expect(broadcastScreen(reopened)).toHaveAttribute('data-active-scene-id', '');
   } finally {
     await restarted.app.close();
   }

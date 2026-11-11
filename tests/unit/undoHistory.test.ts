@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { SceneEdit } from '../../shared/contract';
+import type { SceneHistoryEdit } from '../../shared/contract';
 import type { Scene } from '../../shared/domain';
 import { UNDO_DEPTH, createUndoHistories, undoLabel } from '../../core/undoHistory';
+import { emptyNotes } from '../../core/notes';
 
 function scene(id: string, name = id, campaignId = 'c1'): Scene {
   return {
@@ -14,7 +15,8 @@ function scene(id: string, name = id, campaignId = 'c1'): Scene {
     music: [],
     ambiences: [],
     volumes: { music: 1, ambience: 1 },
-    notes: '',
+    notes: emptyNotes(),
+    transition: 'crossfade',
   };
 }
 
@@ -131,7 +133,7 @@ describe('undo histories', () => {
 });
 
 describe('undo labels', () => {
-  const cases: [SceneEdit, string][] = [
+  const cases: [SceneHistoryEdit, string][] = [
     [{ kind: 'place-background', mediaId: 'm-map' }, 'placer Port en arrière-plan'],
     [{ kind: 'place-overlay', mediaId: 'm-orc' }, 'placer Orc en superposition'],
     [{ kind: 'set-visible', placementId: 'ov', visible: false }, 'masquer Orc'],
@@ -150,6 +152,26 @@ describe('undo labels', () => {
     [{ kind: 'set-label-text', overlayId: 'ov', text: ' ' }, 'retirer l’étiquette (Orc)'],
     [{ kind: 'set-label-visible', overlayId: 'ov', visible: true }, 'afficher l’étiquette (Orc)'],
     [{ kind: 'set-label-visible', overlayId: 'ov', visible: false }, 'masquer l’étiquette (Orc)'],
+    [{ kind: 'add-music', mediaId: 'm-map' }, 'ajouter la musique Port'],
+    [{ kind: 'add-music', mediaId: 'unknown' }, 'ajouter la musique'],
+    [{ kind: 'add-ambience', mediaId: 'm-map' }, 'ajouter l’ambiance Port'],
+    [{ kind: 'add-ambience', mediaId: 'unknown' }, 'ajouter l’ambiance'],
+    [{ kind: 'remove-ambience', mediaId: 'm-map' }, 'retirer l’ambiance Port'],
+    [{ kind: 'set-ambience-on', mediaId: 'm-map', on: true }, 'allumer l’ambiance Port'],
+    [{ kind: 'set-ambience-on', mediaId: 'm-map', on: false }, 'éteindre l’ambiance Port'],
+    [
+      { kind: 'set-ambience-volume', mediaId: 'm-map', volume: 0.5 },
+      'régler le volume de l’ambiance Port',
+    ],
+    [{ kind: 'set-ambience-level', level: 0.5 }, 'régler le niveau des ambiances'],
+    [{ kind: 'move-music', mediaId: 'm-map', toIndex: 0 }, 'réordonner la musique Port'],
+    [{ kind: 'remove-music', mediaId: 'm-map' }, 'retirer la musique Port'],
+    [{ kind: 'set-music-level', level: 0.5 }, 'régler le niveau des musiques'],
+    [{ kind: 'set-transition', transition: 'cut' }, 'régler la transition sur Cut'],
+    [
+      { kind: 'set-transition', transition: 'crossfade' },
+      'régler la transition sur Fondu enchaîné',
+    ],
   ];
 
   it.each(cases)('names %j "%s"', (edit, label) => {

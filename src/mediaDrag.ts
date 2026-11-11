@@ -1,11 +1,11 @@
 /**
- * What a drop target in the Scene editor or the library takes. A library image dragged inside
+ * What a drop target in the Scene editor, the Notes or the library takes. A library image dragged inside
  * the Control window carries only its Media id, under a type of its own, so a drop target can
  * tell it from anything else dragged over it (text, links). Files dragged in from Windows
  * Explorer are the other thing a drop target takes: they are imported first.
  */
 import type { DragEvent } from 'react';
-import type { ImageMedia, MediaId } from '../shared/domain';
+import type { AudioMedia, AudioRole, ImageMedia, MediaId } from '../shared/domain';
 
 const MEDIA_DRAG_TYPE = 'application/x-regie-media';
 
@@ -30,7 +30,15 @@ export function carriesFiles(event: DragEvent): boolean {
 
 /** The dragged library image's Media id, on `drop`; undefined when the drag carries none. */
 export function droppedMediaId(event: DragEvent): MediaId | undefined {
-  return event.dataTransfer.getData(MEDIA_DRAG_TYPE) || undefined;
+  return libraryImageOf(event.dataTransfer);
+}
+
+/**
+ * The library image's Media id a drop's data carries, or undefined: for drop targets that get the
+ * browser's own drop event (the Notes editor).
+ */
+export function libraryImageOf(data: DataTransfer): MediaId | undefined {
+  return data.getData(MEDIA_DRAG_TYPE) || undefined;
 }
 
 /**
@@ -39,4 +47,28 @@ export function droppedMediaId(event: DragEvent): MediaId | undefined {
  */
 export function droppedFiles(event: DragEvent): File[] {
   return [...event.dataTransfer.files];
+}
+
+/**
+ * The drag type of a library audio Media of `role`: the role is in the type, so a list (the
+ * Scene's Music list) can tell during `dragover` whether it takes what is dragged over it.
+ */
+function audioDragType(role: AudioRole): string {
+  return `application/x-regie-audio-${role.toLowerCase()}`;
+}
+
+/** Starts dragging `audio` from the library. */
+export function startAudioDrag(event: DragEvent, audio: AudioMedia): void {
+  event.dataTransfer.setData(audioDragType(audio.role), audio.id);
+  event.dataTransfer.effectAllowed = 'copy';
+}
+
+/** Whether a drag carries a library audio Media of `role`. Usable during `dragover`. */
+export function carriesAudio(event: DragEvent, role: AudioRole): boolean {
+  return event.dataTransfer.types.includes(audioDragType(role));
+}
+
+/** The dragged library audio Media of `role`, on `drop`; undefined when the drag carries none. */
+export function droppedAudioId(event: DragEvent, role: AudioRole): MediaId | undefined {
+  return event.dataTransfer.getData(audioDragType(role)) || undefined;
 }

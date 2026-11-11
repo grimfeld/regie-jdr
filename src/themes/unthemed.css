@@ -1,0 +1,19 @@
+/*
+ * Colours no theme changes. The canvas (the Broadcast window, the editor canvas, the On-air
+ * monitor) shows what players see: black around the picture, whatever the theme. Themes never
+ * set these tokens (tests/unit/themeContrast.test.ts).
+ */
+:root {
+  --canvas-black: #000;
+  --canvas-label-text: #fff;
+  --canvas-label-scrim: rgb(0 0 0 / 0.6);
+  --canvas-title-text: rgb(255 255 255 / 0.72);
+  --canvas-title-shadow: rgb(0 0 0 / 0.8);
+  --canvas-handle-border: #fff;
+  --canvas-hidden-outline: rgb(255 255 255 / 0.6);
+  --monitor-badge-scrim: rgb(0 0 0 / 0.7);
+  /* Behind a Media's picture in the library, as the canvas is behind the broadcast. */
+  --image-backdrop: #111;
+  --shadow: rgba(0, 0, 0, 0.45);
+  --backdrop: rgb(0 0 0 / 75%);
+}

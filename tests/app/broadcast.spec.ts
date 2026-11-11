@@ -130,6 +130,8 @@ test('the letterbox bars are black whatever the theme', async ({ regie }) => {
       }),
     );
     expect(backgrounds).toEqual(Array(4).fill('rgb(0, 0, 0)'));
+    // No theme reaches it: theme tokens apply only under data-theme (src/themes/).
+    await expect(broadcastWindow.locator('[data-theme]')).toHaveCount(0);
     await (
       await broadcastBrowserWindow(app, broadcastWindow)
     ).evaluate((w: BrowserWindow) => {
@@ -151,13 +153,21 @@ test('Hidden placements and Labels, notes, the Scene name and Media names never 
   const [background] = scene.backgrounds;
   const [shown, hidden] = scene.overlays;
   await edit({ kind: 'set-visible', placementId: shown.id, visible: true });
+  await edit({
+    kind: 'set-notes',
+    notes: {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Le traître est le capitaine' }] },
+      ],
+    },
+  });
 
-  // Notes have no editing command yet: written as stored, with Labels and the Scene title.
+  // Labels and the Scene title, written as stored.
   const scenesFile = path.join(regie.dataDir, 'campaigns', campaignId, 'scenes.json');
   await regie.app.close();
   const stored = JSON.parse(await fs.readFile(scenesFile, 'utf8')) as { scenes: Scene[] };
   const [storedScene] = stored.scenes;
-  storedScene.notes = 'Le traître est le capitaine';
   storedScene.title = 'Le vieux moulin';
   storedScene.overlays[0].label = { text: 'Garde du moulin', visible: true };
   storedScene.overlays[1].label = { text: 'Assassin', visible: true };

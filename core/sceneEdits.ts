@@ -15,9 +15,12 @@ import type {
   NormalizedPoint,
   Overlay,
   Scene,
+  SceneAmbience,
+  TransitionKind,
 } from '../shared/domain.js';
 import { CANVAS, clampZoom } from './canvas.js';
 import { isRecord } from './guards.js';
+import { parseNotes } from './notes.js';
 
 /** A Scene error the Game Master can read (French message). */
 export class SceneError extends Error {}
@@ -139,11 +142,19 @@ export function resizedOverlay(
   };
 }
 
-/** Whether an edit places a Media (whose existence the caller checks). */
-export function placedMedia(edit: SceneEdit): MediaId | undefined {
-  return edit.kind === 'place-background' || edit.kind === 'place-overlay'
-    ? edit.mediaId
-    : undefined;
+/**
+ * The Media an edit adds to the Scene and what that Media must be: an image for a placement,
+ * Music for the Music list, an Ambience for the Ambiences. The caller checks the library
+ * (core/onAirCommands.ts).
+ */
+export function addedMedia(
+  edit: SceneEdit,
+): { mediaId: MediaId; kind: 'image' | 'music' | 'ambience' } | undefined {
+  if (edit.kind === 'place-background' || edit.kind === 'place-overlay') {
+    return { mediaId: edit.mediaId, kind: 'image' };
+  }
+  if (edit.kind === 'add-ambience') return { mediaId: edit.mediaId, kind: 'ambience' };
+  return edit.kind === 'add-music' ? { mediaId: edit.mediaId, kind: 'music' } : undefined;
 }
 
 /**
@@ -154,7 +165,8 @@ export type PlacementTarget = 'canvas' | 'backgrounds' | 'overlays';
 
 /**
  * The edit that places `image` dropped on `target`. On the canvas, Scenery becomes a Background
- * and a Character an Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
+ * and a Character or a Reference image (a Reference placed on a Scene is then shown to the
+ * players) an Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
  * is moved to the nearest canvas edge). On a list, it becomes that type; an Overlay then goes to
  * the canvas centre. Every drag-and-drop placement (library or Explorer) goes through here.
  */
@@ -173,6 +185,7 @@ export function placementEdit(
         case 'scenery':
           return { kind: 'place-background', mediaId: image.id };
         case 'character':
+        case 'reference':
           return dropPoint
             ? {
                 kind: 'place-overlay',
@@ -334,11 +347,82 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         return { ...overlay, label: { ...overlay.label, visible } };
       });
     }
+    case 'add-music':
+      if (scene.music.includes(edit.mediaId)) {
+        throw new SceneError('Cette musique est déjà dans la scène.');
+      }
+      return { ...scene, music: [...scene.music, edit.mediaId] };
+    case 'move-music': {
+      const music = withoutMusic(scene, edit.mediaId);
+      music.splice(Math.min(edit.toIndex, music.length), 0, edit.mediaId);
+      return { ...scene, music };
+    }
+    case 'remove-music':
+      return { ...scene, music: withoutMusic(scene, edit.mediaId) };
+    case 'set-music-level':
+      return { ...scene, volumes: { ...scene.volumes, music: edit.level } };
+    case 'add-ambience':
+      if (scene.ambiences.some((item) => item.mediaId === edit.mediaId)) {
+        throw new SceneError('Cette ambiance est déjà dans la scène.');
+      }
+      return {
+        ...scene,
+        ambiences: [...scene.ambiences, { mediaId: edit.mediaId, on: false, volume: 1 }],
+      };
+    case 'remove-ambience':
+      checkAmbienceListed(scene, edit.mediaId);
+      return {
+        ...scene,
+        ambiences: scene.ambiences.filter((item) => item.mediaId !== edit.mediaId),
+      };
+    case 'set-ambience-on':
+      return withAmbience(scene, edit.mediaId, (item) => ({ ...item, on: edit.on }));
+    case 'set-ambience-volume':
+      return withAmbience(scene, edit.mediaId, (item) => ({ ...item, volume: edit.volume }));
+    case 'set-ambience-level':
+      return { ...scene, volumes: { ...scene.volumes, ambience: edit.level } };
+    case 'set-transition':
+      return { ...scene, transition: edit.transition };
+    case 'set-notes':
+      return { ...scene, notes: edit.notes };
   }
+}
+
+/** Throws a SceneError unless the Scene lists an Ambience of Media `mediaId`. */
+function checkAmbienceListed(scene: Scene, mediaId: MediaId) {
+  if (!scene.ambiences.some((item) => item.mediaId === mediaId)) {
+    throw new SceneError('Cette ambiance n’est plus dans la scène.');
+  }
+}
+
+/** The Scene with its Ambience of Media `mediaId` changed by `change`; throws if not listed. */
+function withAmbience(
+  scene: Scene,
+  mediaId: MediaId,
+  change: (item: SceneAmbience) => SceneAmbience,
+): Scene {
+  checkAmbienceListed(scene, mediaId);
+  return {
+    ...scene,
+    ambiences: scene.ambiences.map((item) => (item.mediaId === mediaId ? change(item) : item)),
+  };
+}
+
+/** The Scene's Music list without `mediaId`; a SceneError when it is not listed. */
+function withoutMusic(scene: Scene, mediaId: MediaId): MediaId[] {
+  if (!scene.music.includes(mediaId)) {
+    throw new SceneError('Cette musique n’est plus dans la scène.');
+  }
+  return scene.music.filter((item) => item !== mediaId);
 }
 
 function isId(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
+}
+
+/** Whether a value is a Transition kind: Crossfade or Cut. */
+export function isTransitionKind(value: unknown): value is TransitionKind {
+  return value === 'crossfade' || value === 'cut';
 }
 
 /** Text of a sane size for a message; the clean* functions apply the real limits. */
@@ -361,12 +445,19 @@ function isOverlayHeight(value: unknown): value is number {
 }
 
 /**
- * A transient update of a live drag from untrusted data: a transform of an Overlay or a
- * framing of a Background, keeping only its fields; or undefined.
+ * A transient update of a live drag from untrusted data: a transform of an Overlay, a framing
+ * of a Background, a Scene's Music or Ambience level or an Ambience's volume, keeping only its
+ * fields; or undefined.
  */
 export function parseTransientEdit(value: unknown): TransientEdit | undefined {
   const edit = parseSceneEdit(value);
-  return edit?.kind === 'transform-overlay' || edit?.kind === 'frame-background' ? edit : undefined;
+  const transient =
+    edit?.kind === 'transform-overlay' ||
+    edit?.kind === 'frame-background' ||
+    edit?.kind === 'set-music-level' ||
+    edit?.kind === 'set-ambience-level' ||
+    edit?.kind === 'set-ambience-volume';
+  return transient ? edit : undefined;
 }
 
 /** A SceneEdit from untrusted data (a window message), keeping only its fields; or undefined. */
@@ -452,6 +543,37 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
     case 'set-label-visible':
       if (!isId(value.overlayId) || typeof value.visible !== 'boolean') return undefined;
       return { kind: 'set-label-visible', overlayId: value.overlayId, visible: value.visible };
+    case 'add-music':
+      return isId(value.mediaId) ? { kind: 'add-music', mediaId: value.mediaId } : undefined;
+    case 'add-ambience':
+    case 'remove-ambience':
+      return isId(value.mediaId) ? { kind: value.kind, mediaId: value.mediaId } : undefined;
+    case 'set-ambience-on':
+      if (!isId(value.mediaId) || typeof value.on !== 'boolean') return undefined;
+      return { kind: 'set-ambience-on', mediaId: value.mediaId, on: value.on };
+    case 'set-ambience-volume':
+      if (!isId(value.mediaId) || !isUnit(value.volume)) return undefined;
+      return { kind: 'set-ambience-volume', mediaId: value.mediaId, volume: value.volume };
+    case 'set-ambience-level':
+      return isUnit(value.level) ? { kind: 'set-ambience-level', level: value.level } : undefined;
+    case 'move-music': {
+      const { mediaId, toIndex } = value;
+      if (!isId(mediaId) || typeof toIndex !== 'number') return undefined;
+      if (!Number.isSafeInteger(toIndex) || toIndex < 0) return undefined;
+      return { kind: 'move-music', mediaId, toIndex };
+    }
+    case 'remove-music':
+      return isId(value.mediaId) ? { kind: 'remove-music', mediaId: value.mediaId } : undefined;
+    case 'set-music-level':
+      return isUnit(value.level) ? { kind: 'set-music-level', level: value.level } : undefined;
+    case 'set-transition':
+      return isTransitionKind(value.transition)
+        ? { kind: 'set-transition', transition: value.transition }
+        : undefined;
+    case 'set-notes': {
+      const notes = parseNotes(value.notes);
+      return notes && { kind: 'set-notes', notes };
+    }
     default:
       return undefined;
   }

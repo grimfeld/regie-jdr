@@ -5,13 +5,14 @@ import {
   MAX_OVERLAY_HEIGHT,
   MIN_OVERLAY_HEIGHT,
   nudgedPosition,
-  parseTransientEdit,
   parseSceneEdit,
+  parseTransientEdit,
   placementEdit,
   resizedOverlay,
 } from '../../core/sceneEdits';
 import type { SceneEdit } from '../../shared/contract';
 import type { ImageCategory, ImageMedia, Scene } from '../../shared/domain';
+import { emptyNotes, notesFromPlainText } from '../../core/notes';
 
 const empty: Scene = {
   id: 's1',
@@ -23,7 +24,8 @@ const empty: Scene = {
   music: [],
   ambiences: [],
   volumes: { music: 1, ambience: 1 },
-  notes: '',
+  notes: emptyNotes(),
+  transition: 'crossfade',
 };
 
 /** Applies edits in order, naming new placements p1, p2, ... */
@@ -200,6 +202,211 @@ describe('Scene edit commands', () => {
   });
 });
 
+describe('Scene Transition', () => {
+  it('sets the entry Transition to Cut and back to Crossfade, leaving the rest of the Scene', () => {
+    const cut = applyAll(empty, { kind: 'set-transition', transition: 'cut' });
+    expect(cut).toEqual({ ...empty, transition: 'cut' });
+    expect(applyAll(cut, { kind: 'set-transition', transition: 'crossfade' })).toEqual(empty);
+  });
+
+  it('reads a Transition edit from a window message, keeping only its fields', () => {
+    expect(parseSceneEdit({ kind: 'set-transition', transition: 'cut', x: 1 })).toEqual({
+      kind: 'set-transition',
+      transition: 'cut',
+    });
+    expect(parseSceneEdit({ kind: 'set-transition', transition: 'wipe' })).toBeUndefined();
+    expect(parseSceneEdit({ kind: 'set-transition' })).toBeUndefined();
+    expect(parseTransientEdit({ kind: 'set-transition', transition: 'cut' })).toBeUndefined();
+  });
+});
+
+describe('Scene Notes', () => {
+  const notes = notesFromPlainText('Le traître\nest le capitaine');
+
+  it('replaces the Notes, leaving the rest of the Scene', () => {
+    expect(applyAll(empty, { kind: 'set-notes', notes })).toEqual({ ...empty, notes });
+  });
+
+  it('reads Notes from a window message, keeping only allowed content', () => {
+    expect(parseSceneEdit({ kind: 'set-notes', notes, x: 1 })).toEqual({
+      kind: 'set-notes',
+      notes,
+    });
+    expect(parseSceneEdit({ kind: 'set-notes', notes: 'texte' })).toBeUndefined();
+    expect(parseSceneEdit({ kind: 'set-notes' })).toBeUndefined();
+    expect(
+      parseSceneEdit({
+        kind: 'set-notes',
+        notes: { type: 'doc', content: [{ type: 'table', content: [] }] },
+      }),
+    ).toBeUndefined();
+  });
+
+  it('is never a transient update', () => {
+    expect(parseTransientEdit({ kind: 'set-notes', notes })).toBeUndefined();
+  });
+});
+
+describe('Scene Music list', () => {
+  it('adds Music at the end of the list, each Media once', () => {
+    const listed = applyAll(
+      empty,
+      { kind: 'add-music', mediaId: 'm1' },
+      { kind: 'add-music', mediaId: 'm2' },
+    );
+    expect(listed.music).toEqual(['m1', 'm2']);
+    expect(() => applyAll(listed, { kind: 'add-music', mediaId: 'm1' })).toThrow(
+      'Cette musique est déjà dans la scène.',
+    );
+  });
+
+  it('refuses a malformed add-music message', () => {
+    expect(parseSceneEdit({ kind: 'add-music', mediaId: '' })).toBeUndefined();
+    expect(parseSceneEdit({ kind: 'add-music' })).toBeUndefined();
+  });
+
+  const three = { ...empty, music: ['m1', 'm2', 'm3'] };
+
+  it('moves a Music to another place in the list, a move past the end going last', () => {
+    expect(applyAll(three, { kind: 'move-music', mediaId: 'm3', toIndex: 0 }).music).toEqual([
+      'm3',
+      'm1',
+      'm2',
+    ]);
+    expect(applyAll(three, { kind: 'move-music', mediaId: 'm1', toIndex: 1 }).music).toEqual([
+      'm2',
+      'm1',
+      'm3',
+    ]);
+    expect(applyAll(three, { kind: 'move-music', mediaId: 'm1', toIndex: 9 }).music).toEqual([
+      'm2',
+      'm3',
+      'm1',
+    ]);
+  });
+
+  it('removes a Music, leaving the others in order', () => {
+    expect(applyAll(three, { kind: 'remove-music', mediaId: 'm2' }).music).toEqual(['m1', 'm3']);
+  });
+
+  it('refuses to move or remove a Music that is not listed, in French', () => {
+    for (const edit of [
+      { kind: 'move-music', mediaId: 'm9', toIndex: 0 },
+      { kind: 'remove-music', mediaId: 'm9' },
+    ] as const) {
+      expect(() => applyAll(three, edit)).toThrow('Cette musique n’est plus dans la scène.');
+    }
+  });
+
+  it('sets the Scene Music level, leaving the Ambience level', () => {
+    const quiet = applyAll(
+      { ...empty, volumes: { music: 1, ambience: 0.7 } },
+      { kind: 'set-music-level', level: 0.25 },
+    );
+    expect(quiet.volumes).toEqual({ music: 0.25, ambience: 0.7 });
+  });
+
+  it.each([
+    ['a move to no place', { kind: 'move-music', mediaId: 'm1', toIndex: -1 }],
+    ['a move to half a place', { kind: 'move-music', mediaId: 'm1', toIndex: 0.5 }],
+    ['a move of no Music', { kind: 'move-music', toIndex: 0 }],
+    ['a removal of no Music', { kind: 'remove-music', mediaId: '' }],
+    ['a level above 1', { kind: 'set-music-level', level: 1.5 }],
+    ['a level below 0', { kind: 'set-music-level', level: -0.1 }],
+    ['a level as text', { kind: 'set-music-level', level: '0.5' }],
+    ['no level', { kind: 'set-music-level', level: NaN }],
+  ])('refuses %s', (_case, value) => {
+    expect(parseSceneEdit(value)).toBeUndefined();
+  });
+
+  it('keeps only the fields of Music edits from a window message', () => {
+    expect(parseSceneEdit({ kind: 'move-music', mediaId: 'm1', toIndex: 2, x: 1 })).toEqual({
+      kind: 'move-music',
+      mediaId: 'm1',
+      toIndex: 2,
+    });
+    expect(parseSceneEdit({ kind: 'remove-music', mediaId: 'm1', toIndex: 2 })).toEqual({
+      kind: 'remove-music',
+      mediaId: 'm1',
+    });
+    expect(parseSceneEdit({ kind: 'set-music-level', level: 0, mediaId: 'm1' })).toEqual({
+      kind: 'set-music-level',
+      level: 0,
+    });
+  });
+});
+
+describe('Scene Ambiences', () => {
+  const listed = applyAll(
+    empty,
+    { kind: 'add-ambience', mediaId: 'a1' },
+    { kind: 'add-ambience', mediaId: 'a2' },
+  );
+
+  it('adds Ambiences at the end of the list, switched off at full volume, each Media once', () => {
+    expect(listed.ambiences).toEqual([
+      { mediaId: 'a1', on: false, volume: 1 },
+      { mediaId: 'a2', on: false, volume: 1 },
+    ]);
+    expect(() => applyAll(listed, { kind: 'add-ambience', mediaId: 'a1' })).toThrow(
+      'Cette ambiance est déjà dans la scène.',
+    );
+  });
+
+  it('switches one Ambience on or off and sets its volume, leaving the others as they are', () => {
+    const changed = applyAll(
+      listed,
+      { kind: 'set-ambience-on', mediaId: 'a2', on: true },
+      { kind: 'set-ambience-volume', mediaId: 'a2', volume: 0.25 },
+    );
+    expect(changed.ambiences).toEqual([
+      { mediaId: 'a1', on: false, volume: 1 },
+      { mediaId: 'a2', on: true, volume: 0.25 },
+    ]);
+    expect(
+      applyAll(changed, { kind: 'set-ambience-on', mediaId: 'a2', on: false }).ambiences[1],
+    ).toEqual({ mediaId: 'a2', on: false, volume: 0.25 });
+  });
+
+  it('removes an Ambience', () => {
+    expect(applyAll(listed, { kind: 'remove-ambience', mediaId: 'a1' }).ambiences).toEqual([
+      { mediaId: 'a2', on: false, volume: 1 },
+    ]);
+  });
+
+  it('sets the Scene Ambience level, leaving the Music level as it is', () => {
+    const scene = { ...listed, volumes: { music: 0.7, ambience: 1 } };
+    expect(applyAll(scene, { kind: 'set-ambience-level', level: 0.4 }).volumes).toEqual({
+      music: 0.7,
+      ambience: 0.4,
+    });
+  });
+
+  it('refuses an edit of an Ambience the Scene does not list, in French', () => {
+    const edits: SceneEdit[] = [
+      { kind: 'remove-ambience', mediaId: 'a9' },
+      { kind: 'set-ambience-on', mediaId: 'a9', on: true },
+      { kind: 'set-ambience-volume', mediaId: 'a9', volume: 0.5 },
+    ];
+    for (const edit of edits) {
+      expect(() => applyAll(listed, edit)).toThrow('Cette ambiance n’est plus dans la scène.');
+    }
+  });
+
+  it('refuses malformed Ambience messages', () => {
+    const malformed: unknown[] = [
+      { kind: 'add-ambience', mediaId: '' },
+      { kind: 'remove-ambience' },
+      { kind: 'set-ambience-on', mediaId: 'a1', on: 'yes' },
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: 1.5 },
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: Number.NaN },
+      { kind: 'set-ambience-level', level: -0.1 },
+      { kind: 'set-ambience-level' },
+    ];
+    for (const message of malformed) expect(parseSceneEdit(message)).toBeUndefined();
+  });
+});
+
 describe('Overlay transform commands', () => {
   const placed = applyAll(
     empty,
@@ -344,6 +551,7 @@ function image(category: ImageCategory): ImageMedia {
     originalName: category,
     name: category,
     extension: '.png',
+    favourite: false,
   };
 }
 
@@ -360,6 +568,14 @@ describe('Placing a dropped image', () => {
       kind: 'place-overlay',
       mediaId: 'm-character',
       position: { x: 0.2, y: 0.3 },
+    });
+  });
+
+  it('on the canvas, places a Reference image as an Overlay centred on the drop point', () => {
+    expect(placementEdit(image('reference'), 'canvas', { x: 0.6, y: 0.4 })).toEqual({
+      kind: 'place-overlay',
+      mediaId: 'm-reference',
+      position: { x: 0.6, y: 0.4 },
     });
   });
 
@@ -435,6 +651,30 @@ describe('Scene edit commands from a window message', () => {
       { kind: 'set-label-visible', overlayId: 'p1', visible: true },
     ],
     [
+      { kind: 'add-music', mediaId: 'm1', toIndex: 0 },
+      { kind: 'add-music', mediaId: 'm1' },
+    ],
+    [
+      { kind: 'add-ambience', mediaId: 'a1', on: true },
+      { kind: 'add-ambience', mediaId: 'a1' },
+    ],
+    [
+      { kind: 'remove-ambience', mediaId: 'a1', volume: 1 },
+      { kind: 'remove-ambience', mediaId: 'a1' },
+    ],
+    [
+      { kind: 'set-ambience-on', mediaId: 'a1', on: true, volume: 1 },
+      { kind: 'set-ambience-on', mediaId: 'a1', on: true },
+    ],
+    [
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: 0, on: true },
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: 0 },
+    ],
+    [
+      { kind: 'set-ambience-level', level: 1, mediaId: 'a1' },
+      { kind: 'set-ambience-level', level: 1 },
+    ],
+    [
       { kind: 'set-title', title: 'Le vieux moulin', name: 'x' },
       { kind: 'set-title', title: 'Le vieux moulin' },
     ],
@@ -507,19 +747,24 @@ describe('Scene edit commands from a window message', () => {
     expect(parseSceneEdit(value)).toBeUndefined();
   });
 
-  it('accept only a transform or a framing as a transient update of a live drag', () => {
+  it('accept only a transform, a framing or a Music level as a transient update', () => {
     const move = { kind: 'transform-overlay', placementId: 'p1', position: { x: 0.2, y: 0.3 } };
     expect(parseTransientEdit({ ...move, extra: 1 })).toEqual(move);
     const resize = { ...move, height: 0.2 };
     expect(parseTransientEdit(resize)).toEqual(resize);
     const framing = { kind: 'frame-background', placementId: 'b1', zoom: 2, focus: { x: 0.3 } };
     expect(parseTransientEdit({ ...framing, extra: 1 })).toEqual(framing);
+    expect(parseTransientEdit({ kind: 'set-music-level', level: 0.5 })).toEqual({
+      kind: 'set-music-level',
+      level: 0.5,
+    });
     expect(
       parseTransientEdit({ kind: 'set-visible', placementId: 'p1', visible: true }),
     ).toBeUndefined();
     expect(
       parseTransientEdit({ kind: 'move-overlay', placementId: 'p1', toIndex: 0 }),
     ).toBeUndefined();
+    expect(parseTransientEdit({ kind: 'remove-music', mediaId: 'm1' })).toBeUndefined();
   });
 });
 

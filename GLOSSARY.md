@@ -148,6 +148,14 @@ A temporary on-air fade-out of all audio, leaving the Active Scene and the pictu
 UI: Silence
 _Avoid_: Stop all, mute, panic
 
+**Mix**:
+What should be heard from the Active Scene at a given moment: its current Music and its switched-on Ambiences, each at its level (the Master volume, the Scene's Music or Ambience level and the Ambience's own volume combined). Silence keeps the mix and only makes it quiet. Pad sounds of the Soundboard play beside the mix, not in it.
+_Avoid_: Playlist, bus, channel, output
+
+**Voice**:
+One sound of the mix: the current Music or one switched-on Ambience, known by its Media. A Media in both the outgoing and the incoming mix is the same voice, so it plays on and only changes level.
+_Avoid_: Track, layer, channel, instance
+
 **Soundboard**:
 A Campaign's set of pads for triggering Sound effects during play, available whichever Scene is active, or none.
 UI: Table de bruitages

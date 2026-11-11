@@ -6,20 +6,71 @@
  * Adding a channel: see the checklist in core/ipc.ts.
  */
 import type {
+  AudioEngineReport,
+  AudioMix,
   AudioRole,
+  AudioSounding,
   BackgroundFit,
   Campaign,
   CampaignId,
+  Chapter,
+  ChapterId,
   ImageCategory,
   Media,
   MediaId,
+  MusicPlayback,
   NormalizedPoint,
+  NotesDocument,
   OnAirState,
+  PadCommand,
+  PadReport,
   Scene,
   SceneId,
   Settings,
+  ShortcutSettings,
+  Soundboard,
   ThemeId,
+  TransitionKind,
 } from './domain.js';
+
+/**
+ * How to Activate a Scene. `forceCut`: a Cut this once, whatever the Scene's own Transition
+ * (Shift held on Activate); the Scene's Transition stays as it is.
+ */
+export interface ActivateOptions {
+  forceCut?: boolean;
+}
+
+/**
+ * A Campaign's running order: every Scene id in order (the Scenes of each Chapter, Chapter by
+ * Chapter, then the Scenes in no Chapter), and its Chapters.
+ */
+export interface RunningOrder {
+  sceneIds: SceneId[];
+  chapters: Chapter[];
+}
+
+/**
+ * One Campaign-level command on the running order (core/runningOrder.ts). Never in any Scene's
+ * undo history: it changes no Scene.
+ */
+export type RunningOrderEdit =
+  /** Adds an empty, expanded Chapter after the others. */
+  | { kind: 'create-chapter'; name: string }
+  | { kind: 'rename-chapter'; chapterId: ChapterId; name: string }
+  /** Moves a Chapter to `toIndex` among the Chapters (past the end means last). */
+  | { kind: 'move-chapter'; chapterId: ChapterId; toIndex: number }
+  /** Deletes a Chapter; its Scenes, in their order, become the first Scenes in no Chapter. */
+  | { kind: 'delete-chapter'; chapterId: ChapterId }
+  | { kind: 'set-chapter-collapsed'; chapterId: ChapterId; collapsed: boolean }
+  /**
+   * Moves a Scene into the Chapter `chapterId` (null: into no Chapter), at `toIndex` among that
+   * group's Scenes: it takes the place of the Scene there (past the end means last).
+   */
+  | { kind: 'move-scene'; sceneId: SceneId; chapterId: ChapterId | null; toIndex: number };
+
+/** A way through the running order: towards its end (`next`) or its start (`previous`). */
+export type SceneDirection = 'next' | 'previous';
 
 /**
  * One edit command on a Scene's composition, applied by the app core (core/sceneEdits.ts).
@@ -82,7 +133,70 @@ export type SceneEdit =
    */
   | { kind: 'set-label-text'; overlayId: string; text: string }
   /** Shows or hides an Overlay's Label, independently of the Overlay. */
-  | { kind: 'set-label-visible'; overlayId: string; visible: boolean };
+  | { kind: 'set-label-visible'; overlayId: string; visible: boolean }
+  /**
+   * Adds a Music Media at the end of the Scene's Music list. A Media is listed once: adding one
+   * already listed is refused.
+   */
+  | { kind: 'add-music'; mediaId: MediaId }
+  /**
+   * Moves a Music to `toIndex` in the Scene's Music list (0 is the first, which plays on
+   * Activate; past the end goes last).
+   */
+  | { kind: 'move-music'; mediaId: MediaId; toIndex: number }
+  /** Removes a Music from the Scene's Music list; if it was sounding, it stops. */
+  | { kind: 'remove-music'; mediaId: MediaId }
+  /** Sets the Scene's Music level (0..1). */
+  | { kind: 'set-music-level'; level: number }
+  /**
+   * Adds an Ambience Media at the end of the Scene's Ambiences, switched off at full volume, so
+   * adding one never makes a sound. A Media is listed once: adding one already listed is refused.
+   */
+  | { kind: 'add-ambience'; mediaId: MediaId }
+  /** Removes an Ambience from the Scene. */
+  | { kind: 'remove-ambience'; mediaId: MediaId }
+  /** Switches an Ambience on or off; on the Active Scene it fades in or out. */
+  | { kind: 'set-ambience-on'; mediaId: MediaId; on: boolean }
+  /** Sets an Ambience's own volume (0..1). */
+  | { kind: 'set-ambience-volume'; mediaId: MediaId; volume: number }
+  /** Sets the Scene's Ambience level (0..1), which applies to all its Ambiences. */
+  | { kind: 'set-ambience-level'; level: number }
+  /** Sets the Scene's entry Transition: how its picture comes in when it is Activated. */
+  | { kind: 'set-transition'; transition: TransitionKind }
+  /**
+   * Replaces the Scene's Notes (sent as the Game Master types). Never on air, and never in the
+   * Scene undo history: the Notes editor has its own undo and redo.
+   */
+  | { kind: 'set-notes'; notes: NotesDocument };
+
+/** An edit the Scene undo history records: every Scene edit but Notes. */
+export type SceneHistoryEdit = Exclude<SceneEdit, { kind: 'set-notes' }>;
+
+/**
+ * One edit of a Campaign's Soundboard (core/soundboard.ts), saved at once. Never in an undo
+ * history: undo is about Scene composition.
+ */
+export type SoundboardEdit =
+  /** Adds a pad for a Sound effect, after the others, at full volume, named after it. */
+  | { kind: 'add-pad'; mediaId: MediaId }
+  /** Names a pad; '' gives it back its Sound effect's name. */
+  | { kind: 'rename-pad'; padId: string; label: string }
+  /** Moves a pad to `toIndex` in the pad order (0 is the first; past the end is the last). */
+  | { kind: 'move-pad'; padId: string; toIndex: number }
+  | { kind: 'remove-pad'; padId: string }
+  /** Sets a pad's volume, 0..1. */
+  | { kind: 'set-pad-volume'; padId: string; volume: number }
+  /** Sets the Soundboard level, 0..1, applied to every pad. */
+  | { kind: 'set-level'; volume: number };
+
+/**
+ * A Soundboard level or pad volume being dragged: the pad sounds still sounding take it at
+ * once, nothing is saved. The drag ends with the same edit through `soundboard:edit`.
+ */
+export type SoundboardLevel = Extract<
+  SoundboardEdit,
+  { kind: 'set-level' } | { kind: 'set-pad-volume' }
+>;
 
 /**
  * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
@@ -93,11 +207,21 @@ export type OverlayTransform = Extract<SceneEdit, { kind: 'transform-overlay' }>
 /** A Background's zoom or focal point being chosen with a slider: shown and sent like a drag. */
 export type BackgroundFraming = Extract<SceneEdit, { kind: 'frame-background' }>;
 
+/** A Scene's Music level being dragged: heard on the Active Scene, never saved. */
+export type MusicLevel = Extract<SceneEdit, { kind: 'set-music-level' }>;
+
+/** A Scene's Ambience level or one Ambience's volume being dragged: heard like a MusicLevel. */
+export type AmbienceLevel = Extract<
+  SceneEdit,
+  { kind: 'set-ambience-level' } | { kind: 'set-ambience-volume' }
+>;
+
 /**
- * A transient update of a live drag (an Overlay moved or resized, a framing slider dragged):
- * shown on air on the Active Scene, never saved.
+ * A transient update of a live drag (an Overlay moved or resized, a framing or level slider
+ * dragged): shown or heard on the Active Scene, never saved nor undoable. The drag's end is
+ * sent as the same edit through `scenes:edit`, one undo step.
  */
-export type TransientEdit = OverlayTransform | BackgroundFraming;
+export type TransientEdit = OverlayTransform | BackgroundFraming | MusicLevel | AmbienceLevel;
 
 /**
  * What can be undone and redone on a Scene: the French label of the next undo and of the next
@@ -108,8 +232,12 @@ export interface UndoState {
   redo: string | null;
 }
 
-/** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
-export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
+/**
+ * What an import accepts: images, with the category new images get (Scenery when absent; images
+ * already in the library keep theirs), or audio with the role (fixed) every imported file gets.
+ */
+export type MediaImportKind =
+  { accept: 'image'; category?: ImageCategory } | { accept: 'audio'; role: AudioRole };
 
 export interface MediaImportResult {
   /** One Media per accepted file, in order; content already in the Campaign gives its Media. */
@@ -119,13 +247,41 @@ export interface MediaImportResult {
 }
 
 /**
- * Outcome of deleting a Media. Media that Scenes use is only deleted once the Game Master
- * confirms: until then `deleted` is false and `affectedScenes` lists the Scenes using it.
- * Once deleted, `affectedScenes` lists the Scenes whose placements were removed.
+ * Outcome of deleting a Media. Media that Scenes or Soundboard pads use is only deleted once
+ * the Game Master confirms: until then `deleted` is false and `affectedScenes` and
+ * `affectedPads` list its uses. Once deleted, they list the Scenes whose placements were
+ * removed and the pads removed.
  */
 export interface MediaDeletion {
   deleted: boolean;
+  /** Scenes placing the Media (Background, Overlay, music, Ambience). */
   affectedScenes: { id: SceneId; name: string }[];
+  /** Soundboard pads, by their name (their own, or their Sound effect's). */
+  affectedPads: { id: string; name: string }[];
+  /** Scenes whose Notes show the Media as an image. */
+  affectedNotes: { id: SceneId; name: string }[];
+}
+
+/**
+ * What an Export did: nothing when the Game Master cancelled the save dialog, or `cancelled`
+ * when they cancelled the Export itself (no file left); else the number of Media left out
+ * because their file is missing on disk.
+ */
+export type CampaignExportResult =
+  { saved: false; cancelled: boolean } | { saved: true; missingMedia: number };
+
+/**
+ * What an Import did: nothing when the Game Master cancelled the file dialog, or `cancelled` when
+ * they cancelled the Import itself (no Campaign added); else the new Campaign.
+ */
+export type CampaignImportResult =
+  { imported: false; cancelled: boolean } | { imported: true; campaign: Campaign };
+
+/** An Export or Import under way, in bytes; `totalBytes` is 0 when there is nothing to count. */
+export interface CampaignTransferProgress {
+  kind: 'export' | 'import';
+  doneBytes: number;
+  totalBytes: number;
 }
 
 /** What can be changed on a Campaign; absent fields are left as they are. */
@@ -133,6 +289,23 @@ export interface CampaignChanges {
   name?: string;
   theme?: ThemeId;
 }
+
+/** What deleting a Campaign takes away, for the Game Master's confirmation. */
+export interface CampaignDeletionSummary {
+  id: CampaignId;
+  name: string;
+  sceneCount: number;
+  mediaCount: number;
+  /** Size of the Campaign's folder on disk, in bytes. */
+  sizeBytes: number;
+}
+
+/**
+ * Outcome of moving a Campaign to the Recycle Bin. When the Recycle Bin refuses it (network
+ * drive, locked file), nothing is deleted and `reason` says why, in French; only then may the
+ * Game Master ask for a permanent delete.
+ */
+export type CampaignTrashing = { deleted: true } | { deleted: false; reason: string };
 
 /**
  * Request/response channels (`ipcRenderer.invoke`). `payload: void` means the call takes no
@@ -145,17 +318,44 @@ export interface InvokeChannels {
   'onAir:open-campaign': { payload: { campaignId: CampaignId }; result: OnAirState };
   /** Close the open Campaign: nothing is on air. */
   'onAir:close-campaign': { payload: void; result: OnAirState };
-  /** Activate a Scene of the open Campaign: it goes on air. Fails if no Campaign is open. */
-  'onAir:activate-scene': { payload: { sceneId: SceneId }; result: OnAirState };
+  /**
+   * Activate a Scene of the open Campaign: it goes on air, with its own Transition or, when
+   * `forceCut`, a Cut (the Scene's Transition stays as it is). Fails if no Campaign is open.
+   */
+  'onAir:activate-scene': {
+    payload: { sceneId: SceneId } & ActivateOptions;
+    result: OnAirState;
+  };
+  /**
+   * Activate the Scene after or before the Active Scene in the running order (the first when
+   * nothing is on air), resolved in the main process in turn with the other commands: two quick
+   * presses advance two Scenes. Past either end, nothing changes. Fails if no Campaign is open.
+   */
+  'onAir:activate-next': {
+    payload: { direction: SceneDirection } & ActivateOptions;
+    result: OnAirState;
+  };
   /**
    * Start (`on`) or end Blackout: the broadcast fades to black, the Active Scene is unchanged.
    * Fails if no Campaign is open.
    */
   'onAir:set-blackout': { payload: { on: boolean }; result: OnAirState };
-  /** The Scenes of a Campaign, in creation order. */
+  /**
+   * Start Blackout when it is off, end it when it is on, decided in the main process from the
+   * state the commands before left: two quick presses start then end it. Fails if no Campaign
+   * is open.
+   */
+  'onAir:toggle-blackout': { payload: void; result: OnAirState };
+  /** The Scenes of a Campaign, in running order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
-  /** Create an empty Scene; fails with a French message for an empty name. */
-  'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
+  /**
+   * Create an empty Scene, last in the Chapter of `selectedSceneId` (the Selected Scene), or last
+   * in no Chapter when it has none; fails with a French message for an empty name.
+   */
+  'scenes:create': {
+    payload: { campaignId: CampaignId; name: string; selectedSceneId?: SceneId };
+    result: Scene;
+  };
   /**
    * Apply one edit command to a Scene (core/sceneEdits.ts) and get the Scene as saved. On the
    * Active Scene the edit goes on air at once; any other Scene stays private.
@@ -165,8 +365,8 @@ export interface InvokeChannels {
     result: Scene;
   };
   /**
-   * Show a transient update of a live drag: on the Active Scene, the broadcast shows the Scene
-   * with `edit` applied, without saving it (nor adding an undo step); on any other Scene it does
+   * Show a transient update of a live drag: on the Active Scene, the broadcast shows (or the
+   * mix plays) the Scene with `edit` applied, without saving it (nor adding an undo step); on any other Scene it does
    * nothing. The window sends at most one per animation frame, then commits the drag's end
    * with `scenes:edit`.
    */
@@ -188,6 +388,23 @@ export interface InvokeChannels {
    * stays on air. The window asks the Game Master to confirm first.
    */
   'scenes:delete': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: void };
+  /** The Campaign's running order: its Scene ids in order and its Chapters. */
+  'scenes:running-order': { payload: { campaignId: CampaignId }; result: RunningOrder };
+  /**
+   * Apply one command to the Campaign's running order (Chapters, a Scene's place) and get the
+   * running order as saved. A Campaign-level command: it changes no Scene and is not in any
+   * Scene's undo history.
+   */
+  'scenes:edit-running-order': {
+    payload: { campaignId: CampaignId; edit: RunningOrderEdit };
+    result: RunningOrder;
+  };
+  /**
+   * Save an independent copy of a Scene, named "<name> (copie)", right after it in the running
+   * order (in its Chapter), and get the copy. It reuses the same Media, never goes on air by itself, and is not
+   * an undo step (the copy starts with an empty undo history).
+   */
+  'scenes:duplicate': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
   /**
@@ -206,17 +423,33 @@ export interface InvokeChannels {
     result: MediaImportResult;
   };
   /**
-   * Import image files the Game Master dropped from outside the app (Windows Explorer) into the
-   * Campaign's library, like `media:import` with `accept: 'image'`. `files` are the dropped
-   * files' absolute paths, which only the Control window's bridge reads off the drop.
+   * Import files the Game Master dropped from outside the app (Windows Explorer) into the
+   * Campaign's library, like `media:import`: images, or audio with the role chosen for the drop.
+   * `files` are the dropped files' absolute paths, which only the Control window's bridge reads
+   * off the drop.
    */
   'media:import-dropped': {
-    payload: { campaignId: CampaignId; files: string[] };
+    payload: { campaignId: CampaignId; files: string[] } & MediaImportKind;
+    result: MediaImportResult;
+  };
+  /**
+   * Import an image the Game Master pasted into the Notes, as a Reference image: `data` is the
+   * pasted file's content, `name` its name. Untrusted: the main process reads the type from the
+   * content (PNG, JPEG or WebP) and refuses anything else or anything larger than
+   * MAX_PASTED_IMAGE_BYTES (core/mediaAddress.ts). Content already in the library gives its Media.
+   */
+  'media:import-pasted': {
+    payload: { campaignId: CampaignId; data: Uint8Array; name: string };
     result: MediaImportResult;
   };
   /** Change an image's category. Fails for audio: its role is fixed at import. */
   'media:set-category': {
     payload: { campaignId: CampaignId; mediaId: MediaId; category: ImageCategory };
+    result: Media;
+  };
+  /** Star (`favourite` true) or unstar an image or a sound, for the library's "Favoris" filter. */
+  'media:set-favourite': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; favourite: boolean };
     result: Media;
   };
   /**
@@ -228,8 +461,9 @@ export interface InvokeChannels {
     result: Media;
   };
   /**
-   * Delete a Media. Unused Media is deleted at once. Media that Scenes use is deleted only
-   * when `confirmed`; otherwise nothing changes and the result lists the Scenes using it.
+   * Delete a Media. Unused Media is deleted at once. Media that Scenes (placements or Notes
+   * images) or Soundboard pads use is deleted only when `confirmed`; otherwise nothing changes
+   * and the result lists its uses.
    */
   'media:delete': {
     payload: { campaignId: CampaignId; mediaId: MediaId; confirmed: boolean };
@@ -242,13 +476,51 @@ export interface InvokeChannels {
   /** Rename a Campaign or change its theme. */
   'campaigns:update': { payload: { id: CampaignId; changes: CampaignChanges }; result: Campaign };
   /**
+   * What deleting a closed Campaign would take away: its name, Scene and Media counts and size on
+   * disk. Fails for the open Campaign or anything that is not a Campaign.
+   */
+  'campaigns:deletion-summary': { payload: { id: CampaignId }; result: CampaignDeletionSummary };
+  /**
+   * Move a closed Campaign's folder to the Windows Recycle Bin and forget its Settings entries.
+   * The window asks the Game Master to confirm first. Never deletes permanently by itself.
+   */
+  'campaigns:move-to-trash': { payload: { id: CampaignId }; result: CampaignTrashing };
+  /**
+   * Delete a closed Campaign's folder for good, after the Recycle Bin refused it and the Game
+   * Master confirmed a second time. Fails unless the Recycle Bin refused that Campaign.
+   */
+  'campaigns:delete-permanently': { payload: { id: CampaignId }; result: void };
+  /**
+   * Export a closed Campaign to a `.zip` (ADR-0005), saved where the Game Master picks in the
+   * native save dialog (the window never names files). Fails for the open Campaign.
+   */
+  'campaigns:export': { payload: { id: CampaignId }; result: CampaignExportResult };
+  /**
+   * Import a Campaign from a `.zip` Export (ADR-0005), picked in the native open dialog (the
+   * window never names files). Always a new Campaign; fails, leaving nothing behind, for a zip
+   * that is refused.
+   */
+  'campaigns:import': { payload: void; result: CampaignImportResult };
+  /**
+   * Import a Campaign from an Export the Game Master dropped from Windows Explorer, like
+   * `campaigns:import`. The path comes from the dropped file (the page never names one); the main
+   * process treats it as untrusted, refusing network shares, device paths and non-zip files.
+   */
+  'campaigns:import-dropped': { payload: { file: string }; result: CampaignImportResult };
+  /**
+   * Cancel the Export or Import under way, if any: it stops and leaves nothing behind, and its
+   * own call resolves as cancelled.
+   */
+  'campaigns:cancel-transfer': { payload: void; result: void };
+  /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
    */
   'notices:take': { payload: void; result: string[] };
   /**
    * The global Settings: home page theme, window bounds, each Campaign's last Active Scene
-   * (for highlighting only: nothing goes on air after a restart) and the fade duration.
+   * (for highlighting only: nothing goes on air after a restart), the fade duration, the Master
+   * volume, the Activate duration and the Music crossfade duration.
    */
   'settings:get': { payload: void; result: Settings };
   /** Change the theme of the Campaign list home page. */
@@ -258,14 +530,95 @@ export interface InvokeChannels {
    * through the on-air state.
    */
   'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
+  /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
+  'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
+  /**
+   * Change the Activate duration (milliseconds, bounds in core/fades.ts): the next Activate
+   * with a Crossfade dissolves the picture and fades the audio over it.
+   */
+  'settings:set-activate-duration': { payload: { activateDurationMs: number }; result: Settings };
+  /**
+   * Change the Music crossfade duration (milliseconds, bounds in core/fades.ts): the next track
+   * picked crossfades over it.
+   */
+  'settings:set-music-crossfade': { payload: { musicCrossfadeMs: number }; result: Settings };
+  /**
+   * Keep the Broadcast window above other windows, or stop: saved, and applied to the open
+   * Broadcast window and to every one opened later. Set from the Control window only: the
+   * Broadcast window has no controls.
+   */
+  'settings:set-broadcast-always-on-top': { payload: { on: boolean }; result: Settings };
+  /**
+   * Save the Game Master's shortcut keys (core/keyMap.ts), all of them at once. Refused if a
+   * key is reserved or does two things.
+   */
+  'settings:set-shortcuts': { payload: { shortcuts: ShortcutSettings }; result: Settings };
+  /**
+   * The current mix, for the audio engine (on start and on every reload of the Control window,
+   * when the main process forgets what the old engine reported).
+   */
+  'audio:get-mix': { payload: void; result: AudioMix };
+  /** The audio engine reports what is actually sounding. */
+  'audio:report': { payload: AudioEngineReport; result: void };
+  /** The audio engine reports the pad sounds it holds. */
+  'audio:report-pads': { payload: PadReport; result: void };
+  /** A Campaign's Soundboard (an empty one until edited). */
+  'soundboard:get': { payload: { campaignId: CampaignId }; result: Soundboard };
+  /** Apply one edit to a Campaign's Soundboard and get it as saved. */
+  'soundboard:edit': {
+    payload: { campaignId: CampaignId; edit: SoundboardEdit };
+    result: Soundboard;
+  };
+  /**
+   * Press a pad of the open Campaign's Soundboard: its Sound effect plays once, over whatever
+   * sounds, with or without an Active Scene. Fails for another Campaign than the open one.
+   */
+  'soundboard:press': { payload: { campaignId: CampaignId; padId: string }; result: void };
+  /**
+   * Make a Soundboard level or pad volume being dragged heard on the pad sounds still sounding
+   * (open Campaign only; ignored for another). Never saved.
+   */
+  'soundboard:show-transient': {
+    payload: { campaignId: CampaignId; edit: SoundboardLevel };
+    result: void;
+  };
+  /** What is sounding, for the "En cours" strip. */
+  'audio:get-sounding': { payload: void; result: AudioSounding };
+  /**
+   * Crossfade to a Music of the Active Scene's list, playing. Live playback: not saved into the
+   * Scene, not undoable. Fails with no Active Scene or a Music not in its list.
+   */
+  'audio:pick-music': { payload: { mediaId: MediaId }; result: void };
+  /**
+   * Play, pause (keeping its position) or stop the current Music of the Active Scene; playing
+   * with no current Music starts its first. Live playback, like `audio:pick-music`.
+   */
+  'audio:set-music-playback': { payload: { playback: MusicPlayback }; result: void };
+  /**
+   * Start (`on`) or lift Silence: all audio fades out (sounding pads are cut), then the same mix
+   * comes back. On air only, never saved; the picture is unchanged (Blackout is picture only).
+   */
+  'audio:set-silence': { payload: { on: boolean }; result: AudioSounding };
+  /**
+   * Starts Silence when it is off, lifts it when it is on, as `audio:set-silence` would, from
+   * the state the main process holds: the Silence key and button, pressed twice quickly, start
+   * then lift it, whatever the window has heard back yet.
+   */
+  'audio:toggle-silence': { payload: void; result: AudioSounding };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
 export interface EventChannels {
   /** Every new on-air snapshot; a window ignores one older than what it shows. */
   'onAir:changed': OnAirState;
-  /** Halt all audio now (Campaign opened, switched or closed). For the audio engine. */
-  'audio:halt': null;
+  /** Every new mix, for the audio engine; it ignores one older than what it applies. */
+  'audio:mix-changed': AudioMix;
+  /** Play or cut pad sounds, for the audio engine. */
+  'audio:pad-command': PadCommand;
+  /** What is sounding changed (a new mix, or an engine report), for the "En cours" strip. */
+  'audio:sounding-changed': AudioSounding;
+  /** Progress of the Export or Import under way, a few times a second at most. */
+  'campaigns:transfer-progress': CampaignTransferProgress;
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -294,48 +647,105 @@ export interface IpcFailure {
 /** Stops a subscription. */
 export type Unsubscribe = () => void;
 
-/** Read-only bridge of the Broadcast window: read and subscribe, nothing else. */
+/**
+ * Read-only bridge of the Broadcast window: read and subscribe, nothing else. It gets no audio
+ * data: audio plays in the Control window (ADR-0002).
+ */
 export interface BroadcastBridge {
   getOnAir(): Promise<OnAirState>;
   onOnAirChanged(listener: (snapshot: OnAirState) => void): Unsubscribe;
-  onAudioHalt(listener: () => void): Unsubscribe;
+}
+
+/**
+ * Bridge of the audio engine, which runs in the Control window (ADR-0002), exposed beside the
+ * Control bridge (`window.regieAudio`): it can only receive the mix and pad commands and report
+ * what sounds, never change Scenes or the on-air state. Both bridges are in the same page, so
+ * this is the engine's narrow API, not a boundary: spec #33's "engine window with its own
+ * bridge" became, with ADR-0002, a bridge of its own in the Control window.
+ */
+export interface AudioEngineBridge {
+  getMix(): Promise<AudioMix>;
+  onMixChanged(listener: (mix: AudioMix) => void): Unsubscribe;
+  report(report: AudioEngineReport): Promise<void>;
+  onPadCommand(listener: (command: PadCommand) => void): Unsubscribe;
+  reportPads(report: PadReport): Promise<void>;
 }
 
 /** Full bridge of the Control window. */
 export interface ControlBridge extends BroadcastBridge {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   closeCampaign(): Promise<OnAirState>;
-  activateScene(sceneId: SceneId): Promise<OnAirState>;
+  activateScene(sceneId: SceneId, options?: ActivateOptions): Promise<OnAirState>;
+  activateNextTo(direction: SceneDirection, options?: ActivateOptions): Promise<OnAirState>;
   setBlackout(on: boolean): Promise<OnAirState>;
+  toggleBlackout(): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
-  createScene(campaignId: CampaignId, name: string): Promise<Scene>;
+  createScene(campaignId: CampaignId, name: string, selectedSceneId?: SceneId): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
   getUndoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
+  getRunningOrder(campaignId: CampaignId): Promise<RunningOrder>;
+  editRunningOrder(campaignId: CampaignId, edit: RunningOrderEdit): Promise<RunningOrder>;
+  duplicateScene(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;
   importMedia(campaignId: CampaignId, kind: MediaImportKind): Promise<MediaImportResult>;
   /**
-   * Imports image files dropped from outside the app. Takes the drop's File objects, not
+   * Imports files dropped from outside the app, as `kind`. Takes the drop's File objects, not
    * paths: the bridge reads their paths itself, so the page cannot name other files.
    */
-  importDroppedImages(campaignId: CampaignId, files: readonly File[]): Promise<MediaImportResult>;
+  importDroppedMedia(
+    campaignId: CampaignId,
+    files: readonly File[],
+    kind: MediaImportKind,
+  ): Promise<MediaImportResult>;
+  /**
+   * Imports an image pasted into the Notes, as a Reference image. Takes the pasted File: the
+   * bridge sends its content and name.
+   */
+  importPastedImage(campaignId: CampaignId, file: File): Promise<MediaImportResult>;
   setImageCategory(
     campaignId: CampaignId,
     mediaId: MediaId,
     category: ImageCategory,
   ): Promise<Media>;
   renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  setMediaFavourite(campaignId: CampaignId, mediaId: MediaId, favourite: boolean): Promise<Media>;
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;
   updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;
+  getCampaignDeletionSummary(id: CampaignId): Promise<CampaignDeletionSummary>;
+  moveCampaignToTrash(id: CampaignId): Promise<CampaignTrashing>;
+  deleteCampaignPermanently(id: CampaignId): Promise<void>;
+  exportCampaign(id: CampaignId): Promise<CampaignExportResult>;
+  importCampaign(): Promise<CampaignImportResult>;
+  /** Imports the Export `file` dropped from Windows Explorer; its path is read in the bridge. */
+  importDroppedCampaign(file: File): Promise<CampaignImportResult>;
+  /** Cancels the Export or Import under way; its call then resolves as cancelled. */
+  cancelCampaignTransfer(): Promise<void>;
+  onCampaignTransferProgress(listener: (progress: CampaignTransferProgress) => void): Unsubscribe;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
+  setMasterVolume(masterVolume: number): Promise<Settings>;
+  setActivateDuration(activateDurationMs: number): Promise<Settings>;
+  setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
+  setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
+  setShortcuts(shortcuts: ShortcutSettings): Promise<Settings>;
+  getSounding(): Promise<AudioSounding>;
+  setSilence(on: boolean): Promise<AudioSounding>;
+  toggleSilence(): Promise<AudioSounding>;
+  getSoundboard(campaignId: CampaignId): Promise<Soundboard>;
+  editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
+  pressPad(campaignId: CampaignId, padId: string): Promise<void>;
+  showSoundboardTransient(campaignId: CampaignId, edit: SoundboardLevel): Promise<void>;
+  onSoundingChanged(listener: (sounding: AudioSounding) => void): Unsubscribe;
+  pickMusic(mediaId: MediaId): Promise<void>;
+  setMusicPlayback(playback: MusicPlayback): Promise<void>;
 }

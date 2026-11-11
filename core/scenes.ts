@@ -1,16 +1,26 @@
 /**
  * Scenes of a Campaign: storage and validation. No Electron dependency.
  *
- * On disk, in the Campaign's folder: `scenes.json` ({ scenes: Scene[] }, versioned document),
- * Scenes stored without their Campaign id (the folder gives it), in creation order.
+ * On disk, in the Campaign's folder: `scenes.json` ({ scenes: Scene[], chapters: Chapter[] },
+ * versioned document), Scenes stored without their Campaign id (the folder gives it), in running
+ * order, beside the Chapters grouping them (core/runningOrder.ts).
  * Errors meant for the Game Master are SceneError with a French message.
+ *
+ * A Scene whose stored Notes cannot be read keeps its other fields with empty Notes; the rest of
+ * the document loads as usual. The unreadable Notes are kept as they were in a file of the
+ * Campaign's `notes-illisibles/` folder, `notes-illisibles-<Scene id>-<time>.json`, and the Game
+ * Master is told where. Never at the top of the Campaign folder, which holds its documents only:
+ * files an older version kept there are moved into that folder as the Scenes are first read.
  */
 import { randomUUID } from 'node:crypto';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
+import type { RunningOrder, RunningOrderEdit } from '../shared/contract.js';
 import type {
   Background,
   BackgroundFit,
   CampaignId,
+  Chapter,
   Label,
   MediaId,
   NormalizedPoint,
@@ -23,30 +33,90 @@ import { CampaignError } from './campaigns.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
-import { cleanSceneName, SceneError } from './sceneEdits.js';
+import {
+  emptyNotes,
+  mediaOfNotes,
+  notesFromPlainText,
+  notesKeepingImages,
+  parseNotes,
+} from './notes.js';
+import {
+  applyRunningOrderEdit,
+  inRunningOrder,
+  parseChapters,
+  runningOrderOf,
+  withCopy,
+  withNewScene,
+  type ScenesInOrder,
+} from './runningOrder.js';
+import {
+  cleanSceneName,
+  isTransitionKind,
+  MAX_SCENE_NAME_LENGTH,
+  SceneError,
+} from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
 export { SceneError };
 
 export interface SceneLibrary {
-  /** The Campaign's Scenes, in creation order. */
+  /** The Campaign's Scenes, in running order. */
   list(campaignId: CampaignId): Promise<Scene[]>;
   /** The Scene, or undefined if it does not exist. */
   get(campaignId: CampaignId, sceneId: SceneId): Promise<Scene | undefined>;
   /**
-   * Removes every placement of a Media (Backgrounds, Overlays, music, Ambiences) from the
-   * Campaign's Scenes and returns the Scenes that changed, as saved.
+   * Removes every use of a Media from the Campaign's Scenes, its placements (Backgrounds,
+   * Overlays, music, Ambiences) and its images in the Notes, and returns the Scenes that changed,
+   * as saved.
    */
-  removeMediaPlacements(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
-  /** A new, empty Scene. */
-  create(campaignId: CampaignId, name: string): Promise<Scene>;
+  removeMediaUses(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
+  /**
+   * A new, empty Scene: last in the Chapter of the Selected Scene `selectedSceneId`, or last in
+   * no Chapter when it has none (core/runningOrder.ts `withNewScene`).
+   */
+  create(campaignId: CampaignId, name: string, selectedSceneId?: SceneId): Promise<Scene>;
   /** Deletes a Scene; throws a SceneError when it does not exist. */
   delete(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /** Replaces a stored Scene (found by Campaign and id) and returns what was saved. */
   save(scene: Scene): Promise<Scene>;
+  /** The Campaign's running order: its Scene ids in order and its Chapters. */
+  runningOrder(campaignId: CampaignId): Promise<RunningOrder>;
+  /**
+   * Applies one running order command (Chapters, a Scene's place) and returns the running order
+   * as saved. Changes no Scene. Throws a SceneError for an unknown Scene or Chapter.
+   */
+  editRunningOrder(campaignId: CampaignId, edit: RunningOrderEdit): Promise<RunningOrder>;
+  /**
+   * Saves a copy of a Scene (`copyOfScene`) right after it in the running order, in its
+   * Chapter, and returns the copy. Throws a SceneError when the Scene does not exist.
+   */
+  duplicate(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
 }
 
 const SCENES_FILE = 'scenes.json';
+/** Folder of a Campaign where unreadable Notes are kept (never exported). */
+export const RECOVERED_FOLDER = 'notes-illisibles';
+const RECOVERED_FILE = /^notes-illisibles-[A-Za-z0-9_-]+-\d+\.json$/;
+
+/**
+ * Moves the files of unreadable Notes an older version kept at the top of the Campaign folder
+ * into its recovered folder. A file already there under that name stays where it is.
+ */
+async function moveOldRecoveredNotes(folder: string): Promise<void> {
+  const names = (await fsp.readdir(folder)).filter((name) => RECOVERED_FILE.test(name));
+  if (names.length === 0) return;
+  const recovered = path.join(folder, RECOVERED_FOLDER);
+  await fsp.mkdir(recovered, { recursive: true });
+  for (const name of names) {
+    const target = path.join(recovered, name);
+    const taken = await fsp.lstat(target).then(
+      () => true,
+      () => false,
+    );
+    if (!taken) await fsp.rename(path.join(folder, name), target);
+  }
+}
+
 const BACKGROUND_FITS: readonly BackgroundFit[] = ['cover', 'contain'];
 
 // Parsing ------------------------------------------------------------------
@@ -117,8 +187,10 @@ function parseList<T>(value: unknown, parse: (item: unknown) => T | undefined): 
  */
 export function parseScene(value: unknown, campaignId: CampaignId): Scene | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, name, title, notes, volumes } = value;
-  if (!isId(id) || typeof name !== 'string' || typeof notes !== 'string') return undefined;
+  const { id, name, title, volumes, transition } = value;
+  const notes = parseNotes(value.notes);
+  if (!isId(id) || typeof name !== 'string' || !notes) return undefined;
+  if (!isTransitionKind(transition)) return undefined;
   if (typeof title !== 'string') return undefined;
   if (!isRecord(volumes) || !isUnit(volumes.music) || !isUnit(volumes.ambience)) return undefined;
   const backgrounds = parseList(value.backgrounds, parseBackground);
@@ -137,6 +209,7 @@ export function parseScene(value: unknown, campaignId: CampaignId): Scene | unde
     ambiences,
     volumes: { music: volumes.music, ambience: volumes.ambience },
     notes,
+    transition,
   };
 }
 
@@ -157,9 +230,16 @@ export function sceneUsesMedia(scene: Scene, mediaId: MediaId): boolean {
   return mediaOfScene(scene).includes(mediaId);
 }
 
+/** Whether a Scene's Notes show a Media as an image: a use, though never on air. */
+export function notesUseMedia(scene: Scene, mediaId: MediaId): boolean {
+  return mediaOfNotes(scene.notes).includes(mediaId);
+}
+
+/** A Scene without any use of a Media: its placements and its images in the Notes. */
 function withoutMedia(scene: Scene, mediaId: MediaId): Scene {
   return {
     ...scene,
+    notes: notesKeepingImages(scene.notes, (id) => id !== mediaId),
     backgrounds: scene.backgrounds.filter((item) => item.mediaId !== mediaId),
     overlays: scene.overlays.filter((item) => item.mediaId !== mediaId),
     music: scene.music.filter((item) => item !== mediaId),
@@ -167,9 +247,48 @@ function withoutMedia(scene: Scene, mediaId: MediaId): Scene {
   };
 }
 
+// Copies -------------------------------------------------------------------
+
+const COPY_SUFFIX = ' (copie)';
+
+/**
+ * An independent copy of a Scene: every field deep-copied, so editing the copy never changes
+ * the source; a new Scene id and new placement ids (from `newId`); the same Media references,
+ * so no Media file is copied; named "<name> (copie)", the name shortened to fit the limit.
+ * tests/unit/scenes.test.ts lists every Scene field, so a new one is a decision there.
+ */
+export function copyOfScene(source: Scene, newId: () => string): Scene {
+  const copy = structuredClone(source);
+  const base = copy.name.slice(0, MAX_SCENE_NAME_LENGTH - COPY_SUFFIX.length).trimEnd();
+  return {
+    ...copy,
+    id: newId(),
+    name: `${base}${COPY_SUFFIX}`,
+    backgrounds: copy.backgrounds.map((item) => ({ ...item, id: newId() })),
+    overlays: copy.overlays.map((item) => ({ ...item, id: newId() })),
+  };
+}
+
 // Storage ------------------------------------------------------------------
 
 type StoredScene = Omit<Scene, 'campaignId'>;
+
+/** Notes of a stored Scene that could not be read, as they were stored. Never written back. */
+interface UnreadableNotes {
+  sceneId: SceneId;
+  sceneName: string;
+  notes: unknown;
+}
+
+/**
+ * The Scenes of a document; `unreadableNotes` (read only, never written) lists the Scenes kept
+ * with empty Notes because theirs could not be read.
+ */
+interface ScenesFields {
+  scenes: StoredScene[];
+  chapters: Chapter[];
+  unreadableNotes?: UnreadableNotes[];
+}
 
 function stored({ campaignId: _campaignId, ...scene }: Scene): StoredScene {
   return scene;
@@ -210,23 +329,75 @@ function migrateScenesV1(fields: Record<string, unknown>): Record<string, unknow
   return { ...fields, scenes };
 }
 
+/**
+ * Version 2 (Milestones 1 and 2) to 3 (Milestone 3): plain-text Notes become rich text, one
+ * paragraph per line (ADR-0004).
+ */
+function migrateScenesV2(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.scenes)) return fields;
+  const scenes = fields.scenes.map((scene: unknown) =>
+    isRecord(scene) && typeof scene.notes === 'string'
+      ? { ...scene, notes: notesFromPlainText(scene.notes) }
+      : scene,
+  );
+  return { ...fields, scenes };
+}
+
+/** Version 3 to 4 (Milestone 3): every Scene gets its entry Transition, Crossfade. */
+function migrateScenesV3(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.scenes)) return fields;
+  const scenes = fields.scenes.map((scene: unknown) =>
+    isRecord(scene) ? { ...scene, transition: 'crossfade' } : scene,
+  );
+  return { ...fields, scenes };
+}
+
+/** Version 4 to 5 (Milestone 4): the running order gains Chapters, none to start with. */
+function migrateScenesV4(fields: Record<string, unknown>): Record<string, unknown> {
+  return { ...fields, chapters: [] };
+}
+
 function zIndexOf(item: unknown): number {
   return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
 }
 
-const scenesDocument: DocumentType<{ scenes: StoredScene[] }> = {
+export const scenesDocument: DocumentType<ScenesFields> = {
   name: 'scenes',
-  version: 2,
-  migrations: { 1: migrateScenesV1 },
-  parse({ scenes }) {
-    const parsed = parseList(scenes, (item) => parseScene(item, ''));
-    return parsed && { scenes: parsed.map(stored) };
+  version: 5,
+  migrations: { 1: migrateScenesV1, 2: migrateScenesV2, 3: migrateScenesV3, 4: migrateScenesV4 },
+  parse({ scenes, chapters }) {
+    const unreadableNotes: UnreadableNotes[] = [];
+    const parsed = parseList(scenes, (item) => {
+      const scene = parseScene(item, '');
+      if (scene || !isRecord(item)) return scene;
+      // Only its Notes unreadable: the Scene stays, with empty Notes.
+      const kept = parseScene({ ...item, notes: emptyNotes() }, '');
+      if (kept) unreadableNotes.push({ sceneId: kept.id, sceneName: kept.name, notes: item.notes });
+      return kept;
+    });
+    const parsedChapters = parseChapters(chapters);
+    if (!parsed || !parsedChapters) return undefined;
+    const order = inRunningOrder(parsed.map(stored), parsedChapters);
+    return unreadableNotes.length > 0 ? { ...order, unreadableNotes } : order;
   },
 };
 
-export function createSceneLibrary(storage: Storage): SceneLibrary {
-  /** Serializes the read-modify-write of each Campaign's Scenes document. */
+export interface SceneLibraryOptions {
+  /** Tells the Game Master something went wrong with stored Scenes (plain French sentence). */
+  notify?: (message: string) => void;
+  /** The clock naming the files unreadable Notes are kept in (Date.now). */
+  now?: () => number;
+}
+
+export function createSceneLibrary(
+  storage: Storage,
+  options: SceneLibraryOptions = {},
+): SceneLibrary {
+  const { notify = () => undefined, now = Date.now } = options;
+  /** Serializes the reads and read-modify-writes of each Campaign's Scenes document. */
   const serialized = createKeyedSerialQueue<CampaignId>();
+  /** Campaigns whose old recovered Notes were moved (or tried) since the app started. */
+  const tidied = new Set<CampaignId>();
 
   async function fileOf(campaignId: CampaignId): Promise<string> {
     if (!(await storage.campaigns.get(campaignId))) {
@@ -235,28 +406,71 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
     return path.join(storage.campaignFolder(campaignId), SCENES_FILE);
   }
 
-  async function read(file: string, campaignId: CampaignId): Promise<Scene[]> {
+  /**
+   * The Campaign's Scenes in running order, and its Chapters. Run in the Campaign's queue: it
+   * may save them (unreadable Notes).
+   */
+  async function readOrder(file: string, campaignId: CampaignId): Promise<ScenesInOrder<Scene>> {
+    if (!tidied.has(campaignId)) {
+      tidied.add(campaignId);
+      // Best effort: left where they are, they only clutter the folder (Export skips them).
+      await moveOldRecoveredNotes(path.dirname(file)).catch(() => undefined);
+    }
     const document = await storage.documents.read(file, scenesDocument);
-    return (document?.scenes ?? []).map((scene) => ({ ...scene, campaignId }));
+    const scenes = (document?.scenes ?? []).map((scene) => ({ ...scene, campaignId }));
+    const order = { scenes, chapters: document?.chapters ?? [] };
+    if (document?.unreadableNotes) {
+      await keepUnreadable(path.dirname(file), document.unreadableNotes);
+      // Saved with empty Notes, so they are reported once; the document as it was is now the
+      // `.bak` too.
+      await write(file, order);
+    }
+    return order;
   }
 
-  async function write(file: string, scenes: Scene[]): Promise<void> {
-    await storage.documents.write(file, scenesDocument, { scenes: scenes.map(stored) });
+  /** The Campaign's Scenes in running order (see `readOrder`). */
+  async function read(file: string, campaignId: CampaignId): Promise<Scene[]> {
+    return (await readOrder(file, campaignId)).scenes;
+  }
+
+  /** Keeps each Scene's unreadable Notes in a file of its own, and tells the Game Master. */
+  async function keepUnreadable(folder: string, unreadable: readonly UnreadableNotes[]) {
+    const recovered = path.join(folder, RECOVERED_FOLDER);
+    await fsp.mkdir(recovered, { recursive: true });
+    for (const entry of unreadable) {
+      const kept = path.join(recovered, `notes-illisibles-${entry.sceneId}-${String(now())}.json`);
+      await fsp.writeFile(
+        kept,
+        `${JSON.stringify(entry, null, 2)}
+`,
+        { flag: 'wx' },
+      );
+      notify(
+        `Les notes de la scène « ${entry.sceneName} » étaient illisibles : elles sont vides. ` +
+          `Leur contenu d’origine est gardé dans ${kept}.`,
+      );
+    }
+  }
+
+  /** Saves the Scenes and Chapters, made consistent (a deleted Scene leaves its Chapter). */
+  async function write(file: string, order: ScenesInOrder<Scene>): Promise<void> {
+    const { scenes, chapters } = inRunningOrder(order.scenes, order.chapters);
+    await storage.documents.write(file, scenesDocument, { scenes: scenes.map(stored), chapters });
   }
 
   return {
-    async list(campaignId) {
-      return read(await fileOf(campaignId), campaignId);
+    list(campaignId) {
+      return serialized(campaignId, async () => read(await fileOf(campaignId), campaignId));
     },
 
     async get(campaignId, sceneId) {
       return (await this.list(campaignId)).find((scene) => scene.id === sceneId);
     },
 
-    create(campaignId, name) {
+    create(campaignId, name, selectedSceneId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
+        const order = await readOrder(file, campaignId);
         const scene: Scene = {
           id: randomUUID(),
           campaignId,
@@ -267,25 +481,26 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
           music: [],
           ambiences: [],
           volumes: { music: 1, ambience: 1 },
-          notes: '',
+          notes: emptyNotes(),
+          transition: 'crossfade',
         };
-        await write(file, [...scenes, scene]);
+        await write(file, withNewScene(order, scene, selectedSceneId));
         return scene;
       });
     },
 
-    removeMediaPlacements(campaignId, mediaId) {
+    removeMediaUses(campaignId, mediaId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
+        const order = await readOrder(file, campaignId);
         const affected: Scene[] = [];
-        const updated = scenes.map((scene) => {
-          if (!sceneUsesMedia(scene, mediaId)) return scene;
+        const updated = order.scenes.map((scene) => {
+          if (!sceneUsesMedia(scene, mediaId) && !notesUseMedia(scene, mediaId)) return scene;
           const cleaned = withoutMedia(scene, mediaId);
           affected.push(cleaned);
           return cleaned;
         });
-        if (affected.length > 0) await write(file, updated);
+        if (affected.length > 0) await write(file, { ...order, scenes: updated });
         return affected;
       });
     },
@@ -293,23 +508,52 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
     delete(campaignId, sceneId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
-        const kept = scenes.filter((scene) => scene.id !== sceneId);
-        if (kept.length === scenes.length) throw new SceneError('Cette scène n’existe plus.');
-        await write(file, kept);
+        const order = await readOrder(file, campaignId);
+        const kept = order.scenes.filter((scene) => scene.id !== sceneId);
+        if (kept.length === order.scenes.length) {
+          throw new SceneError('Cette scène n’existe plus.');
+        }
+        await write(file, { ...order, scenes: kept });
       });
     },
 
     save(scene) {
       return serialized(scene.campaignId, async () => {
         const file = await fileOf(scene.campaignId);
-        const scenes = await read(file, scene.campaignId);
-        const index = scenes.findIndex((existing) => existing.id === scene.id);
+        const order = await readOrder(file, scene.campaignId);
+        const index = order.scenes.findIndex((existing) => existing.id === scene.id);
         if (index < 0) throw new SceneError('Cette scène n’existe plus.');
         const saved: Scene = { ...scene, name: cleanSceneName(scene.name) };
-        scenes[index] = saved;
-        await write(file, scenes);
+        order.scenes[index] = saved;
+        await write(file, order);
         return saved;
+      });
+    },
+
+    runningOrder(campaignId) {
+      return serialized(campaignId, async () =>
+        runningOrderOf(await readOrder(await fileOf(campaignId), campaignId)),
+      );
+    },
+
+    editRunningOrder(campaignId, edit) {
+      return serialized(campaignId, async () => {
+        const file = await fileOf(campaignId);
+        const order = applyRunningOrderEdit(await readOrder(file, campaignId), edit, randomUUID);
+        await write(file, order);
+        return runningOrderOf(order);
+      });
+    },
+
+    duplicate(campaignId, sceneId) {
+      return serialized(campaignId, async () => {
+        const file = await fileOf(campaignId);
+        const order = await readOrder(file, campaignId);
+        const source = order.scenes.find((scene) => scene.id === sceneId);
+        if (!source) throw new SceneError('Cette scène n’existe plus.');
+        const copy = copyOfScene(source, randomUUID);
+        await write(file, withCopy(order, copy, sceneId));
+        return copy;
       });
     },
   };
