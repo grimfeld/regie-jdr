@@ -13,3 +13,9 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 5. #57 is ready-for-human (mock session over Discord): the PR leaves it open.
 
 ## Outcomes
+- 2026-11-12: #51 rich Notes merged at `30645d0` (785 unit, 133 app tests). See [Notes](subsystem-notes.md). Fixed four position-bound app tests with `dragOnScreen` / `pressAndMove` in `tests/app/harness.ts` (M2 closeout told to copy them).
+
+## Follow-ups to clear before the M3 PR
+
+- A Notes save pending under 500 ms is lost if the app quits then; flush on quit. Source: #51 report.
+- Merge-forward from M2: scenes schema versions/migrations may conflict if M2 bumps the scenes schema; harness helpers duplicated with M2 closeout. Source: #51 report.
