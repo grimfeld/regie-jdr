@@ -105,20 +105,13 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Renderer: each on-air picture is a layer on black; the incoming layer waits for image decode, then dissolves. Shared Backgrounds and the Scene title don't flicker; Blackout stays on top. Activate mid-transition freezes the dissolve where it is. Editor fades unchanged.
 - No Transition field on Scene yet. #49: add it (duplicate copies it; it never goes on air) and pass `kind: 'cut'`, `durationMs: 0` from `activateScene` in `core/onAir.ts`; renderer needs no change. #50: replace `ACTIVATE_DURATION_MS` where `core/onAir.ts` and `AUDIO_FADE_MS.activate` read it; carry it like `setFadeDuration`.
 
-## Cut and forced Cut (#49, 2026-11-12)
+## Cut and forced Cut (#49, 2026-11-12, `d30b310`)
 
 - Supersedes the #48 note "No Transition field on Scene yet". `Scene.transition` (`'crossfade' | 'cut'`, new Scenes Crossfade) changes only through `SceneEdit` `set-transition` (undo label "régler la transition sur Cut"). Never on air (allow-list `null`); duplicate copies it. `scenes.json` schema 4: migration from 3 sets Crossfade.
 - One rule for what Activate starts: `transitionOnActivate(scene, {forceCut})` in `core/onAir.ts`. `OnAir.activateScene(id, scene, kind)` puts a Cut on air as `{kind: 'cut', durationMs: 0}`; the renderer still waits for image decode, then shows it with no dissolve.
 - Audio: `AudioOnAir.activateScene(..., kind)` fades over `AUDIO_FADE_MS.cut` (100 ms) on a Cut, `activate` otherwise. #50 replaces only the Crossfade duration.
 - Channel `onAir:activate-scene` takes optional `forceCut`; bridge `activateScene(sceneId, {forceCut})`.
 - UI: "TRANSITION" menu under the Scene title (`src/SceneTransitionField.tsx`). Shift+click on Activer forces a Cut (`title` hint). `src/activate.ts`: `activateScene(control, sceneId, options)` + `activateOptionsOf(press)` (Shift = forced Cut). #56 shortcuts call these two with their KeyboardEvent.
-
-## Cut and forced Cut (#49, 2026-11-12, `d30b310`)
-
-- Scene field Transition (Crossfade/Cut), changed by `SceneEdit` `set-transition` (undo-covered), never on air, copied by duplicate. `scenes.json` v4 (migration sets Crossfade).
-- `transitionOnActivate` (`core/onAir.ts`) decides; Cut goes on air with duration 0 (renderer unchanged). Cut audio uses `AUDIO_FADE_MS.cut` (100 ms); Crossfade audio keeps the Activate duration.
-- Shared activation path for button and shortcuts: `activateScene` + `activateOptionsOf(event)` in `src/activate.ts`; Shift forces Cut.
-- UI: "TRANSITION" menu (Fondu enchaîné / Cut) under the Scene title; Activer hints "Maj+clic : activer en Cut".
 
 ## Activate and Music crossfade durations (#50, 2026-11-12, `4d2d082`)
 
