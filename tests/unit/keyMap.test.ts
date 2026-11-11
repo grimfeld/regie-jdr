@@ -163,6 +163,15 @@ describe('reserved keys', () => {
     ['Space alone', { key: ' ' }],
     ['Ctrl+C', { key: 'c', ctrl: true }],
     ['Ctrl+V', { key: 'v', ctrl: true }],
+    ['Alt+F4', { key: 'f4', alt: true }],
+    ['↓ alone', { key: 'arrowdown' }],
+    ['← alone', { key: 'arrowleft' }],
+    ['Maj+↑', { key: 'arrowup', shift: true }],
+    ['Home', { key: 'home' }],
+    ['End', { key: 'end' }],
+    ['Page Up', { key: 'pageup' }],
+    ['Page Down', { key: 'pagedown' }],
+    ['Ctrl+Backspace', { key: 'backspace', ctrl: true }],
   ])('refuses %s, with a reason', (_name, chord) => {
     const remapping = assignKey(DEFAULT_SHORTCUTS, 'blackout', chord);
     expect(remapping.outcome).toBe('refused');
@@ -190,15 +199,49 @@ describe('reserved keys', () => {
     expect(assignKey(DEFAULT_SHORTCUTS, 'undo', F9).outcome).toBe('refused');
   });
 
-  it('allows Ctrl+Enter, Ctrl+Space and plain arrows', () => {
-    expect(assignKey(DEFAULT_SHORTCUTS, 'blackout', { key: ' ', ctrl: true }).outcome).toBe(
-      'remapped',
-    );
-    expect(assignKey(DEFAULT_SHORTCUTS, 'blackout', { key: 'arrowleft' }).outcome).toBe('remapped');
+  it('allows Ctrl+Enter, Ctrl+Space, Ctrl+arrows, Alt+Home and F4 alone', () => {
+    for (const chord of [
+      { key: ' ', ctrl: true },
+      { key: 'arrowleft', ctrl: true },
+      { key: 'home', alt: true },
+      { key: 'f4' },
+    ]) {
+      expect(assignKey(DEFAULT_SHORTCUTS, 'blackout', chord).outcome).toBe('remapped');
+    }
+  });
+
+  it.each<[string, ShortcutSettings['cutModifier'], KeyChord]>([
+    ['Ctrl+X', 'ctrl', { key: 'x' }],
+    ['Ctrl+A', 'ctrl', { key: 'a' }],
+    ['Alt+F4', 'alt', { key: 'f4' }],
+  ])('refuses an Activate key that the Cut modifier would make %s', (_name, cutModifier, chord) => {
+    const settings: ShortcutSettings = { keys: { activate: [] }, cutModifier };
+    expect(assignKey(settings, 'activate', chord).outcome).toBe('refused');
+    // Another shortcut takes no Cut modifier: the key alone is fine there.
+    expect(assignKey(settings, 'blackout', chord).outcome).toBe('remapped');
+  });
+
+  it('drops a stored key that is now reserved', () => {
+    const settings: ShortcutSettings = {
+      keys: { blackout: [{ key: 'arrowleft' }] },
+      cutModifier: 'shift',
+    };
+    expect(keyMapOf(settings).keys.blackout).toEqual([]);
+    expect(isConsistent(settings)).toBe(false);
   });
 });
 
 describe('the Cut modifier', () => {
+  it('is refused when an Activate key would become a reserved key with it', () => {
+    const settings = remapped(assignKey(DEFAULT_SHORTCUTS, 'activate', { key: 'f4' }));
+    expect(assignCutModifier(settings, 'alt')).toEqual({
+      outcome: 'refused',
+      reason: expect.stringContaining('Alt+F4'),
+    });
+    const copying = remapped(assignKey(DEFAULT_SHORTCUTS, 'activate', { key: 'c' }));
+    expect(assignCutModifier(copying, 'ctrl').outcome).toBe('refused');
+  });
+
   it('is refused when an Activate key holds it', () => {
     expect(assignCutModifier(DEFAULT_SHORTCUTS, 'ctrl')).toEqual({
       outcome: 'refused',

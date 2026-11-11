@@ -330,37 +330,72 @@ const UNUSABLE_KEYS = new Set(['', 'dead', 'unidentified', 'process', 'compose']
 const EDITING_KEYS = new Set(['backspace', 'delete']);
 /** Keys that do it without Ctrl or Alt only. */
 const PLAIN_EDITING_KEYS = new Set(['enter', ' ']);
+/**
+ * Keys that, without Ctrl or Alt, move through a list, a slider, a menu or the selected Overlay
+ * (Shift too: it extends a selection or nudges further).
+ */
+export const NAVIGATION_KEYS: ReadonlySet<string> = new Set([
+  'arrowup',
+  'arrowdown',
+  'arrowleft',
+  'arrowright',
+  'home',
+  'end',
+  'pageup',
+  'pagedown',
+]);
 /** Ctrl+these select, copy, paste and cut. */
 const CLIPBOARD_LETTERS = new Set(['a', 'c', 'v', 'x']);
 
 /**
- * Why `chord` can never be `shortcut`'s key, in French, or undefined if it can: Escape, Tab,
- * F11, a modifier alone, the text editing keys (undo and redo's among them), and, for an
- * Activate shortcut, the Cut modifier.
+ * Why pressing `chord` is reserved, in French, or undefined if it is not: Escape, Tab, F11,
+ * Alt+F4, a modifier alone, the text editing keys, the plain navigation keys.
+ */
+function reservation(chord: KeyChord): string | undefined {
+  if (chord.code !== undefined) return undefined;
+  const key = chord.key ?? '';
+  const label = chordLabel(chord);
+  if (BARE_MODIFIERS.has(key)) {
+    return 'Une touche de modification seule (Ctrl, Maj, Alt…) ne peut pas servir de raccourci.';
+  }
+  if (UNUSABLE_KEYS.has(key)) return 'Cette touche ne peut pas servir de raccourci.';
+  if (key === 'escape') return 'Échap est réservée : elle annule et quitte le plein écran.';
+  if (key === 'tab') return 'Tab est réservée : elle passe d’un contrôle à l’autre.';
+  if (key === 'f11') return 'F11 est réservée au plein écran.';
+  if (key === 'f4' && chord.alt === true) return `${label} est réservée : elle ferme la fenêtre.`;
+  const plain = chord.ctrl !== true && chord.alt !== true;
+  if (
+    EDITING_KEYS.has(key) ||
+    (plain && PLAIN_EDITING_KEYS.has(key)) ||
+    (chord.ctrl === true && chord.alt !== true && CLIPBOARD_LETTERS.has(key))
+  ) {
+    return `${label} est réservée à la saisie de texte.`;
+  }
+  if (plain && NAVIGATION_KEYS.has(key)) {
+    return `${label} est réservée : elle se déplace dans les listes, les curseurs et le canevas.`;
+  }
+  return undefined;
+}
+
+/** The keys `chord` fires `shortcut` with: an Activate key with the Cut modifier too. */
+function firedBy(shortcut: Shortcut, chord: KeyChord, cutModifier: CutModifier): KeyChord[] {
+  return takesCut(shortcut) ? [chord, withModifier(chord, cutModifier)] : [chord];
+}
+
+/**
+ * Why `chord` can never be `shortcut`'s key, in French, or undefined if it can: a reserved key
+ * (`reservation`), checked with every modifier the shortcut fires with, undo and redo's keys,
+ * and, for an Activate shortcut, the Cut modifier.
  */
 export function refusalOf(
   shortcut: Shortcut,
   chord: KeyChord,
   cutModifier: CutModifier,
 ): string | undefined {
-  const key = chord.key ?? '';
   const label = chordLabel(chord);
-  if (chord.code === undefined) {
-    if (BARE_MODIFIERS.has(key)) {
-      return 'Une touche de modification seule (Ctrl, Maj, Alt…) ne peut pas servir de raccourci.';
-    }
-    if (UNUSABLE_KEYS.has(key)) return 'Cette touche ne peut pas servir de raccourci.';
-    if (key === 'escape') return 'Échap est réservée : elle annule et quitte le plein écran.';
-    if (key === 'tab') return 'Tab est réservée : elle passe d’un contrôle à l’autre.';
-    if (key === 'f11') return 'F11 est réservée au plein écran.';
-    const plain = chord.ctrl !== true && chord.alt !== true;
-    if (
-      EDITING_KEYS.has(key) ||
-      (plain && PLAIN_EDITING_KEYS.has(key)) ||
-      (chord.ctrl === true && chord.alt !== true && CLIPBOARD_LETTERS.has(key))
-    ) {
-      return `${label} est réservée à la saisie de texte.`;
-    }
+  for (const fired of firedBy(shortcut, chord, cutModifier)) {
+    const reason = reservation(fired);
+    if (reason !== undefined) return reason;
   }
   const ids = takenBy(shortcut, chord, cutModifier);
   const fixed = SHORTCUTS.find(
@@ -500,9 +535,17 @@ export function assignCutModifier(
       reason: `${modifierLabel(modifier)} fait déjà partie de la touche « ${shortcutName(holding)} » : changez d’abord cette touche.`,
     };
   }
-  const ids = activates.flatMap((shortcut) =>
-    keyMap.keys[shortcut].map((chord) => chordId(withModifier(chord, modifier))),
+  const withCut = activates.flatMap((shortcut) =>
+    keyMap.keys[shortcut].map((chord) => withModifier(chord, modifier)),
   );
+  const reserved = withCut.map(reservation).find((reason) => reason !== undefined);
+  if (reserved !== undefined) {
+    return {
+      outcome: 'refused',
+      reason: `Avec ${modifierLabel(modifier)}, une touche d’activation deviendrait réservée. ${reserved}`,
+    };
+  }
+  const ids = withCut.map(chordId);
   const holders = SHORTCUTS.filter(
     (other) => !takesCut(other) && keyMap.keys[other].some((chord) => ids.includes(chordId(chord))),
   );

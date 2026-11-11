@@ -124,6 +124,34 @@ describe('Soundboard and Silence shortcuts', () => {
   });
 });
 
+describe('keys a control or the canvas editor answers', () => {
+  it('never fire a shortcut once already answered (the selected Overlay nudged)', () => {
+    const answered = { ...press('ArrowDown', 'ArrowDown', { ctrl: true }), defaultPrevented: true };
+    expect(shortcutOf(answered)).toBeUndefined();
+    expect(shortcutOf({ ...answered, defaultPrevented: false })).toBe('activate-next');
+  });
+
+  it('leave a slider its arrows, Home, End and Page keys, whatever the modifier', () => {
+    const slider = input('range');
+    const ctrlDown = press('ArrowDown', 'ArrowDown', { ctrl: true });
+    expect(shortcutOf({ ...ctrlDown, target: slider })).toBeUndefined();
+    const altUp = press('ArrowUp', 'ArrowUp', { alt: true });
+    expect(shortcutOf({ ...altUp, target: slider })).toBeUndefined();
+    const custom = document.createElement('div');
+    custom.setAttribute('role', 'slider');
+    expect(shortcutOf({ ...ctrlDown, target: custom })).toBeUndefined();
+    // Other keys still work there.
+    expect(shortcutOf({ ...press('b', 'KeyB'), target: slider })).toBe('blackout');
+  });
+
+  it('leave a drop-down list every key', () => {
+    const select = document.createElement('select');
+    expect(shortcutOf({ ...press('b', 'KeyB'), target: select })).toBeUndefined();
+    const ctrlDown = press('ArrowDown', 'ArrowDown', { ctrl: true });
+    expect(shortcutOf({ ...ctrlDown, target: select })).toBeUndefined();
+  });
+});
+
 describe('key map', () => {
   it('shows each shortcut by its first key', () => {
     expect(keyLabelOf('silence')).toBe('S');

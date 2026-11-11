@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import {
   KEY_MAP,
+  NAVIGATION_KEYS,
   shortcutPressed,
   type KeyMap,
   type KeyPressFields,
@@ -9,8 +10,10 @@ import {
 
 /**
  * Keyboard shortcuts of the Control window. A shortcut never fires while the Game Master is
- * typing in a field: there the keys keep their text meaning (Ctrl+Z undoes typing), and never
- * in another window (only the focused window gets key presses).
+ * typing in a field: there the keys keep their text meaning (Ctrl+Z undoes typing), nor on a key
+ * the focused control or the canvas editor already answered (a slider's arrows, a list's letters,
+ * the selected Overlay's nudge), and never in another window (only the focused window gets key
+ * presses).
  *
  * Every shortcut is a row of the key map (`core/keyMap.ts`), remapped by the Game Master on the
  * shortcuts page; the keys in force reach components through `ShortcutsContext`, and
@@ -53,15 +56,35 @@ export function isTypingIn(target: EventTarget | null): boolean {
   return false;
 }
 
+/**
+ * Whether the control `target` (a key event's target) answers `key` itself: a drop-down list
+ * every key (it picks an option by its first letter), a slider the navigation keys, whatever
+ * modifier is held.
+ */
+export function handlesKey(target: EventTarget | null, key: string): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLSelectElement) return true;
+  const slider =
+    (target instanceof HTMLInputElement && target.type === 'range') ||
+    target.getAttribute('role') === 'slider';
+  return slider && NAVIGATION_KEYS.has(key.toLowerCase());
+}
+
 /** The Scene edit shortcuts: Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes. */
 export type EditShortcut = Extract<Shortcut, 'undo' | 'redo'>;
 
 /** The key event fields a shortcut is read from. */
-export type KeyPress = KeyPressFields & Pick<KeyboardEvent, 'repeat' | 'target'>;
+export type KeyPress = KeyPressFields &
+  Pick<KeyboardEvent, 'repeat' | 'target'> &
+  Partial<Pick<KeyboardEvent, 'defaultPrevented'>>;
 
-/** The shortcut a key press means in `keyMap`, if any; none while typing in a field. */
+/**
+ * The shortcut a key press means in `keyMap`, if any; none while typing in a field, on a key the
+ * focused control answers (`handlesKey`) or one already answered (`defaultPrevented`).
+ */
 export function shortcutOf(press: KeyPress, keyMap: KeyMap = KEY_MAP): Shortcut | undefined {
-  if (isTypingIn(press.target)) return undefined;
+  if (press.defaultPrevented === true) return undefined;
+  if (isTypingIn(press.target) || handlesKey(press.target, press.key)) return undefined;
   return shortcutPressed(press, keyMap);
 }
 

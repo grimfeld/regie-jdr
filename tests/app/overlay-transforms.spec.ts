@@ -274,3 +274,30 @@ test('dragging an Overlay on a Scene that is not active never touches the broadc
     2,
   );
 });
+
+test('Ctrl+arrow on a selected Overlay nudges it and never Activates a Scene', async ({
+  regie,
+}) => {
+  const { controlWindow: page } = regie;
+  await sceneWithImage(regie, 'Cantina');
+  await placeOverlay(page);
+  const canvas = editorCanvas(page);
+  const overlay = canvas.locator('.canvas-overlay');
+  await pressAndMove(page, overlay, 0, 0);
+  await page.mouse.up();
+  await expect(overlay).toHaveClass(/is-selected/);
+
+  const before = await boxOn(canvas, overlay);
+  await canvas.press('Control+ArrowDown');
+  await canvas.press('Control+ArrowUp');
+  await canvas.press('Control+ArrowDown');
+
+  const box = await boxOn(canvas, overlay);
+  expect(box.y).toBeCloseTo(before.y + 10 / 1080, 3);
+  const onAir = await page.evaluate(() =>
+    (
+      window as unknown as { regie: { getOnAir(): Promise<{ activeSceneId: string | null }> } }
+    ).regie.getOnAir(),
+  );
+  expect(onAir.activeSceneId).toBeNull();
+});
