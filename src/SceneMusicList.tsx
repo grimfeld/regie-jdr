@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { ArrowDown, ArrowUp, Music2, Trash2 } from 'lucide-react';
 import type { DragEvent } from 'react';
 import type { MusicLevel, SceneEdit } from '../shared/contract';
 import type { AudioMedia, MediaId, Scene } from '../shared/domain';
-import { LevelSlider } from './LevelSlider';
+import { LevelSlider, useTransientSender } from './LevelSlider';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { useDropTarget } from './PlacementLists';
-import { createTransientSender, type TransientSender } from './transientUpdates';
 
 /**
  * The Selected Scene's Music list, in order: the first plays when the Scene is Activated.
@@ -38,17 +37,8 @@ export function SceneMusicList(props: {
     },
     (event) => carriesAudio(event, 'music'),
   );
-  // The latest callback, for the sender of a drag under way.
-  const latestTransient = useRef(onTransient);
-  useEffect(() => {
-    latestTransient.current = onTransient;
-  });
-  const senderRef = useRef<TransientSender<MusicLevel> | undefined>(undefined);
   /** The sender of the level's transient updates, created on first use (in an event). */
-  function level() {
-    senderRef.current ??= createTransientSender((edit) => latestTransient.current(edit));
-    return senderRef.current;
-  }
+  const level = useTransientSender(onTransient);
   const nameOf = (mediaId: MediaId) =>
     sounds.find((sound) => sound.id === mediaId)?.name ?? 'Média inconnu';
   const count = scene.music.length;

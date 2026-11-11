@@ -10,6 +10,7 @@ import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { createPadVoices } from '../../core/padVoices';
 import { createSceneLibrary } from '../../core/scenes';
+import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { AudioMedia, AudioMix, OnAirState, Scene } from '../../shared/domain';
 import { fakeResizer } from './fakeResizer';
@@ -51,7 +52,7 @@ const heard: MixInput = {
   scene: taverne,
   library,
   masterVolume: 1,
-  audio: { music: { mediaId: 'm1', playback: 'playing' } },
+  audio: { music: { mediaId: 'm1', playback: 'playing', take: 0 } },
   silence: false,
 };
 
@@ -199,6 +200,7 @@ describe('what is sounding during Silence', () => {
       voices: [],
       pads: [],
       silence: true,
+      masterVolume: 1,
     });
   });
 });
@@ -222,6 +224,7 @@ describe('Silence and Blackout stay apart', () => {
       scenes,
       onAir,
       audio: audioOnAir,
+      soundboards: createSoundboardStore({ storage, library: media }),
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const file = path.join(dir.path, 'Auberge.ogg');
@@ -268,5 +271,26 @@ describe('Silence and Blackout stay apart', () => {
     ctx.audioOnAir.setSilence(true);
     await ctx.commands.openCampaign(ctx.campaign.id);
     expect(ctx.audioOnAir.silence()).toBe(false);
+  });
+
+  it('Silence given after an Activate waits for it, so the Activate does not lift it', async () => {
+    const ctx = await setup();
+
+    const activated = ctx.commands.activateScene(ctx.scene.id);
+    const started = ctx.commands.setSilence(true);
+    await Promise.all([activated, started]);
+
+    expect(await started).toBe(true);
+    expect(ctx.audioOnAir.silence()).toBe(true);
+  });
+
+  it('toggling Silence twice starts it, then lifts it, each from the state the one before left', async () => {
+    const ctx = await setup();
+
+    const toggles = [ctx.commands.toggleSilence(), ctx.commands.toggleSilence()];
+
+    expect(await Promise.all(toggles)).toEqual([true, false]);
+    expect(ctx.audioOnAir.silence()).toBe(false);
+    expect(await ctx.commands.setSilence(false)).toBe(false);
   });
 });

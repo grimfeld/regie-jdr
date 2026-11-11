@@ -16,6 +16,7 @@ import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
+import { ListenButton, ListeningWarning, type Listening } from './Listening';
 import { gridColumns, gridWindow } from './virtualGrid';
 
 const categoryLabels: Record<ImageCategory, string> = {
@@ -30,6 +31,34 @@ const filterLabels: Record<LibraryFilter, string> = {
   character: 'Personnages',
   reference: 'Références',
 };
+
+/**
+ * What deleting a used Media takes with it, for the confirmation: the Scenes it is placed in
+ * (and the broadcast, if shown there) and the Soundboard pads playing it.
+ */
+function deletionWarning({
+  media,
+  scenes,
+  pads,
+}: {
+  media: Media;
+  scenes: string[];
+  pads: string[];
+}) {
+  const inScenes = scenes.length > 1 ? 'ces scènes' : 'cette scène';
+  const byPads = pads.length > 1 ? 'ces pads' : 'ce pad';
+  const uses = [
+    scenes.length > 0 && `dans ${inScenes}`,
+    pads.length > 0 && `par ${byPads} de la table de bruitages`,
+  ].filter(Boolean);
+  const removed = [
+    scenes.length > 0 &&
+      `Le supprimer le retire aussi de ${inScenes}, et de la diffusion s’il y est affiché.`,
+    pads.length > 0 &&
+      (pads.length > 1 ? 'Ces pads sont retirés de la table.' : 'Ce pad est retiré de la table.'),
+  ].filter(Boolean);
+  return `« ${media.name} » est utilisé ${uses.join(' et ')}. ${removed.join(' ')}`;
+}
 
 const roleLabels: Record<AudioRole, string> = {
   music: 'Musique',
@@ -46,6 +75,8 @@ const audioFilterLabels: Record<AudioFilter, string> = {
 
 /** Sounds waiting for the Game Master to choose their role, and what to do with the answer. */
 interface RoleRequest {
+  /** Tells requests apart, so each question shows afresh. */
+  id: number;
   /** How many dropped sounds; 0 when they are still to be picked. */
   count: number;
   answer: (role: AudioRole | null) => void;
@@ -60,6 +91,8 @@ interface Props {
   onMediaRenamed: () => void;
   /** Changes when Media were imported elsewhere (dropped on the Scene editor): read again. */
   importRevision: number;
+  /** Listening to a library sound (shared with the "En cours" strip, which lists it). */
+  listening: Listening;
 }
 
 /**
@@ -74,15 +107,20 @@ export function MediaLibrary({
   onMediaDeleted,
   onMediaRenamed,
   importRevision,
+  listening,
 }: Props) {
   const [media, setMedia] = useState<Media[]>([]);
   const [filter, setFilter] = useState<LibraryFilter>('all');
   const [query, setQuery] = useState('');
   const [audioFilter, setAudioFilter] = useState<AudioFilter>('all');
   const [audioQuery, setAudioQuery] = useState('');
-  const [roleRequest, setRoleRequest] = useState<RoleRequest | null>(null);
+  /** Questions about sounds' roles, asked one at a time in order: a drop never replaces one. */
+  const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
+  const nextRoleRequest = useRef(0);
   /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
-  const [pending, setPending] = useState<{ media: Media; scenes: string[] } | null>(null);
+  const [pending, setPending] = useState<{ media: Media; scenes: string[]; pads: string[] } | null>(
+    null,
+  );
 
   const images = useMemo(() => imageLibrary(media, filter, query), [media, filter, query]);
   const sounds = useMemo(
@@ -129,16 +167,23 @@ export function MediaLibrary({
     refused.forEach(showNotice);
   }
 
-  /** Asks the Game Master which role `count` sounds get; null when they cancel. */
+  /**
+   * Asks the Game Master which role `count` sounds get; null when they cancel. Asked after any
+   * question still open (sounds dropped again meanwhile), so no sounds are forgotten.
+   */
   function askRole(count: number): Promise<AudioRole | null> {
     return new Promise((resolve) => {
-      setRoleRequest({
+      nextRoleRequest.current += 1;
+      const id = nextRoleRequest.current;
+      const request: RoleRequest = {
+        id,
         count,
         answer: (role) => {
-          setRoleRequest(null);
+          setRoleRequests((current) => current.filter((open) => open.id !== id));
           resolve(role);
         },
-      });
+      };
+      setRoleRequests((current) => [...current, request]);
     });
   }
 
@@ -196,7 +241,10 @@ export function MediaLibrary({
     }
   }
 
-  /** Deletes at once when no Scene uses the Media; otherwise asks first, listing the Scenes. */
+  /**
+   * Deletes at once when no Scene nor pad uses the Media; otherwise asks first, listing the
+   * Scenes and the pads.
+   */
   async function remove(item: Media, confirmed: boolean) {
     if (!control) return;
     try {
@@ -206,7 +254,11 @@ export function MediaLibrary({
         setMedia((current) => current.filter((m) => m.id !== item.id));
         onMediaDeleted(deletion);
       } else {
-        setPending({ media: item, scenes: deletion.affectedScenes.map((scene) => scene.name) });
+        setPending({
+          media: item,
+          scenes: deletion.affectedScenes.map((scene) => scene.name),
+          pads: deletion.affectedPads.map((pad) => pad.name),
+        });
       }
     } catch (error) {
       setPending(null);
@@ -249,7 +301,7 @@ export function MediaLibrary({
           </button>
         </div>
       </div>
-      {roleRequest && <RoleChoice request={roleRequest} />}
+      {roleRequests[0] && <RoleChoice key={roleRequests[0].id} request={roleRequests[0]} />}
       {hasImages && (
         <div className="library-toolbar">
           <div className="library-filter" role="group" aria-label="Filtrer les images">
@@ -335,6 +387,8 @@ export function MediaLibrary({
           </label>
         </div>
       )}
+      {hasSounds && <ListeningWarning listening={listening} />}
+      {listening.player}
       <ul className="media-library sound-library" aria-label="Sons">
         {sounds.map((item) => (
           <li className="media-item" key={item.id}>
@@ -357,6 +411,7 @@ export function MediaLibrary({
                 {formatDuration(item.durationSeconds)}
               </span>
             </span>
+            <ListenButton sound={item} listening={listening} missing={missingSounds.has(item.id)} />
             {deleteButton(item)}
           </li>
         ))}
@@ -371,17 +426,21 @@ export function MediaLibrary({
           aria-label="Supprimer le média"
           aria-describedby="media-delete-message"
         >
-          <p id="media-delete-message">
-            « {pending.media.name} » est utilisé dans{' '}
-            {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}. Le supprimer le retire aussi
-            de {pending.scenes.length > 1 ? 'ces scènes' : 'cette scène'}, et de la diffusion s’il y
-            est affiché.
-          </p>
-          <ul aria-label="Scènes concernées">
-            {pending.scenes.map((name, index) => (
-              <li key={index}>{name}</li>
-            ))}
-          </ul>
+          <p id="media-delete-message">{deletionWarning(pending)}</p>
+          {pending.scenes.length > 0 && (
+            <ul aria-label="Scènes concernées">
+              {pending.scenes.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
+          {pending.pads.length > 0 && (
+            <ul aria-label="Pads concernés">
+              {pending.pads.map((name, index) => (
+                <li key={index}>{name}</li>
+              ))}
+            </ul>
+          )}
           <div className="media-delete-actions">
             <button className="secondary-button" autoFocus onClick={() => setPending(null)}>
               Annuler

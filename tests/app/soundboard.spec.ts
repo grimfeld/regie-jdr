@@ -156,3 +156,37 @@ test('pads are renamed, reordered, given a volume and removed, saved per Campaig
     await restarted.app.close();
   }
 });
+
+test('deleting a Sound effect used by pads warns, listing them, then removes them', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  await importSounds(regie, 'Bruitage', 1, 'Épée');
+  await dropOnSoundboard(controlWindow, 'Épée');
+  await expect(pads(controlWindow)).toHaveCount(1);
+  await dropOnSoundboard(controlWindow, 'Épée');
+  await expect(pads(controlWindow)).toHaveCount(2);
+  const board = soundboard(controlWindow);
+  await board.getByRole('textbox', { name: 'Nom de Épée' }).last().fill('Parade');
+  await board.getByRole('textbox', { name: 'Nom de Épée' }).last().press('Enter');
+  await expect(pad(controlWindow, 'Parade')).toBeVisible();
+
+  const remove = soundInLibrary(controlWindow, 'Épée').getByRole('button', {
+    name: 'Supprimer Épée',
+  });
+  await remove.click();
+  const confirmation = controlWindow.getByRole('alertdialog', { name: 'Supprimer le média' });
+  await expect(confirmation).toContainText('table de bruitages');
+  await expect(
+    confirmation.getByRole('list', { name: 'Pads concernés' }).getByRole('listitem'),
+  ).toHaveText([/Épée/, /Parade/]);
+  await confirmation.getByRole('button', { name: 'Annuler' }).click();
+  await expect(pads(controlWindow)).toHaveCount(2);
+
+  await remove.click();
+  await confirmation.getByRole('button', { name: 'Supprimer quand même' }).click();
+
+  await expect(soundInLibrary(controlWindow, 'Épée')).toHaveCount(0);
+  await expect(pads(controlWindow)).toHaveCount(0);
+});

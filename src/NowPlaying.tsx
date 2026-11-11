@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AudioLines,
+  Headphones,
   Music2,
   Pause,
   Play,
@@ -56,13 +57,21 @@ function RoleIcon({ role }: { role: SoundingVoice['role'] }) {
 /**
  * The "En cours" strip, next to the On-air monitor: what is actually sounding, as the audio
  * engine reports it (a file that failed to load shows as such), and the Master volume.
- * Pads sounding (#39) show after the voices. The current Music has its pause/resume and
+ * Pads sounding (#39) show after the voices, then a library sound being listened to (#43:
+ * the players hear it too). The current Music has its pause/resume and
  * stop buttons here (live playback, not saved). The Silence toggle (#40) sits in its heading,
  * always visible: during Silence the voices stay listed, silent, and come back when it lifts;
  * the Music's buttons hide then, as the engine reports every voice paused.
  * Later slices add here: Ambiences on (#37).
  */
-export function NowPlaying({ control }: { control: ControlBridge | undefined }) {
+export function NowPlaying({
+  control,
+  listening,
+}: {
+  control: ControlBridge | undefined;
+  /** The name of the library sound being listened to (src/Listening.tsx); null when none. */
+  listening: string | null;
+}) {
   const sounding = useSounding(control);
   useUnplayableNotices(sounding);
   const voices = sounding?.voices ?? [];
@@ -83,12 +92,12 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
           aria-pressed={silence}
           title={`Couper tout le son en fondu, ou le rétablir tel qu’il était (touche ${silenceKey})`}
           aria-keyshortcuts={silenceKey}
-          onClick={() => void setSilence(control, !silence)}
+          onClick={() => void toggleSilence(control)}
         >
           <VolumeX size={14} /> Silence {silenceKey && <kbd aria-hidden>{silenceKey}</kbd>}
         </button>
       </div>
-      {voices.length === 0 && pads.length === 0 ? (
+      {voices.length === 0 && pads.length === 0 && listening === null ? (
         <p className="now-playing-empty">Aucun son.</p>
       ) : (
         <ul className="now-playing-list" aria-label="Sons en cours">
@@ -110,6 +119,13 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
               <small>bruitage</small>
             </li>
           ))}
+          {listening !== null && (
+            <li data-role="listening" data-state="playing">
+              <Headphones size={14} aria-hidden />
+              <span className="now-playing-name">{listening}</span>
+              <small>écoute</small>
+            </li>
+          )}
         </ul>
       )}
       <MasterVolume control={control} />
@@ -156,14 +172,15 @@ function MusicPlayback({
 }
 
 /**
- * Starts (`on`) or lifts Silence, telling the Game Master if that fails. For the Silence
- * button, and for its key (`useAudioShortcuts` in App.tsx), which reads the current state from
- * useSounding.
+ * Starts Silence when it is off, lifts it when it is on, telling the Game Master if that fails.
+ * For the Silence button, and for its key (`useAudioShortcuts` in App.tsx). The main process
+ * decides from its own state, not from what this window last heard: pressed twice quickly, it
+ * starts then lifts.
  */
-export async function setSilence(control: ControlBridge | undefined, on: boolean) {
+export async function toggleSilence(control: ControlBridge | undefined) {
   if (!control) return;
   try {
-    await control.setSilence(on);
+    await control.toggleSilence();
   } catch (error) {
     showNotice(errorMessage(error));
   }

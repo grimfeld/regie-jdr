@@ -280,8 +280,11 @@ export type MusicPlayback = 'playing' | 'paused' | 'stopped';
  * closed, and after a restart. Ambience on/off comes from the Active Scene itself.
  */
 export interface AudioOnAirState {
-  /** The current Music: an entry of the Active Scene's Music list, or null for none. */
-  music: { mediaId: MediaId; playback: MusicPlayback } | null;
+  /**
+   * The current Music: an entry of the Active Scene's Music list, or null for none. `take`
+   * counts its starts over (AudioVoice `take`).
+   */
+  music: { mediaId: MediaId; playback: MusicPlayback; take: number } | null;
 }
 
 /**
@@ -300,6 +303,12 @@ export interface AudioVoice {
   gain: number;
   /** False: paused, keeping its position, so it resumes where it was. */
   playing: boolean;
+  /**
+   * Which start of the sound this is. The engine keeps a voice while both its Media and its
+   * take stay the same; a new take starts the sound over from its beginning (a paused Music
+   * Activated again, #38).
+   */
+  take: number;
 }
 
 /**
@@ -344,7 +353,8 @@ export interface SoundingVoice {
 
 /**
  * What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it,
- * the Soundboard pads the engine reports playing, and whether Silence is on.
+ * the Soundboard pads the engine reports playing, whether Silence is on, and the Master volume
+ * everything is heard at.
  */
 export interface AudioSounding {
   voices: SoundingVoice[];
@@ -354,6 +364,8 @@ export interface AudioSounding {
    * never saved; audio only, apart from Blackout (picture only).
    */
   silence: boolean;
+  /** The Master volume (0..1): a library sound listened to plays at it too. */
+  masterVolume: number;
 }
 
 /**
@@ -365,11 +377,19 @@ export type PadVoiceId = number;
 
 /**
  * What the main process tells the audio engine about pad sounds (core/padVoices.ts): play one
- * at `gain` (Master volume included), or cut some with a short fade.
+ * at `gain` (Master volume included), cut some with a short fade, ramp some to a new level,
+ * or preload the pads' sounds.
  */
 export type PadCommand =
   | { kind: 'play'; voiceId: PadVoiceId; src: string; gain: number }
-  | { kind: 'cut'; voiceIds: PadVoiceId[]; fadeMs: number };
+  | { kind: 'cut'; voiceIds: PadVoiceId[]; fadeMs: number }
+  /**
+   * The Sound effects of the open Campaign's pads (Media addresses): the engine decodes them
+   * ahead of a press and frees every other it holds (Campaign switched, pad removed).
+   */
+  | { kind: 'preload'; srcs: string[] }
+  /** Ramps pad sounds still sounding to a new level (a level slider moved). */
+  | { kind: 'gain'; voiceIds: PadVoiceId[]; gain: number; fadeMs: number };
 
 /**
  * The audio engine's report on pad sounds: the state of each it holds, and the last pad sound

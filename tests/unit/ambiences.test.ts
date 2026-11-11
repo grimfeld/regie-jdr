@@ -9,6 +9,7 @@ import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { createSceneLibrary } from '../../core/scenes';
+import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
 import type { AudioMix, AudioRole } from '../../shared/domain';
@@ -32,6 +33,7 @@ describe('Scene Ambiences on air', () => {
       scenes,
       onAir: createOnAir(),
       audio,
+      soundboards: createSoundboardStore({ storage, library }),
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const importSounds = async (role: AudioRole, ...names: string[]) => {
@@ -111,6 +113,39 @@ describe('Scene Ambiences on air', () => {
       gain: 0.1,
     });
     expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.volume);
+  });
+
+  it('an Ambience volume or the Ambience level being dragged is heard, unsaved and not undoable', async () => {
+    const ctx = await setup();
+    await ctx.edit({ kind: 'add-ambience', mediaId: ctx.pluie.id });
+    const saved = await ctx.edit({ kind: 'set-ambience-on', mediaId: ctx.pluie.id, on: true });
+    await ctx.commands.activateScene(ctx.scene.id);
+    const undo = await ctx.commands.undoState(ctx.campaign.id, ctx.scene.id);
+
+    await ctx.commands.showTransientEdit(ctx.campaign.id, ctx.scene.id, {
+      kind: 'set-ambience-volume',
+      mediaId: ctx.pluie.id,
+      volume: 0.5,
+    });
+    expect(voices(ctx.audio.mix())).toContainEqual({
+      mediaId: ctx.pluie.id,
+      role: 'ambience',
+      gain: 0.5,
+    });
+    await ctx.commands.showTransientEdit(ctx.campaign.id, ctx.scene.id, {
+      kind: 'set-ambience-level',
+      level: 0.25,
+    });
+
+    // Each transient update applies to the Scene as saved, not to the last update.
+    expect(voices(ctx.audio.mix())).toContainEqual({
+      mediaId: ctx.pluie.id,
+      role: 'ambience',
+      gain: 0.25,
+    });
+    expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.volume);
+    expect(await ctx.scenes.get(ctx.campaign.id, ctx.scene.id)).toEqual(saved);
+    expect(await ctx.commands.undoState(ctx.campaign.id, ctx.scene.id)).toEqual(undo);
   });
 
   it('Activate starts the Ambiences that are on, and only those', async () => {

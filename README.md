@@ -36,12 +36,11 @@ npm run electron:dev
 - Synchronisation du titre et du décor entre les deux fenêtres.
 - Import local d'images PNG/JPG/WebP.
 - Trois thèmes d'interface : rétro SF, Imperium (sans Mechanicus), fantasy.
-- Premiers contrôles visuels de volume (interface seulement à ce stade).
+- Audio joué dans la fenêtre du MJ (Web Audio, voir `docs/adr/0002-audio-and-broadcast-routing.md`) : musiques, ambiances et table de bruitages par scène, Silence, volume général.
 
 ## Prochaines étapes
 1. Persistance des scènes et des bibliothèques dans les données locales de l’application.
 2. Vraie bibliothèque de décors, portraits et créatures avec catégories.
 3. Placement, déplacement, taille, calques et transitions des personnages sur la scène.
-4. Moteur audio réel avec Howler.js, boucles, bruitages et mixage.
-5. Profils de campagnes et sauvegarde SQLite.
-6. Packaging Windows/macOS/Linux et tests de capture audio Discord.
+4. Profils de campagnes et sauvegarde SQLite.
+5. Packaging Windows/macOS/Linux et tests de capture audio Discord.

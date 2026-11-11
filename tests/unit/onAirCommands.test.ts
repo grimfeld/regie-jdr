@@ -10,6 +10,7 @@ import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { notesFromPlainText } from '../../core/notes';
 import { createSceneLibrary } from '../../core/scenes';
+import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
 import type { AudioMix, Media, OnAirState } from '../../shared/domain';
@@ -32,6 +33,8 @@ describe('on-air commands', () => {
     const audio = createAudioOnAir();
     const mixes: AudioMix[] = [];
     audio.subscribe((mix) => mixes.push(mix));
+    let pads = 0;
+    const soundboards = createSoundboardStore({ storage, library, newId: () => `pad${++pads}` });
     let placements = 0;
     // When set, the commands' Scene saves fail, as on a full or read-only disk.
     let saveFailure: Error | undefined;
@@ -44,6 +47,7 @@ describe('on-air commands', () => {
       },
       onAir,
       audio,
+      soundboards,
       newId: () => `p${++placements}`,
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
@@ -54,6 +58,7 @@ describe('on-air commands', () => {
       storage,
       library,
       scenes,
+      soundboards,
       commands,
       campaign,
       image,
@@ -319,6 +324,19 @@ describe('on-air commands', () => {
       expect(ctx.mixes).toEqual([]);
     });
 
+    it('two Music drops sent back to back are both kept, in drop order', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Vide');
+      const add = (mediaId: string) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, { kind: 'add-music', mediaId });
+
+      // Neither awaited before the other is sent, as two drops in a row reach the main process.
+      const [, second] = await Promise.all([add(ctx.music[0].id), add(ctx.music[1].id)]);
+
+      expect(second.music).toEqual([ctx.music[0].id, ctx.music[1].id]);
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.music).toEqual(second.music);
+    });
+
     it('refuses to add an image or a missing Media to the Music list', async () => {
       const ctx = await setupWithMusic();
       const scene = await ctx.scenes.create(ctx.campaign.id, 'Vide');
@@ -485,6 +503,31 @@ describe('on-air commands', () => {
       return scene;
     }
 
+    it('renaming a sounding Media renames its voice, which plays on as it was', async () => {
+      const ctx = await setupWithMusic();
+      await playing(ctx);
+      await ctx.commands.pickMusic(ctx.music[1].id);
+      const before = ctx.audio.mix();
+
+      const renamed = await ctx.commands.renameMedia(ctx.campaign.id, ctx.music[1].id, 'Rixe');
+
+      expect(renamed.name).toBe('Rixe');
+      expect(ctx.audio.mix().voices).toEqual([{ ...before.voices[0], name: 'Rixe' }]);
+      expect((await ctx.library.list(ctx.campaign.id)).map((media) => media.name)).toContain(
+        'Rixe',
+      );
+    });
+
+    it('renaming a Media of a Scene that is not active changes nothing heard', async () => {
+      const ctx = await setupWithMusic();
+      await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      await ctx.commands.renameMedia(ctx.campaign.id, ctx.music[0].id, 'Rixe');
+
+      expect(ctx.mixes).toEqual([]);
+    });
+
     it('picking a track crossfades to it in 2 s, without saving it into the Scene', async () => {
       const ctx = await setupWithMusic();
       const scene = await playing(ctx);
@@ -604,6 +647,23 @@ describe('on-air commands', () => {
         undo: 'régler le niveau des musiques',
         redo: null,
       });
+    });
+
+    it('puts the saved Music level back in the mix when the committed drag fails', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await playing(ctx);
+      await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+        kind: 'set-music-level',
+        level: 0.4,
+      });
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 0.4 })]);
+      ctx.failSaves(new Error('disk full'));
+
+      await expect(
+        ctx.commands.editScene(ctx.campaign.id, scene.id, { kind: 'set-music-level', level: 0.4 }),
+      ).rejects.toThrow('disk full');
+
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 1 })]);
     });
 
     it('reorder and remove are saved and undoable; removing the current Music stops it', async () => {
@@ -854,6 +914,7 @@ describe('on-air commands', () => {
       expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false)).toEqual({
         deleted: true,
         affectedScenes: [],
+        affectedPads: [],
       });
 
       expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
@@ -871,6 +932,7 @@ describe('on-air commands', () => {
       expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false)).toEqual({
         deleted: false,
         affectedScenes: [{ id: cantina.id, name: 'Cantina' }],
+        affectedPads: [],
       });
 
       expect(await ctx.library.list(ctx.campaign.id)).toEqual([ctx.image]);
@@ -893,6 +955,7 @@ describe('on-air commands', () => {
           { id: cantina.id, name: 'Cantina' },
           { id: hangar.id, name: 'Hangar' },
         ],
+        affectedPads: [],
       });
 
       expect(await ctx.library.list(ctx.campaign.id)).toEqual([]);
@@ -922,6 +985,43 @@ describe('on-air commands', () => {
       await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true);
 
       expect(ctx.broadcast.length).toBe(sent);
+    });
+
+    it('counts Soundboard pads as uses: lists them, then removes them on confirmation', async () => {
+      const ctx = await setup();
+      const file = path.join(dir.path, 'Épée.ogg');
+      await fs.writeFile(file, 'Épée');
+      const [sword] = (
+        await ctx.library.import(ctx.campaign.id, [file], { accept: 'audio', role: 'soundEffect' })
+      ).imported;
+      await ctx.soundboards.edit(ctx.campaign.id, { kind: 'add-pad', mediaId: sword.id });
+      await ctx.soundboards.edit(ctx.campaign.id, { kind: 'add-pad', mediaId: sword.id });
+      await ctx.soundboards.edit(ctx.campaign.id, {
+        kind: 'rename-pad',
+        padId: 'pad2',
+        label: 'Parade',
+      });
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, sword.id, false)).toEqual({
+        deleted: false,
+        affectedScenes: [],
+        affectedPads: [
+          { id: 'pad1', name: 'Épée' },
+          { id: 'pad2', name: 'Parade' },
+        ],
+      });
+      expect((await ctx.soundboards.get(ctx.campaign.id)).pads).toHaveLength(2);
+      expect(await ctx.library.list(ctx.campaign.id)).toContainEqual(sword);
+
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, sword.id, true)).toMatchObject({
+        deleted: true,
+        affectedPads: [
+          { id: 'pad1', name: 'Épée' },
+          { id: 'pad2', name: 'Parade' },
+        ],
+      });
+      expect((await ctx.soundboards.get(ctx.campaign.id)).pads).toEqual([]);
+      expect(await ctx.library.list(ctx.campaign.id)).not.toContainEqual(sword);
     });
 
     it('refuses Media that no longer exists', async () => {

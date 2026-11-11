@@ -438,14 +438,17 @@ function isOverlayHeight(value: unknown): value is number {
 
 /**
  * A transient update of a live drag from untrusted data: a transform of an Overlay, a framing
- * of a Background or a Scene's Music level, keeping only its fields; or undefined.
+ * of a Background, a Scene's Music or Ambience level or an Ambience's volume, keeping only its
+ * fields; or undefined.
  */
 export function parseTransientEdit(value: unknown): TransientEdit | undefined {
   const edit = parseSceneEdit(value);
   const transient =
     edit?.kind === 'transform-overlay' ||
     edit?.kind === 'frame-background' ||
-    edit?.kind === 'set-music-level';
+    edit?.kind === 'set-music-level' ||
+    edit?.kind === 'set-ambience-level' ||
+    edit?.kind === 'set-ambience-volume';
   return transient ? edit : undefined;
 }
 

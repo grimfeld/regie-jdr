@@ -157,13 +157,32 @@ export interface SoundboardStore {
   edit(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   /** Removes every pad of a Media (it was deleted from the library). */
   removeMedia(campaignId: CampaignId, mediaId: MediaId): Promise<void>;
-  /** What pressing a pad plays, at `masterVolume`. Throws when the pad or its Media is gone. */
+  /**
+   * Each pad's name and level (padGain at `masterVolume`), for the pad sounds still sounding
+   * (core/padVoices.ts `retune`): as saved, or with `unsaved` applied but not saved (a level
+   * slider being dragged). Pads whose Media is gone are left out.
+   */
+  tuning(
+    campaignId: CampaignId,
+    masterVolume: number,
+    unsaved?: SoundboardEdit,
+  ): Promise<Map<string, { name: string; gain: number }>>;
+  /**
+   * What pressing a pad plays, at `masterVolume`. Throws when the pad or its Media is gone, or
+   * (a SoundboardError saying so) when its file is missing: deleted or moved outside the app.
+   */
   press(campaignId: CampaignId, padId: string, masterVolume: number): Promise<PadPress>;
+  /**
+   * The Media addresses of the Sound effects on the Campaign's pads, each once, in pad order:
+   * what the audio engine keeps decoded (spec #33: preloaded on Campaign open). A pad whose
+   * Media left the library is left out.
+   */
+  sounds(campaignId: CampaignId): Promise<string[]>;
 }
 
 export function createSoundboardStore(deps: {
   storage: Storage;
-  library: Pick<MediaLibrary, 'list'>;
+  library: Pick<MediaLibrary, 'list' | 'resolveAddress'>;
   /** Names new pads; random UUIDs unless a test gives its own. */
   newId?: () => string;
 }): SoundboardStore {
@@ -220,17 +239,51 @@ export function createSoundboardStore(deps: {
       });
     },
 
+    async tuning(campaignId, masterVolume, unsaved) {
+      const saved = await read(await fileOf(campaignId), campaignId);
+      const board = unsaved ? applySoundboardEdit(saved, unsaved, newId) : saved;
+      const media = await library.list(campaignId);
+      const tuned = new Map<string, { name: string; gain: number }>();
+      for (const pad of board.pads) {
+        const item = media.find((candidate) => candidate.id === pad.mediaId);
+        if (!item) continue;
+        tuned.set(pad.id, {
+          name: pad.label ?? item.name,
+          gain: padGain(masterVolume, board.volume, pad.volume),
+        });
+      }
+      return tuned;
+    },
+
     async press(campaignId, padId, masterVolume) {
       const board = await read(await fileOf(campaignId), campaignId);
       const pad = board.pads.find((item) => item.id === padId);
       if (!pad) throw new SoundboardError('Ce bruitage n’est plus sur la table.');
       const media = soundEffectOf(await library.list(campaignId), pad.mediaId);
+      const src = mediaAddress(media);
+      // The rule the Media protocol serves by: a file it would answer 404 for.
+      if (!(await library.resolveAddress(src, campaignId))) {
+        throw new SoundboardError(
+          `« ${media.name} » est introuvable (fichier supprimé ou déplacé hors de l’application).`,
+        );
+      }
       return {
         padId,
         name: pad.label ?? media.name,
-        src: mediaAddress(media),
+        src,
         gain: padGain(masterVolume, board.volume, pad.volume),
       };
+    },
+
+    async sounds(campaignId) {
+      const board = await read(await fileOf(campaignId), campaignId);
+      const media = await library.list(campaignId);
+      const sounds = new Set<string>();
+      for (const pad of board.pads) {
+        const item = media.find((candidate) => candidate.id === pad.mediaId);
+        if (item?.kind === 'audio' && item.role === 'soundEffect') sounds.add(mediaAddress(item));
+      }
+      return [...sounds];
     },
   };
 }

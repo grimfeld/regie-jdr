@@ -17,6 +17,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Scene rendering and Scene edits](subsystem-scene-rendering-and-edits.md): shared renderer, broadcast projection, how to add a SceneEdit.
 
 - [Audio engine and mix](subsystem-audio.md): where audio plays, the pure mix, plug-in points for #36 to #43.
+- [Rich Notes](subsystem-notes.md): TipTap editor, storage v3, undo split, #52 extension point.
 - [Keyboard shortcuts](subsystem-keyboard-shortcuts.md): one `KEY_MAP`, ready for M3 #56 and M4 #71.
 - [Media library](subsystem-media-library.md): thumbnails, search, rename, WebP caveat.
 
@@ -33,6 +34,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 ## Reviews
 
 - [M1 review 2026-11-11](review-m1-2026-11-11.md): 3 should-fix, 7 notes.
+- [M2 review 2026-11-12](review-m2-2026-11-12.md): 6 should-fix, 7 notes.
 
 ## Milestone logs
 

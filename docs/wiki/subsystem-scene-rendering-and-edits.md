@@ -82,3 +82,10 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - If the saved Scene no longer matches the step, undo is refused in French and that Scene's history cleared. **Rule for every later milestone: any new Scene field (Music, Ambiences, Notes, Transition, Chapter) must change through a `SceneEdit` in `editScene`, or undo breaks.**
 - Moves of the same Overlay within 1 s merge into one step (nudge bursts; also two quick drags).
 - Shared typing check: `isTypingIn` and `editShortcutOf` in `src/keyboard.ts`.
+
+## Running order (#46, 2026-11-12, `m3-transitions-closeout@1a54d3e`)
+
+- Decision: reordering Scenes is a Campaign-level command (`scenes:move`, `SceneLibrary.move`), not a `SceneEdit`, so it never touches Scene undo history. The `editScene` rule covers Scene fields only.
+- The running order is the order of Scenes in `scenes.json`; new Scenes go last. No schema change (stays v3).
+- `core/runningOrder.ts` (renderer-safe): `moveInRunningOrder`, pure `sceneNextTo(order, from, 'next'|'previous')` (nothing on air → first Scene; no wrap). #56 calls it; #70 Chapters group over the same list.
+- UI: Scene list moved to `src/SceneList.tsx`; drag a row onto another to take its place. Gap: no keyboard reorder.

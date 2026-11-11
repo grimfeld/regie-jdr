@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, protocol, screen, type WebContents } from 'electron';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isAppPage } from './navigation.js';
@@ -10,9 +9,9 @@ import { createCampaign, updateCampaign } from '../core/campaigns.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
-import { soundingOf } from '../core/audioMix.js';
+import { mediaFileResponse } from '../core/mediaResponse.js';
 import { createAudioOnAir } from '../core/audioOnAir.js';
-import { parseByteRange } from '../core/byteRange.js';
+import { createEngineLink } from '../core/engineLink.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
 import { createPadVoices } from '../core/padVoices.js';
@@ -21,8 +20,8 @@ import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
-import type { MediaImportKind } from '../shared/contract.js';
-import type { AudioEngineReport, PadCommand } from '../shared/domain.js';
+import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
+import type { PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
@@ -37,7 +36,7 @@ const audio = createAudioOnAir();
 // What the Soundboard's pads play: in memory only, like the mix.
 const padVoices = createPadVoices();
 // What the audio engine (in the Control window, ADR-0002) last reported sounding.
-let engineReport: AudioEngineReport = { voices: [] };
+const engine = createEngineLink(audio, padVoices);
 
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
@@ -94,8 +93,9 @@ app.on('web-contents-created', (_event, contents) => {
 /**
  * Serves Media files from the open Campaign's media folder only, with an explicit content type.
  * Anything else (another Campaign, malformed address, missing file, disallowed type, outside
- * the folder) is a 404. Byte ranges are served, so audio streams, seeks and loops. Any app page
- * may read the files (CORS), so the audio engine can route them through Web Audio.
+ * the folder) is a 404. Byte ranges are served, so audio streams, seeks and loops; bodies stream
+ * from disk (core/mediaResponse.ts). Any app page may read the files (CORS), so the audio engine
+ * can route them through Web Audio.
  */
 function registerMediaProtocol(library: MediaLibrary) {
   protocol.handle(MEDIA_SCHEME, async (request) => {
@@ -103,37 +103,15 @@ function registerMediaProtocol(library: MediaLibrary) {
     try {
       const resolved = await library.resolveAddress(request.url, onAir.current().campaignId);
       if (!resolved) return notFound();
-      const headers = {
-        'content-type': resolved.mimeType,
-        'cache-control': 'no-cache',
-        'accept-ranges': 'bytes',
-        'access-control-allow-origin': '*',
-      };
-      const { size } = await fs.stat(resolved.file);
-      const range = parseByteRange(request.headers.get('range'), size);
-      if (range === 'unsatisfiable') {
-        return new Response(null, {
-          status: 416,
-          headers: { ...headers, 'content-range': `bytes */${size}` },
-        });
-      }
-      if (!range) return new Response(await fs.readFile(resolved.file), { headers });
-      const length = range.end - range.start + 1;
-      const content = Buffer.alloc(length);
-      const file = await fs.open(resolved.file, 'r');
-      try {
-        await file.read(content, 0, length, range.start);
-      } finally {
-        await file.close();
-      }
-      return new Response(content, {
-        status: 206,
-        headers: {
-          ...headers,
-          'content-length': String(length),
-          'content-range': `bytes ${range.start}-${range.end}/${size}`,
+      return await mediaFileResponse(
+        resolved.file,
+        {
+          'content-type': resolved.mimeType,
+          'cache-control': 'no-cache',
+          'access-control-allow-origin': '*',
         },
-      });
+        request.headers.get('range'),
+      );
     } catch (error) {
       log.warn(`Media request failed: ${request.url}`, error);
       return notFound();
@@ -208,6 +186,12 @@ async function createControlWindow() {
     webPreferences: secureWebPreferences('control'),
   });
   rememberBounds(controlWindow, 'control');
+  // Each load of the page starts a new audio engine (ADR-0002), holding nothing yet: what the
+  // old one reported is stale.
+  controlWindow.webContents.on('did-navigate', () => {
+    engine.engineStarted();
+    sendEvent(controlWindow?.webContents, 'audio:sounding-changed', engine.sounding());
+  });
   if (process.env.VITE_DEV_SERVER_URL) {
     loadPage('control', controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL));
     controlWindow.webContents.openDevTools({ mode: 'detach' });
@@ -317,6 +301,7 @@ function startApp() {
     scenes,
     onAir,
     audio,
+    soundboards,
   });
   // The renderers fade with the saved duration, carried by the on-air state; audio plays at
   // the saved Master volume.
@@ -329,8 +314,7 @@ function startApp() {
     .catch((error: unknown) => {
       log.error('Reading the fade duration and the Master volume failed', error);
     });
-  const currentSounding = () =>
-    soundingOf(audio.mix(), engineReport, padVoices.sounding(), audio.silence());
+  const currentSounding = () => engine.sounding();
   // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
   // Broadcast window gets no audio data.
   const sendSounding = () =>
@@ -340,10 +324,47 @@ function startApp() {
       sendEvent(controlWindow?.webContents, 'audio:pad-command', command);
     }
   };
+  /**
+   * The pad sounds still sounding take the pads' names and levels now (`unsaved`: a slider
+   * being dragged), so a level, pad volume or Master volume change is heard at once. The change
+   * itself is saved already: a failure here is only logged.
+   */
+  const retunePads = async (unsaved?: SoundboardEdit) => {
+    const { campaignId } = onAir.current();
+    if (!campaignId) return;
+    try {
+      const { masterVolume } = await settingsStore.get();
+      const tuning = await soundboards.tuning(campaignId, masterVolume, unsaved);
+      sendPadCommands(padVoices.retune(tuning));
+      sendSounding();
+    } catch (error) {
+      log.warn('Retuning the pad sounds failed', error);
+    }
+  };
   /** A Campaign opened, switched or closed: its pad sounds stop with the rest of the audio. */
   const stopPads = () => {
     sendPadCommands(padVoices.clear());
     sendSounding();
+  };
+  /**
+   * Tells the engine which Sound effects to keep decoded: those of the open Campaign's pads,
+   * none when no Campaign is open. Sent on Campaign open and close, pad changes and engine
+   * start; a failure only costs the decode on first press.
+   */
+  const preloadPads = () => {
+    const { campaignId } = onAir.current();
+    const sounds = campaignId === null ? Promise.resolve([]) : soundboards.sounds(campaignId);
+    sounds
+      .then((srcs) => sendPadCommands([{ kind: 'preload', srcs }]))
+      .catch((error: unknown) => log.warn('Listing the Sound effects to preload failed', error));
+  };
+  /** Silence was set: when it `started`, the pads sounding fade out too. Returns what sounds. */
+  const silenced = (started: boolean) => {
+    if (started) {
+      sendPadCommands(padVoices.clear('silence'));
+      sendSounding();
+    }
+    return currentSounding();
   };
   audio.subscribe((mix) => {
     sendEvent(controlWindow?.webContents, 'audio:mix-changed', mix);
@@ -361,11 +382,13 @@ function startApp() {
       'onAir:open-campaign': async ({ campaignId }) => {
         const state = await commands.openCampaign(campaignId);
         stopPads();
+        preloadPads();
         return state;
       },
       'onAir:close-campaign': async () => {
         const state = await commands.closeCampaign();
         stopPads();
+        preloadPads();
         return state;
       },
       'onAir:activate-scene': async ({ sceneId }) => {
@@ -412,10 +435,15 @@ function startApp() {
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
-      'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
+      'media:rename': async ({ campaignId, mediaId, name }) => {
+        const renamed = await commands.renameMedia(campaignId, mediaId, name);
+        await retunePads();
+        return renamed;
+      },
+      // The on-air commands remove its pads too (pads are uses): preload what is left.
       'media:delete': async ({ campaignId, mediaId, confirmed }) => {
         const deletion = await commands.deleteMedia(campaignId, mediaId, confirmed);
-        if (deletion.deleted) await soundboards.removeMedia(campaignId, mediaId);
+        if (deletion.deleted) preloadPads();
         return deletion;
       },
       'campaigns:list': () => storage.campaigns.list(),
@@ -432,37 +460,46 @@ function startApp() {
       'settings:set-master-volume': async ({ masterVolume }) => {
         const saved = await settingsStore.setMasterVolume(masterVolume);
         audio.setMasterVolume(saved.masterVolume);
+        // Listening to a library sound follows it too, through the sounding state.
+        sendSounding();
+        await retunePads();
         return saved;
       },
-      // The engine reads the mix as it starts (or restarts, with the Control window): it holds
-      // no pad sounds then.
+      // The engine reads the mix as it starts (or restarts, with the Control window): it is
+      // told which Sound effects to keep decoded (its last report is forgotten on did-navigate).
       'audio:get-mix': () => {
-        padVoices.forget();
-        sendSounding();
+        preloadPads();
         return audio.mix();
       },
       'audio:report': (report) => {
-        engineReport = report;
+        engine.engineReported(report);
         sendSounding();
       },
       'audio:get-sounding': () => currentSounding(),
-      // Silence fades out the pads sounding too; pads pressed during it play as usual.
-      'audio:set-silence': ({ on }) => {
-        if (on && !audio.silence()) sendPadCommands(padVoices.clear('silence'));
-        audio.setSilence(on);
-        return currentSounding();
-      },
+      // Silence fades out the pads sounding too; pads pressed during it play as usual. It
+      // goes through the on-air commands, in turn: an Activate just before cannot lift it.
+      'audio:set-silence': async ({ on }) => silenced(await commands.setSilence(on)),
+      'audio:toggle-silence': async () => silenced(await commands.toggleSilence()),
       'audio:report-pads': (report) => {
         if (padVoices.report(report)) sendSounding();
       },
       'soundboard:get': ({ campaignId }) => soundboards.get(campaignId),
-      'soundboard:edit': ({ campaignId, edit }) => soundboards.edit(campaignId, edit),
+      'soundboard:edit': async ({ campaignId, edit }) => {
+        const saved = await soundboards.edit(campaignId, edit);
+        if (edit.kind === 'add-pad' || edit.kind === 'remove-pad') preloadPads();
+        await retunePads();
+        return saved;
+      },
       'soundboard:press': async ({ campaignId, padId }) => {
         if (onAir.current().campaignId !== campaignId) {
           throw new SoundboardError('Ouvrez cette campagne pour jouer ses bruitages.');
         }
         const { masterVolume } = await settingsStore.get();
         sendPadCommands(padVoices.press(await soundboards.press(campaignId, padId, masterVolume)));
+      },
+      // A level slider being dragged: heard on the pads sounding, never saved.
+      'soundboard:show-transient': async ({ campaignId, edit }) => {
+        if (onAir.current().campaignId === campaignId) await retunePads(edit);
       },
       'audio:pick-music': ({ mediaId }) => commands.pickMusic(mediaId),
       'audio:set-music-playback': ({ playback }) => commands.setMusicPlayback(playback),

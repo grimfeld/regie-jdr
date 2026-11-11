@@ -60,11 +60,18 @@ async function createScene(page: Page, name: string) {
   await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
-/** Drags a library sound onto the open Scene's Music list. */
+/**
+ * Drags a library sound onto the open Scene's Music list; done once its row is listed. The new row
+ * pushes the library below it down: Playwright pressing the next sound within milliseconds, before
+ * the row shows, has the sound move from under the pressed pointer, and Chromium starts no drag.
+ */
 async function dropOnMusicList(page: Page, name: string) {
+  const rows = musicList(page).getByRole('listitem');
+  const listed = await rows.count();
   await soundInLibrary(page, name)
     .locator('.media-audio-icon')
     .dragTo(musicList(page).locator('xpath=..'));
+  await expect(rows).toHaveCount(listed + 1);
 }
 
 /** A Campaign with a Scene "Taverne" whose Music list is Auberge then Bagarre. */
@@ -74,7 +81,6 @@ async function sceneWithMusic(regie: RunningApp) {
   await importMusic(regie, 'Auberge', 'Bagarre');
   await createScene(controlWindow, 'Taverne');
   await dropOnMusicList(controlWindow, 'Auberge');
-  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/]);
   await dropOnMusicList(controlWindow, 'Bagarre');
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/, /Bagarre/]);
 }
@@ -83,7 +89,7 @@ interface EngineWindow {
   regieAudio: { getMix(): Promise<{ voices: { gain: number }[] }> };
 }
 
-/** The mix the audio engine reads, through its own bridge. */
+/** The mix the audio engine reads, through its bridge (`window.regieAudio`, in the Control window). */
 function currentMix(page: Page) {
   return page.evaluate(() => (window as unknown as EngineWindow).regieAudio.getMix());
 }
@@ -177,6 +183,25 @@ test('Music is reordered and removed, saved and undoable; edits of a Scene off a
   await expect(controlWindow.getByRole('heading', { name: 'Star Wars' })).toBeVisible();
   await openScene(controlWindow, 'Taverne');
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/, /Auberge/]);
+});
+
+test('renaming a sounding Music renames it in the "En cours" strip; it plays on', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await sceneWithMusic(regie);
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+
+  await soundInLibrary(controlWindow, 'Auberge')
+    .getByRole('button', { name: 'Renommer Auberge' })
+    .click();
+  const rename = controlWindow.getByLabel('Nouveau nom de Auberge');
+  await rename.fill('Poney fringant');
+  await rename.press('Enter');
+
+  await expect(sounding(controlWindow, 'Poney fringant')).toHaveAttribute('data-state', 'playing');
+  await expect(strip(controlWindow)).toHaveCount(1);
 });
 
 test('removing the current Music from the Active Scene stops it', async ({ regie }) => {
@@ -336,7 +361,7 @@ test('the Master volume is kept across restarts', async ({ regie }) => {
   }
 });
 
-test('the audio engine’s bridge can only read the mix and report; the Broadcast window cannot reach audio', async ({
+test('the audio engine’s bridge, beside the Control bridge, only reads the mix and pad commands and reports; the Broadcast window cannot reach audio', async ({
   regie,
 }) => {
   const { app, controlWindow } = regie;
@@ -358,6 +383,7 @@ test('the audio engine’s bridge can only read the mix and report; the Broadcas
       ['audio:get-mix', []],
       ['audio:get-sounding', []],
       ['audio:set-silence', [{ on: true }]],
+      ['audio:toggle-silence', []],
       ['audio:report', [{ voices: [] }]],
       ['settings:set-master-volume', [{ masterVolume: 0 }]],
       ['audio:pick-music', [{ mediaId: 'x' }]],

@@ -1,8 +1,10 @@
 /**
  * The audio engine's pad channel: plays the pad sounds the main process commands
  * (core/padVoices.ts decides which play and which are cut) and reports those it holds, so the
- * Soundboard's pads light while they sound. Each Sound effect is decoded once into a buffer and
- * kept; each pad sound is a buffer source through its own gain node, played once.
+ * Soundboard's pads light while they sound. The Sound effects of the open Campaign's pads are
+ * decoded ahead of a press and kept while they are on a pad (the main process's `preload`
+ * command, spec #33); every other is freed. Each pad sound is a buffer source through its own
+ * gain node, played once.
  */
 import type { AudioEngineBridge } from '../shared/contract';
 import type { PadCommand, PadVoiceId, VoiceState } from '../shared/domain';
@@ -22,7 +24,10 @@ export function startPadPlayer(
   context: AudioContext,
   bridge: Pick<AudioEngineBridge, 'onPadCommand' | 'reportPads'>,
 ): () => void {
+  /** The decoded Sound effects kept, by Media address: only those of `preloaded`. */
   const buffers = new Map<string, Promise<AudioBuffer>>();
+  /** The Sound effects of the open Campaign's pads, as last told. */
+  let preloaded = new Set<string>();
   const sounds = new Map<PadVoiceId, PadSound>();
   let upTo: PadVoiceId = 0;
 
@@ -33,21 +38,40 @@ export function startPadPlayer(
     });
   }
 
-  /** The decoded Sound effect at `src`, loaded once and kept for later presses. */
+  /**
+   * The decoded Sound effect at `src`: kept for later presses while it is on a pad, decoded for
+   * this press only otherwise (a pad removed meanwhile).
+   */
   function bufferOf(src: string): Promise<AudioBuffer> {
-    let buffer = buffers.get(src);
-    if (!buffer) {
-      buffer = fetch(src)
-        .then((response) => {
-          if (!response.ok) throw new Error(`Loading ${src} failed: ${response.status}`);
-          return response.arrayBuffer();
-        })
-        .then((data) => context.decodeAudioData(data));
-      // A failed load is tried again on the next press.
-      buffer.catch(() => buffers.delete(src));
+    const kept = buffers.get(src);
+    if (kept) return kept;
+    const buffer = fetch(src)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Loading ${src} failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then((data) => context.decodeAudioData(data));
+    if (preloaded.has(src)) {
       buffers.set(src, buffer);
+      // A failed load is tried again on the next press.
+      buffer.catch(() => {
+        if (buffers.get(src) === buffer) buffers.delete(src);
+      });
     }
     return buffer;
+  }
+
+  /** Keeps exactly the Sound effects `srcs` decoded: frees the others, decodes the new ones. */
+  function preload(srcs: readonly string[]) {
+    preloaded = new Set(srcs);
+    for (const src of buffers.keys()) {
+      if (!preloaded.has(src)) buffers.delete(src);
+    }
+    for (const src of preloaded) {
+      bufferOf(src).catch((error: unknown) => {
+        console.warn('A Sound effect could not be preloaded', error);
+      });
+    }
   }
 
   function end(voiceId: PadVoiceId, sound: PadSound) {
@@ -101,8 +125,22 @@ export function startPadPlayer(
     report();
   }
 
+  /** Ramps pad sounds to a new level: they keep playing. */
+  function regain(voiceIds: readonly PadVoiceId[], target: number, fadeMs: number) {
+    const now = context.currentTime;
+    for (const voiceId of voiceIds) {
+      const sound = sounds.get(voiceId);
+      if (!sound) continue;
+      const { gain } = sound.gain;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(Math.min(1, Math.max(0, target)), now + fadeMs / 1000);
+    }
+  }
+
   function apply(command: PadCommand) {
-    if (context.state === 'suspended') {
+    // Decoding needs no running context: a preload alone does not start audio.
+    if (context.state === 'suspended' && command.kind !== 'preload') {
       context.resume().catch((error: unknown) => console.warn('Starting audio failed', error));
     }
     switch (command.kind) {
@@ -112,6 +150,12 @@ export function startPadPlayer(
         return;
       case 'cut':
         cut(command.voiceIds, command.fadeMs);
+        return;
+      case 'preload':
+        preload(command.srcs);
+        return;
+      case 'gain':
+        regain(command.voiceIds, command.gain, command.fadeMs);
         return;
     }
   }

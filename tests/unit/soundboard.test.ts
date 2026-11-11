@@ -137,10 +137,22 @@ describe('untrusted Soundboard edits', () => {
 describe('Soundboard store', () => {
   const dir = useTempDir();
 
-  async function setup(media: Media[] = [sound('s1'), sound('s2'), sound('m1', 'music'), image]) {
+  async function setup(
+    media: Media[] = [sound('s1'), sound('s2'), sound('m1', 'music'), image],
+    missing: ReadonlySet<string> = new Set(),
+  ) {
     const storage = openStorage(path.join(dir.path, 'data'));
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
-    const library = { list: () => Promise.resolve(media) };
+    const library = {
+      list: () => Promise.resolve(media),
+      /** Every file is there, but those of the `missing` Media ids. */
+      resolveAddress: (url: string) =>
+        Promise.resolve(
+          [...missing].some((id) => url.includes(id))
+            ? undefined
+            : { file: url, mimeType: 'audio/wav' },
+        ),
+    };
     const store = createSoundboardStore({ storage, library, newId: counter() });
     return { storage, campaign, store };
   }
@@ -158,7 +170,10 @@ describe('Soundboard store', () => {
 
     const reopened = createSoundboardStore({
       storage: openStorage(storage.root),
-      library: { list: () => Promise.resolve([]) },
+      library: {
+        list: () => Promise.resolve([]),
+        resolveAddress: () => Promise.resolve(undefined),
+      },
     });
     expect(await reopened.get(campaign.id)).toEqual({
       campaignId: campaign.id,
@@ -213,6 +228,68 @@ describe('Soundboard store', () => {
     });
     await store.edit(campaign.id, { kind: 'rename-pad', padId: 'pad1', label: 'Épée' });
     expect((await store.press(campaign.id, 'pad1', 1)).name).toBe('Épée');
+  });
+
+  it('lists the Sound effects to preload: each pad’s once, in pad order, none once removed', async () => {
+    const { campaign, store } = await setup();
+    expect(await store.sounds(campaign.id)).toEqual([]);
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    const [s2, s1] = [
+      (await store.press(campaign.id, 'pad1', 1)).src,
+      (await store.press(campaign.id, 'pad2', 1)).src,
+    ];
+
+    expect(await store.sounds(campaign.id)).toEqual([s2, s1]);
+
+    await store.edit(campaign.id, { kind: 'remove-pad', padId: 'pad2' });
+    expect(await store.sounds(campaign.id)).toEqual([s2]);
+    await store.removeMedia(campaign.id, 's2');
+    expect(await store.sounds(campaign.id)).toEqual([]);
+  });
+
+  it('leaves out of the preload a pad whose Media left the library', async () => {
+    const media = [sound('s1'), sound('s2')];
+    const { campaign, store } = await setup(media);
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    const s2 = (await store.press(campaign.id, 'pad2', 1)).src;
+    media.shift();
+
+    expect(await store.sounds(campaign.id)).toEqual([s2]);
+  });
+
+  it('gives each pad’s name and level, as saved or with an unsaved edit (a slider dragged)', async () => {
+    const { campaign, store } = await setup();
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    await store.edit(campaign.id, { kind: 'rename-pad', padId: 'pad2', label: 'Épée' });
+    await store.edit(campaign.id, { kind: 'set-pad-volume', padId: 'pad1', volume: 0.5 });
+
+    expect(await store.tuning(campaign.id, 0.5)).toEqual(
+      new Map([
+        ['pad1', { name: 'Nom s1', gain: 0.25 }],
+        ['pad2', { name: 'Épée', gain: 0.5 }],
+      ]),
+    );
+    expect(await store.tuning(campaign.id, 1, { kind: 'set-level', volume: 0.5 })).toEqual(
+      new Map([
+        ['pad1', { name: 'Nom s1', gain: 0.25 }],
+        ['pad2', { name: 'Épée', gain: 0.5 }],
+      ]),
+    );
+    // The unsaved edit is not saved.
+    expect((await store.get(campaign.id)).volume).toBe(1);
+  });
+
+  it('refuses to press a pad whose file is missing, saying so', async () => {
+    const { campaign, store } = await setup(undefined, new Set(['s1']));
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+
+    await expect(store.press(campaign.id, 'pad1', 1)).rejects.toThrow(
+      '« Nom s1 » est introuvable (fichier supprimé ou déplacé hors de l’application).',
+    );
   });
 
   it('refuses to press a pad that is gone', async () => {

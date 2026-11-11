@@ -1,6 +1,7 @@
-// Control window bridges: the full API (contract: ControlBridge) and, apart, the audio engine's
-// (contract: AudioEngineBridge), which can only receive the mix and pad commands and report
-// what sounds.
+// Control window bridges: the full API (contract: ControlBridge) and, beside it in the same page,
+// the audio engine's (contract: AudioEngineBridge), which can only receive the mix and pad
+// commands and report what sounds. Any code of the page can reach both: the engine's bridge is
+// a narrow API, not a boundary (ADR-0002 put the engine in the Control window).
 // Sandboxed preload: it can only require('electron'), so contract imports are type-only and
 // the small helpers below are repeated in preload-broadcast.ts.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
@@ -96,10 +97,13 @@ const bridge: ControlBridge = {
   setMasterVolume: (masterVolume) => invoke('settings:set-master-volume', { masterVolume }),
   getSounding: () => invoke('audio:get-sounding'),
   setSilence: (on) => invoke('audio:set-silence', { on }),
+  toggleSilence: () => invoke('audio:toggle-silence'),
   onSoundingChanged: (listener) => subscribe('audio:sounding-changed', listener),
   getSoundboard: (campaignId) => invoke('soundboard:get', { campaignId }),
   editSoundboard: (campaignId, edit) => invoke('soundboard:edit', { campaignId, edit }),
   pressPad: (campaignId, padId) => invoke('soundboard:press', { campaignId, padId }),
+  showSoundboardTransient: (campaignId, edit) =>
+    invoke('soundboard:show-transient', { campaignId, edit }),
   pickMusic: (mediaId) => invoke('audio:pick-music', { mediaId }),
   setMusicPlayback: (playback) => invoke('audio:set-music-playback', { playback }),
 };

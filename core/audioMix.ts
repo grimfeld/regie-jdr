@@ -72,13 +72,13 @@ export function mixOf(input: MixInput, change: AudioChange): Omit<AudioMix, 'ver
     const { music } = audio;
     const track = music ? audioOf(library, music.mediaId) : null;
     if (music && track && music.playback !== 'stopped') {
-      add(voiceOf(track, 'music', masterVolume * scene.volumes.music, music.playback));
+      add(voiceOf(track, 'music', masterVolume * scene.volumes.music, music.playback, music.take));
     }
     for (const ambience of scene.ambiences) {
       const media = ambience.on ? audioOf(library, ambience.mediaId) : null;
       if (!media) continue;
       const gain = masterVolume * scene.volumes.ambience * ambience.volume;
-      add(voiceOf(media, 'ambience', gain, 'playing'));
+      add(voiceOf(media, 'ambience', gain, 'playing', 0));
     }
   }
   const heard = silence ? voices.map((voice) => ({ ...voice, gain: 0, playing: false })) : voices;
@@ -96,6 +96,7 @@ function voiceOf(
   role: AudioVoice['role'],
   gain: number,
   playback: 'playing' | 'paused',
+  take: number,
 ): AudioVoice {
   return {
     mediaId: media.id,
@@ -104,13 +105,24 @@ function voiceOf(
     src: mediaAddress(media),
     gain,
     playing: playback === 'playing',
+    take,
   };
 }
 
-/** The current Music once a Scene is Activated: its first Music, playing; null without Music. */
-export function activatedMusic(scene: Scene): AudioOnAirState['music'] {
+/**
+ * The current Music once a Scene is Activated: its first Music, playing; null without Music.
+ * When `previous` (the current Music before) is that same Media still playing, it carries on;
+ * paused, it starts over, as a new take (#38: only a Music already playing carries on).
+ */
+export function activatedMusic(
+  scene: Scene,
+  previous: AudioOnAirState['music'] = null,
+): AudioOnAirState['music'] {
   const first = scene.music.at(0);
-  return first === undefined ? null : { mediaId: first, playback: 'playing' };
+  if (first === undefined) return null;
+  if (previous?.mediaId !== first) return { mediaId: first, playback: 'playing', take: 0 };
+  const take = previous.playback === 'playing' ? previous.take : previous.take + 1;
+  return { mediaId: first, playback: 'playing', take };
 }
 
 /** The current Music after an edit of the Active Scene: kept while still in its Music list. */
@@ -123,15 +135,21 @@ export function musicAfterEdit(
 
 /**
  * The current Music once the Game Master picks `mediaId` in the Active Scene's Music list: it
- * plays (crossfading from the one before). Live playback, never saved into the Scene. Throws a
- * SceneError with no Active Scene or a Music not in its list.
+ * plays (crossfading from the one before; the current `music` itself resumes). Live playback,
+ * never saved into the Scene. Throws a SceneError with no Active Scene or a Music not in its
+ * list.
  */
-export function pickedMusic(scene: Scene | null, mediaId: MediaId): AudioOnAirState['music'] {
+export function pickedMusic(
+  scene: Scene | null,
+  mediaId: MediaId,
+  music: AudioOnAirState['music'] = null,
+): AudioOnAirState['music'] {
   if (!scene) throw new SceneError('Activez une scène pour choisir sa musique.');
   if (!scene.music.includes(mediaId)) {
     throw new SceneError('Cette musique n’est pas dans la scène active.');
   }
-  return { mediaId, playback: 'playing' };
+  if (music?.mediaId === mediaId) return { ...music, playback: 'playing' };
+  return { mediaId, playback: 'playing', take: 0 };
 }
 
 /**
@@ -196,7 +214,7 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
 /**
  * What is sounding: each voice of `mix` with the state the engine last reported for it, loading
  * until it does, then the voices left out because their file is missing, the Soundboard `pads`
- * sounding, and whether Silence is on. Voices the engine still holds but the mix dropped
+ * sounding, whether Silence is on and the Master volume. Voices the engine still holds but the mix dropped
  * (fading out) are not shown.
  */
 export function soundingOf(
@@ -204,10 +222,12 @@ export function soundingOf(
   report: AudioEngineReport,
   pads: AudioSounding['pads'] = [],
   silence = false,
+  masterVolume: number = MASTER_VOLUME.default,
 ): AudioSounding {
   return {
     pads,
     silence,
+    masterVolume,
     voices: [
       ...mix.voices.map(({ mediaId, role, name }) => ({
         mediaId,
@@ -239,6 +259,21 @@ export function newlyUnplayable(
       !previous?.voices.some(
         (before) => before.mediaId === voice.mediaId && isUnplayable(before.state),
       ),
+  );
+}
+
+/**
+ * Whether the Game Master may listen to a sound of the library (#43). Discord carries every
+ * sound the app plays (ADR-0002), so the players hear it too: allowed only during Silence, once
+ * nothing else sounds (no voice still fading out, no pad). A voice loading during Silence is
+ * held at nothing, so it does not count. Refused while `sounding` is not yet known (null).
+ */
+export function listeningAllowed(sounding: AudioSounding | null): boolean {
+  return (
+    sounding !== null &&
+    sounding.silence &&
+    sounding.pads.length === 0 &&
+    sounding.voices.every((voice) => voice.state !== 'playing')
   );
 }
 

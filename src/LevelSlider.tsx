@@ -1,50 +1,90 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createTransientSender, type TransientSender } from './transientUpdates';
+
+/** A level being chosen: the level shown, the saved level it was chosen from, whether sent. */
+interface Draft {
+  shown: number;
+  from: number;
+  sent: boolean;
+}
 
 /**
- * A level slider (0..1, shown in percent) for a Scene level or an item's volume. Each change
- * is reported live (`onLive`: heard on the Active Scene, unsaved); once released (pointer up,
- * key up, or leaving it) the value is committed (`onCommit`), so a whole drag is one Scene
- * edit, one undo step. Until the saved value comes back, it keeps showing the value committed.
+ * The one level slider (0..1, shown in percent) of the Control window: a Scene's Music or
+ * Ambience level, an Ambience's volume, the Soundboard level, a pad's volume. Each move is
+ * reported live (`onLive`: heard at once, unsaved); once released (the input's `change`, a
+ * pointer or key up, or leaving it) the value is committed (`onCommit`), so a whole drag is one
+ * edit (one undo step on a Scene). Until the saved value changes it keeps showing the value it
+ * committed; once it changes (the commit saved, an undo) its own value is dropped for good, so
+ * an undo back to the level a drag started from never brings the drag back.
  */
 export function LevelSlider(props: {
   label: string;
   /** The slider's accessible name when `label` alone is not enough. */
   accessibleName?: string;
+  /** Only the accessible name, no visible label (a pad's row names the pad already). */
+  hideLabel?: boolean;
   /** The saved level, 0..1. */
   value: number;
+  disabled?: boolean;
   onLive: (level: number) => void;
   onCommit: (level: number) => void;
 }) {
-  const { label, accessibleName = label, value, onLive, onCommit } = props;
-  // The level being chosen, the saved level it was chosen from, and whether it was sent.
-  const [draft, setDraft] = useState<{ shown: number; from: number; sent: boolean }>();
-  // Once the saved level changes (the commit saved, an undo), the draft is over for good: an
-  // undo back to the level it started from must not bring it back.
+  const { label, accessibleName = label, hideLabel = false, value, disabled, onLive } = props;
+  const [draft, setDraft] = useState<Draft>();
   if (draft && draft.from !== value) setDraft(undefined);
   const current = draft?.from === value ? draft : undefined;
-  const commit = () => {
-    if (!current || current.sent) return;
-    if (current.shown === value) {
+
+  // A `change` comes right after the `input` it ends, before React renders it: the commit reads
+  // the draft and the saved level from refs, not from the render it was created in.
+  const latest = useRef<Draft | undefined>(undefined);
+  const saved = useRef(value);
+  const onCommit = useRef(props.onCommit);
+  useLayoutEffect(() => {
+    saved.current = value;
+    onCommit.current = props.onCommit;
+  });
+  const choose = (next: Draft | undefined) => {
+    latest.current = next;
+    setDraft(next);
+  };
+  const commit = useCallback(() => {
+    const pending = latest.current;
+    if (!pending || pending.sent || pending.from !== saved.current) return;
+    if (pending.shown === saved.current) {
+      latest.current = undefined;
       setDraft(undefined);
       return;
     }
-    setDraft({ ...current, sent: true });
-    onCommit(current.shown);
-  };
+    latest.current = { ...pending, sent: true };
+    setDraft(latest.current);
+    onCommit.current(pending.shown);
+  }, []);
+
+  // The native `change` fires once the Game Master lets go (React's onChange is every move).
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    element.addEventListener('change', commit);
+    return () => element.removeEventListener('change', commit);
+  }, [commit]);
+
   const percent = Math.round((current ? current.shown : value) * 100);
   return (
     <label className="level-slider">
-      <span>{label}</span>
+      {!hideLabel && <span>{label}</span>}
       <input
+        ref={input}
         type="range"
         aria-label={accessibleName}
         min={0}
         max={100}
         step={1}
         value={percent}
+        disabled={disabled}
         onChange={(event) => {
           const level = Number(event.currentTarget.value) / 100;
-          setDraft({ shown: level, from: value, sent: false });
+          choose({ shown: level, from: value, sent: false });
           onLive(level);
         }}
         onPointerUp={commit}
@@ -54,4 +94,22 @@ export function LevelSlider(props: {
       <output>{percent} %</output>
     </label>
   );
+}
+
+/**
+ * The sender of a list's live slider updates (at most one per frame, the latest only), created
+ * on first use and always sending through the latest `send`.
+ */
+export function useTransientSender<T>(
+  send: (update: T) => Promise<void>,
+): () => TransientSender<T> {
+  const latestSend = useRef(send);
+  useEffect(() => {
+    latestSend.current = send;
+  });
+  const sender = useRef<TransientSender<T> | undefined>(undefined);
+  return () => {
+    sender.current ??= createTransientSender((update) => latestSend.current(update));
+    return sender.current;
+  };
 }

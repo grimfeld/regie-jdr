@@ -30,7 +30,7 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - `core/padVoices.ts`: max 8 pad voices, oldest cut first (`AUDIO_FADE_MS.pad` = 80 ms). Gain = Master × Soundboard level × pad volume, fixed at press. Engine side `src/padPlayer.ts`.
 - Control-only channels: `audio:pad-command`, `audio:report-pads`, `soundboard:get`, `soundboard:edit`, `soundboard:press`. `AudioSounding.pads` feeds "En cours". `audio:get-mix` also resets main's pad bookkeeping (engine start/reload).
 - #41 hook: `useSoundboard` in `CampaignScreen` (`src/App.tsx`) exposes `pressPosition(n)` (1-based).
-- Known gaps: Sound effects decode on first press (no preload); level changes don't ramp a sounding pad; deleting a Media removes its pads silently (pads aren't counted as Media users).
+- Known gaps: (preload done 2026-11-12, `51acc8d`) Sound effects decode on first press (no preload); level changes don't ramp a sounding pad; deleting a Media removes its pads silently (pads aren't counted as Media users).
 
 ## Music controls (#36, 2026-11-12, `5a330db`)
 
@@ -50,7 +50,7 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Supersedes the #40 plug-in note: Silence is `MixInput.silence` (optional), not an `AudioOnAir` state field. In `mixOf` it sets every voice to gain 0 and paused, so lifting it restores the same mix with Music where it was.
 - Starting Silence cuts sounding pads (`padVoices.clear('silence')`); pads pressed during Silence play normally. Activate and `clear()` lift it; never saved.
 - State reaches the strip as `AudioSounding.silence` (Broadcast gets nothing). Control-only `audio:set-silence` / `ControlBridge.setSilence`.
-- #41 hook: `setSilence(control, on)` exported from `src/NowPlaying.tsx`; current state `useSounding(control)?.silence`.
+- #41 hook (superseded 2026-11-12, `51acc8d`: use `toggleSilence` from `src/NowPlaying.tsx`): `setSilence(control, on)` exported from `src/NowPlaying.tsx`; current state `useSounding(control)?.silence`.
 - During Silence the strip labels voices "silence" and hides pause/stop. Gap: a track or Ambience started during Silence shows "silence", not loading.
 
 ## Activate fades and continuity (#38, 2026-11-12, `1808490`)
@@ -58,3 +58,16 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Continuity, the 1.5 s Activate fade and starting from the first Music already came from the #35 design; #38 pinned them with `tests/unit/activateAudio.test.ts` and a whole-app test in `tests/app/ambiences.spec.ts` (shared Ambience stays "playing" through Activate; proven to fail if voices are recreated).
 - Engine (`6227c0f`): a new voice waits for its first `playing` event before fading in, so loading no longer eats the fade.
 - Known issue: playback uses `<audio loop>`, which is not gapless and fires `waiting` at each loop. Short loops flicker "chargement…" in the strip and may leave an audible gap. App tests use 30 s tones to avoid it.
+
+## Listening (#43, 2026-11-12)
+
+- ADR-0002 branch: no private listening. "Écouter" on each library sound is enabled only while `listeningAllowed(sounding)` (`core/audioMix.ts`): Silence on, no voice `playing`, no pad. A warning "Écoute audible par les joueurs" shows while allowed. Missing files: disabled.
+- `useListening` (`src/Listening.tsx`) plays through its own hidden `<audio class="listening-player">`, not the engine: mix, Scene and "En cours" untouched; it stops when the rule stops holding (Silence lifted, Activate, pad).
+- Gaps: the "En cours" strip does not list a sound being listened to; listening plays at full element volume, not the Master volume. Manual Discord check (acceptance criterion) still to do by hand.
+
+## Gapless loops (2026-11-12, `f9f5dc9`)
+
+- Supersedes the "Known issue" in the #38 section above. Sounds of 60 s or less are decoded and looped by an `AudioBufferSourceNode` (seamless; pause keeps position). Longer ones stream via `<audio loop>`; a `waiting` during that loop restart is no longer shown as "chargement…" (the engine never seeks).
+- 60 s threshold: ~23 MB per decoded stereo minute at 48 kHz; Web Audio spec and MDN advise streaming beyond about a minute.
+- Test: 2 s Music and Ambience play 7 s and the strip shows only "playing" (`tests/app/ambiences.spec.ts`).
+- Open: audible seam on long streamed loops (manual check); no automated test of resume position for short sounds.

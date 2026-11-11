@@ -145,6 +145,15 @@ export type SoundboardEdit =
   | { kind: 'set-level'; volume: number };
 
 /**
+ * A Soundboard level or pad volume being dragged: the pad sounds still sounding take it at
+ * once, nothing is saved. The drag ends with the same edit through `soundboard:edit`.
+ */
+export type SoundboardLevel = Extract<
+  SoundboardEdit,
+  { kind: 'set-level' } | { kind: 'set-pad-volume' }
+>;
+
+/**
  * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
  * never saved. The drag's end is sent as the same edit through `scenes:edit`.
  */
@@ -156,12 +165,18 @@ export type BackgroundFraming = Extract<SceneEdit, { kind: 'frame-background' }>
 /** A Scene's Music level being dragged: heard on the Active Scene, never saved. */
 export type MusicLevel = Extract<SceneEdit, { kind: 'set-music-level' }>;
 
+/** A Scene's Ambience level or one Ambience's volume being dragged: heard like a MusicLevel. */
+export type AmbienceLevel = Extract<
+  SceneEdit,
+  { kind: 'set-ambience-level' } | { kind: 'set-ambience-volume' }
+>;
+
 /**
  * A transient update of a live drag (an Overlay moved or resized, a framing or level slider
  * dragged): shown or heard on the Active Scene, never saved nor undoable. The drag's end is
  * sent as the same edit through `scenes:edit`, one undo step.
  */
-export type TransientEdit = OverlayTransform | BackgroundFraming | MusicLevel;
+export type TransientEdit = OverlayTransform | BackgroundFraming | MusicLevel | AmbienceLevel;
 
 /**
  * What can be undone and redone on a Scene: the French label of the next undo and of the next
@@ -187,13 +202,16 @@ export interface MediaImportResult {
 }
 
 /**
- * Outcome of deleting a Media. Media that Scenes use is only deleted once the Game Master
- * confirms: until then `deleted` is false and `affectedScenes` lists the Scenes using it.
- * Once deleted, `affectedScenes` lists the Scenes whose placements were removed.
+ * Outcome of deleting a Media. Media that Scenes or Soundboard pads use is only deleted once
+ * the Game Master confirms: until then `deleted` is false and `affectedScenes` and
+ * `affectedPads` list its uses. Once deleted, they list the Scenes whose placements were
+ * removed and the pads removed.
  */
 export interface MediaDeletion {
   deleted: boolean;
   affectedScenes: { id: SceneId; name: string }[];
+  /** Soundboard pads, by their name (their own, or their Sound effect's). */
+  affectedPads: { id: string; name: string }[];
 }
 
 /** What can be changed on a Campaign; absent fields are left as they are. */
@@ -316,8 +334,8 @@ export interface InvokeChannels {
     result: Media;
   };
   /**
-   * Delete a Media. Unused Media is deleted at once. Media that Scenes use is deleted only
-   * when `confirmed`; otherwise nothing changes and the result lists the Scenes using it.
+   * Delete a Media. Unused Media is deleted at once. Media that Scenes or Soundboard pads use
+   * is deleted only when `confirmed`; otherwise nothing changes and the result lists its uses.
    */
   'media:delete': {
     payload: { campaignId: CampaignId; mediaId: MediaId; confirmed: boolean };
@@ -349,8 +367,8 @@ export interface InvokeChannels {
   /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
   'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
   /**
-   * The current mix, for the audio engine (on start and on every reload): it holds no pad
-   * sounds then, so the main process forgets them.
+   * The current mix, for the audio engine (on start and on every reload of the Control window,
+   * when the main process forgets what the old engine reported).
    */
   'audio:get-mix': { payload: void; result: AudioMix };
   /** The audio engine reports what is actually sounding. */
@@ -369,6 +387,14 @@ export interface InvokeChannels {
    * sounds, with or without an Active Scene. Fails for another Campaign than the open one.
    */
   'soundboard:press': { payload: { campaignId: CampaignId; padId: string }; result: void };
+  /**
+   * Make a Soundboard level or pad volume being dragged heard on the pad sounds still sounding
+   * (open Campaign only; ignored for another). Never saved.
+   */
+  'soundboard:show-transient': {
+    payload: { campaignId: CampaignId; edit: SoundboardLevel };
+    result: void;
+  };
   /** What is sounding, for the "En cours" strip. */
   'audio:get-sounding': { payload: void; result: AudioSounding };
   /**
@@ -386,6 +412,12 @@ export interface InvokeChannels {
    * comes back. On air only, never saved; the picture is unchanged (Blackout is picture only).
    */
   'audio:set-silence': { payload: { on: boolean }; result: AudioSounding };
+  /**
+   * Starts Silence when it is off, lifts it when it is on, as `audio:set-silence` would, from
+   * the state the main process holds: the Silence key and button, pressed twice quickly, start
+   * then lift it, whatever the window has heard back yet.
+   */
+  'audio:toggle-silence': { payload: void; result: AudioSounding };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -436,9 +468,11 @@ export interface BroadcastBridge {
 }
 
 /**
- * Bridge of the audio engine, which runs in the Control window (ADR-0002), exposed apart from
- * the Control bridge (`window.regieAudio`): it can only receive the mix and report what sounds,
- * never change Scenes or the on-air state.
+ * Bridge of the audio engine, which runs in the Control window (ADR-0002), exposed beside the
+ * Control bridge (`window.regieAudio`): it can only receive the mix and pad commands and report
+ * what sounds, never change Scenes or the on-air state. Both bridges are in the same page, so
+ * this is the engine's narrow API, not a boundary: spec #33's "engine window with its own
+ * bridge" became, with ADR-0002, a bridge of its own in the Control window.
  */
 export interface AudioEngineBridge {
   getMix(): Promise<AudioMix>;
@@ -498,9 +532,11 @@ export interface ControlBridge extends BroadcastBridge {
   setMasterVolume(masterVolume: number): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
+  toggleSilence(): Promise<AudioSounding>;
   getSoundboard(campaignId: CampaignId): Promise<Soundboard>;
   editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   pressPad(campaignId: CampaignId, padId: string): Promise<void>;
+  showSoundboardTransient(campaignId: CampaignId, edit: SoundboardLevel): Promise<void>;
   onSoundingChanged(listener: (sounding: AudioSounding) => void): Unsubscribe;
   pickMusic(mediaId: MediaId): Promise<void>;
   setMusicPlayback(playback: MusicPlayback): Promise<void>;

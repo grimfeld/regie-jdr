@@ -654,6 +654,8 @@ function SceneEditor(props: EditorProps) {
         <SceneAmbienceList
           scene={scene}
           sounds={props.sounds}
+          active={active}
+          onTransient={props.onTransient}
           onAdd={(mediaId) => {
             if (!props.sounds.some((sound) => sound.id === mediaId)) onRefreshImages();
             onEditShowingFailure({ kind: 'add-ambience', mediaId });

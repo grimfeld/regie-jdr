@@ -37,6 +37,7 @@ import {
   withNotesOf,
 } from './undoHistory.js';
 import type { AudioChange } from './fades.js';
+import type { SoundboardStore } from './soundboard.js';
 import type { CampaignRepository } from './storage/index.js';
 
 export interface OnAirCommands {
@@ -61,7 +62,7 @@ export interface OnAirCommands {
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   /**
    * Shows a transient update of a live drag (a move or resize of an Overlay, a framing slider
-   * of a Background, a Music level slider): on the Active Scene, the broadcast shows (or the
+   * of a Background, a Music or Ambience level or an Ambience volume slider): on the Active Scene, the broadcast shows (or the
    * mix plays) the saved Scene with `edit` applied; nothing is saved and no undo step is
    * recorded. On any other Scene it does nothing. The drag ends with the same edit through
    * `editScene`, which saves it as one step; if that fails, the Scene as saved goes back on air.
@@ -74,6 +75,17 @@ export interface OnAirCommands {
   pickMusic(mediaId: MediaId): Promise<void>;
   /** Plays, pauses or stops the Active Scene's current Music; live playback, like `pickMusic`. */
   setMusicPlayback(playback: MusicPlayback): Promise<void>;
+  /**
+   * Starts (`on`) or lifts Silence, in turn with the other commands: an Activate given just
+   * before (which lifts Silence) cannot overtake it. Returns whether Silence started (it was
+   * off), for the caller to cut the pads sounding.
+   */
+  setSilence(on: boolean): Promise<boolean>;
+  /**
+   * Starts Silence when it is off, lifts it when it is on, from the state the commands before
+   * left: pressed twice quickly, it starts then lifts. Returns whether it started.
+   */
+  toggleSilence(): Promise<boolean>;
   /** What can be undone and redone on a Scene: the labels of its next undo and redo. */
   undoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   /**
@@ -89,9 +101,15 @@ export interface OnAirCommands {
    */
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /**
-   * Deletes a Media. Unused Media goes at once. Media that Scenes use is only listed with
-   * those Scenes unless `confirmed`; then the Media, its file and its placements in those
-   * Scenes are removed, and the broadcast drops it if the Active Scene showed it.
+   * Renames a Media of a Campaign; returns it as saved. A Media sounding on the Active Scene
+   * keeps playing as it was, under its new name (the "En cours" strip shows it).
+   */
+  renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  /**
+   * Deletes a Media. Unused Media goes at once. Media that Scenes or Soundboard pads use is
+   * only listed with those Scenes and pads unless `confirmed`; then the Media, its file, its
+   * placements in those Scenes and those pads are removed, and the broadcast drops it if the
+   * Active Scene showed it.
    */
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
 }
@@ -103,12 +121,14 @@ export function createOnAirCommands(deps: {
   onAir: OnAir;
   /** The audio part of the on-air state: what the audio engine plays. */
   audio: AudioOnAir;
+  /** The Campaigns' Soundboards: their pads are uses of a Media too. */
+  soundboards: Pick<SoundboardStore, 'get' | 'removeMedia'>;
   /** Names new placements; random UUIDs unless a test gives its own. */
   newId?: () => string;
   /** The Scenes' undo histories; fresh ones unless a test gives its own (with its clock). */
   histories?: UndoHistories;
 }): OnAirCommands {
-  const { campaigns, library, scenes, onAir, audio, newId = randomUUID } = deps;
+  const { campaigns, library, scenes, onAir, audio, soundboards, newId = randomUUID } = deps;
   const histories = deps.histories ?? createUndoHistories();
 
   const serialized = createSerialQueue();
@@ -193,12 +213,22 @@ export function createOnAirCommands(deps: {
     return saved;
   }
 
-  /** Puts the Active Scene back on air as saved, when it is `sceneId` of `campaignId`. */
+  /**
+   * Puts the Active Scene back on air as saved, picture and sound, when it is `sceneId` of
+   * `campaignId`: a live drag may have shown, or made heard, an update that was never saved.
+   */
   async function showSavedActiveScene(campaignId: CampaignId, sceneId: SceneId) {
     const current = onAir.current();
     if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
     const saved = await scenes.get(campaignId, sceneId);
-    if (saved) onAir.showActiveScene(saved.id, await picture(saved));
+    if (saved) await showActive(saved, 'volume');
+  }
+
+  /** Starts (`on`) or lifts Silence; returns whether it started. */
+  function silence(on: boolean) {
+    const started = on && !audio.silence();
+    audio.setSilence(on);
+    return started;
   }
 
   /**
@@ -275,7 +305,7 @@ export function createOnAirCommands(deps: {
         try {
           return await applyEdit(campaignId, sceneId, edit);
         } catch (error) {
-          // A live drag (Overlay or Background framing) may have shown unsaved transient
+          // A live drag (Overlay, Background framing, Music level) may have shown unsaved transient
           // updates on air: show the Scene as saved again. What the Game Master is told is the
           // edit's own failure, so a failure here is dropped.
           await showSavedActiveScene(campaignId, sceneId).catch(() => undefined);
@@ -295,7 +325,9 @@ export function createOnAirCommands(deps: {
           case 'frame-background':
             onAir.showActiveScene(sceneId, await picture(shown));
             return;
-          case 'set-music-level': {
+          case 'set-music-level':
+          case 'set-ambience-level':
+          case 'set-ambience-volume': {
             const media = await library.list(campaignId);
             audio.showActiveScene(shown, media, 'volume', await missingAudio(shown, media));
             return;
@@ -312,6 +344,10 @@ export function createOnAirCommands(deps: {
       serialized(() => {
         audio.setMusicPlayback(playback);
       }),
+
+    setSilence: (on) => serialized(() => silence(on)),
+
+    toggleSilence: () => serialized(() => silence(!audio.silence())),
 
     undoState: (campaignId, sceneId) => serialized(() => histories.state(campaignId, sceneId)),
 
@@ -339,19 +375,37 @@ export function createOnAirCommands(deps: {
         if (onAir.clearActiveScene(sceneId)) audio.clear();
       }),
 
+    renameMedia: (campaignId, mediaId, name) =>
+      serialized(async () => {
+        const renamed = await library.rename(campaignId, mediaId, name);
+        const current = onAir.current();
+        if (renamed.kind !== 'audio' || current.campaignId !== campaignId) return renamed;
+        if (current.activeSceneId === null) return renamed;
+        const active = await scenes.get(campaignId, current.activeSceneId);
+        if (!active) return renamed;
+        // Names travel with the mix's voices: the same mix, renamed, changes no level. The
+        // picture never shows Media names, so it stays as it is.
+        const media = await library.list(campaignId);
+        audio.showActiveScene(active, media, 'volume', await missingAudio(active, media));
+        return renamed;
+      }),
+
     deleteMedia: (campaignId, mediaId, confirmed) =>
       serialized(async () => {
-        if (!(await library.list(campaignId)).some((media) => media.id === mediaId)) {
-          throw new MediaError('Ce média n’existe plus.');
-        }
+        const deleted = (await library.list(campaignId)).find((media) => media.id === mediaId);
+        if (!deleted) throw new MediaError('Ce média n’existe plus.');
         const summary = ({ id, name }: Scene) => ({ id, name });
         const using = (await scenes.list(campaignId)).filter((scene) =>
           sceneUsesMedia(scene, mediaId),
         );
-        if (using.length > 0 && !confirmed) {
-          return { deleted: false, affectedScenes: using.map(summary) };
+        const affectedPads = (await soundboards.get(campaignId)).pads
+          .filter((pad) => pad.mediaId === mediaId)
+          .map((pad) => ({ id: pad.id, name: pad.label ?? deleted.name }));
+        if ((using.length > 0 || affectedPads.length > 0) && !confirmed) {
+          return { deleted: false, affectedScenes: using.map(summary), affectedPads };
         }
-        // Placements first: if the Media delete then fails, no Scene points at a missing Media.
+        // Uses first: if the Media delete then fails, nothing points at a missing Media.
+        await soundboards.removeMedia(campaignId, mediaId);
         const cleaned = await scenes.removeMediaPlacements(campaignId, mediaId);
         // Their histories could bring the deleted Media back: forget them.
         cleaned.forEach((scene) => histories.clear(campaignId, scene.id));
@@ -359,7 +413,7 @@ export function createOnAirCommands(deps: {
         const current = onAir.current();
         const active = cleaned.find((scene) => scene.id === current.activeSceneId);
         if (active && current.campaignId === campaignId) await showActive(active, 'stop');
-        return { deleted: true, affectedScenes: cleaned.map(summary) };
+        return { deleted: true, affectedScenes: cleaned.map(summary), affectedPads };
       }),
   };
 }

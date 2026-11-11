@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
 import { ArrowDown, ArrowUp, Trash2, Zap } from 'lucide-react';
-import type { ControlBridge, SoundboardEdit } from '../shared/contract';
+import type { ControlBridge, SoundboardEdit, SoundboardLevel } from '../shared/contract';
 import type { AudioMedia, CampaignId, Soundboard, SoundboardPad } from '../shared/domain';
 import { errorMessage } from './CampaignList';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
@@ -9,7 +9,7 @@ import { useSounding } from './NowPlaying';
 import { showNotice } from './notices';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { useDropTarget } from './PlacementLists';
-import { createTransientSender } from './transientUpdates';
+import { LevelSlider, useTransientSender } from './LevelSlider';
 
 /** The open Campaign's Soundboard, and what can be done with it. */
 export interface SoundboardControls {
@@ -21,6 +21,8 @@ export interface SoundboardControls {
   press: (padId: string) => void;
   /** Plays the `position`th pad (1 is the first), if there is one: for the number keys. */
   pressPosition: (position: number) => void;
+  /** A level slider being dragged: heard on the pads sounding, unsaved. */
+  showLive: (edit: SoundboardLevel) => Promise<void>;
 }
 
 /**
@@ -73,7 +75,12 @@ export function useSoundboard(
     },
     [soundboard, press],
   );
-  return { soundboard, edit, press, pressPosition };
+  const showLive = useCallback(
+    (live: SoundboardLevel) =>
+      control ? control.showSoundboardTransient(campaignId, live) : Promise.resolve(),
+    [control, campaignId],
+  );
+  return { soundboard, edit, press, pressPosition, showLive };
 }
 
 /** The library's Sound effects, read again when `revision` changes. */
@@ -142,7 +149,7 @@ export function SoundboardPanel(props: {
     [sounds, soundboard],
   );
   const missing = useMissingMedia(padSounds);
-  const setLevel = useCallback((volume: number) => edit({ kind: 'set-level', volume }), [edit]);
+  const level = useLevel(props.soundboard);
 
   return (
     <section
@@ -177,7 +184,14 @@ export function SoundboardPanel(props: {
                 <span className="placement-name">{name}</span>
                 {missing.has(pad.mediaId) && <MissingMediaBadge name={name} />}
               </button>
-              <PadControls pad={pad} name={name} index={index} count={pads.length} edit={edit} />
+              <PadControls
+                pad={pad}
+                name={name}
+                index={index}
+                count={pads.length}
+                edit={edit}
+                level={level}
+              />
             </li>
           );
         })}
@@ -187,7 +201,12 @@ export function SoundboardPanel(props: {
           Déposez un bruitage de la bibliothèque ici pour en faire un pad.
         </p>
       )}
-      <Level label="Niveau de la table" volume={soundboard?.volume ?? null} onChange={setLevel} />
+      <LevelSlider
+        label="Niveau de la table"
+        value={soundboard?.volume ?? 1}
+        disabled={soundboard === null}
+        {...level((volume) => ({ kind: 'set-level', volume }))}
+      />
     </section>
   );
 }
@@ -198,6 +217,23 @@ function padKeyLabel(index: number): string | undefined {
   return position === undefined ? undefined : keyLabelOf(`pad-${position}`);
 }
 
+/** A slider's handlers for a Soundboard level: heard on the pads sounding while dragged, saved once released. */
+type LevelOf = (edit: (volume: number) => SoundboardLevel) => {
+  onLive: (volume: number) => void;
+  onCommit: (volume: number) => void;
+};
+
+function useLevel({ edit, showLive }: SoundboardControls): LevelOf {
+  const live = useTransientSender(showLive);
+  return (change) => ({
+    onLive: (volume) => live().push(change(volume)),
+    onCommit: (volume) => {
+      live().drop();
+      void edit(change(volume));
+    },
+  });
+}
+
 /** A pad's name, place, volume and removal. */
 function PadControls(props: {
   pad: SoundboardPad;
@@ -205,8 +241,9 @@ function PadControls(props: {
   index: number;
   count: number;
   edit: (edit: SoundboardEdit) => Promise<void>;
+  level: LevelOf;
 }) {
-  const { pad, name, index, count, edit } = props;
+  const { pad, name, index, count, edit, level } = props;
   // The name being typed; null when not editing (the saved name shows).
   const [typed, setTyped] = useState<string | null>(null);
   const commitLabel = () => {
@@ -215,10 +252,6 @@ function PadControls(props: {
     }
     setTyped(null);
   };
-  const setVolume = useCallback(
-    (volume: number) => edit({ kind: 'set-pad-volume', padId: pad.id, volume }),
-    [edit, pad.id],
-  );
   const moveTo = (toIndex: number) => void edit({ kind: 'move-pad', padId: pad.id, toIndex });
   return (
     <div className="soundboard-pad-controls">
@@ -233,7 +266,12 @@ function PadControls(props: {
           if (event.key === 'Enter') event.currentTarget.blur();
         }}
       />
-      <Level label={`Volume de ${name}`} hideLabel volume={pad.volume} onChange={setVolume} />
+      <LevelSlider
+        label={`Volume de ${name}`}
+        hideLabel
+        value={pad.volume}
+        {...level((volume) => ({ kind: 'set-pad-volume', padId: pad.id, volume }))}
+      />
       <button
         className="placement-move"
         aria-label={`Avancer ${name}`}
@@ -261,44 +299,5 @@ function PadControls(props: {
         <Trash2 size={13} aria-hidden />
       </button>
     </div>
-  );
-}
-
-/**
- * A level slider, 0 to 100 %. Each value is sent as the slider moves (at most one per frame,
- * the latest only) and saved; the slider shows its own position meanwhile.
- */
-function Level(props: {
-  label: string;
-  /** Only the slider's accessible name, no visible text (a pad's row names the pad already). */
-  hideLabel?: boolean;
-  /** Null until known. */
-  volume: number | null;
-  /** Keep it the same function while the slider lives (useCallback): a drag sends through it. */
-  onChange: (volume: number) => Promise<void>;
-}) {
-  const { label, hideLabel = false, volume, onChange } = props;
-  const [percent, setPercent] = useState<number | null>(null);
-  const sender = useMemo(() => createTransientSender<number>(onChange), [onChange]);
-  const shown = percent ?? Math.round((volume ?? 1) * 100);
-  return (
-    <label className="soundboard-level">
-      {!hideLabel && <span>{label}</span>}
-      <input
-        type="range"
-        aria-label={label}
-        min={0}
-        max={100}
-        step={1}
-        value={shown}
-        disabled={volume === null}
-        onChange={(event) => {
-          const next = Number(event.currentTarget.value);
-          setPercent(next);
-          sender.push(next / 100);
-        }}
-      />
-      <output>{shown} %</output>
-    </label>
   );
 }
