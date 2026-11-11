@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
+import type { ControlBridge } from '../../shared/contract';
 import {
   createCampaign,
   expect,
@@ -147,4 +148,46 @@ test('Blackout fades in and out with the fade duration', async ({ regie }) => {
   await blackout.click();
   await expect(cover).toHaveAttribute('data-fade', 'leaving');
   await expect(cover).toHaveCount(0, { timeout: 10_000 });
+});
+
+test('the Activate and Music crossfade durations are Control settings, kept across a restart; Activate dissolves over the Activate duration', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  const activateField = (page: Page) =>
+    page.getByRole('spinbutton', { name: 'Durée d’activation' });
+  const crossfadeField = (page: Page) =>
+    page.getByRole('spinbutton', { name: 'Fondu entre musiques' });
+  /** Activates the open Campaign's only Scene, as its Activate button does; its Transition. */
+  const activateOnlyScene = (page: Page) =>
+    page.evaluate(async () => {
+      const { regie } = window as unknown as { regie: ControlBridge };
+      const { campaignId } = await regie.getOnAir();
+      const [scene] = await regie.listScenes(campaignId ?? '');
+      return (await regie.activateScene(scene.id)).transition;
+    });
+  await createCampaign(controlWindow, 'Star Wars');
+  await createScene(controlWindow, 'Cantina');
+  await expect(activateField(controlWindow)).toHaveValue('1.5');
+  await expect(crossfadeField(controlWindow)).toHaveValue('2');
+
+  await activateField(controlWindow).fill('3');
+  await activateField(controlWindow).blur();
+  await crossfadeField(controlWindow).fill('4.5');
+  await crossfadeField(controlWindow).blur();
+  await expect(activateField(controlWindow)).toHaveValue('3');
+  await expect(crossfadeField(controlWindow)).toHaveValue('4.5');
+  // The fade duration is a setting of its own: unchanged.
+  await expect(fadeField(controlWindow)).toHaveValue('0.6');
+
+  await regie.app.close();
+  const restarted = await launchApp(regie.dataDir);
+  try {
+    const page = restarted.controlWindow;
+    await expect(activateField(page)).toHaveValue('3');
+    await expect(crossfadeField(page)).toHaveValue('4.5');
+    expect(await activateOnlyScene(page)).toMatchObject({ kind: 'crossfade', durationMs: 3000 });
+  } finally {
+    await restarted.app.close();
+  }
 });

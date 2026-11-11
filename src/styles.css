@@ -567,6 +567,9 @@ button {
 .fade-setting-field input {
   width: 64px;
 }
+.fade-setting-field + .fade-setting-field {
+  margin-top: 8px;
+}
 .theme-footnote {
   font-size: 9px;
   line-height: 1.6;
