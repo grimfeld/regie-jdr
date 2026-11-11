@@ -13,3 +13,4 @@ Read first: ADR-0005 (Campaign export as plain zip), [carry-forward](carry-forwa
 
 ## Outcomes
 - 2026-11-12: #59 delete Campaign merged at `7b57fe0` (962 unit, 160 app tests). No deviations. See [Campaign management](subsystem-campaign-management.md).
+- 2026-11-12: #60 Export merged at `9bbfa9a` (986 unit, 162 app tests). See [Campaign management](subsystem-campaign-management.md).
