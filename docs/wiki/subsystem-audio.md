@@ -52,3 +52,9 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - State reaches the strip as `AudioSounding.silence` (Broadcast gets nothing). Control-only `audio:set-silence` / `ControlBridge.setSilence`.
 - #41 hook: `setSilence(control, on)` exported from `src/NowPlaying.tsx`; current state `useSounding(control)?.silence`.
 - During Silence the strip labels voices "silence" and hides pause/stop. Gap: a track or Ambience started during Silence shows "silence", not loading.
+
+## Activate fades and continuity (#38, 2026-11-12, `1808490`)
+
+- Continuity, the 1.5 s Activate fade and starting from the first Music already came from the #35 design; #38 pinned them with `tests/unit/activateAudio.test.ts` and a whole-app test in `tests/app/ambiences.spec.ts` (shared Ambience stays "playing" through Activate; proven to fail if voices are recreated).
+- Engine (`6227c0f`): a new voice waits for its first `playing` event before fading in, so loading no longer eats the fade.
+- Known issue: playback uses `<audio loop>`, which is not gapless and fires `waiting` at each loop. Short loops flicker "chargement…" in the strip and may leave an audible gap. App tests use 30 s tones to avoid it.
