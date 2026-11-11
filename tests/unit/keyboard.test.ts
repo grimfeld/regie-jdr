@@ -138,3 +138,62 @@ describe('key map', () => {
     expect(keyLabelOf('silence', remapped)).toBe('F9');
   });
 });
+
+describe('Scene shortcuts', () => {
+  it('Activates with Ctrl+Enter and steps with Ctrl+Down and Ctrl+Up', () => {
+    expect(shortcutOf(press('Enter', 'Enter', { ctrl: true }))).toBe('activate');
+    expect(shortcutOf(press('Enter', 'NumpadEnter', { ctrl: true }))).toBe('activate');
+    expect(shortcutOf(press('ArrowDown', 'ArrowDown', { ctrl: true }))).toBe('activate-next');
+    expect(shortcutOf(press('ArrowUp', 'ArrowUp', { meta: true }))).toBe('activate-previous');
+  });
+
+  it('answers with Shift held too, which the handler reads to force a Cut', () => {
+    expect(shortcutOf(press('Enter', 'Enter', { ctrl: true, shift: true }))).toBe('activate');
+    expect(shortcutOf(press('ArrowDown', 'ArrowDown', { ctrl: true, shift: true }))).toBe(
+      'activate-next',
+    );
+  });
+
+  it('leaves Enter and the arrows alone without Ctrl, or with Alt', () => {
+    expect(shortcutOf(press('Enter', 'Enter'))).toBeUndefined();
+    expect(shortcutOf(press('ArrowDown', 'ArrowDown'))).toBeUndefined();
+    expect(shortcutOf(press('ArrowUp', 'ArrowUp', { ctrl: true, alt: true }))).toBeUndefined();
+  });
+
+  it('toggles Blackout with B, not with Ctrl+B or Shift+B', () => {
+    expect(shortcutOf(press('b', 'KeyB'))).toBe('blackout');
+    expect(shortcutOf(press('b', 'KeyB', { ctrl: true }))).toBeUndefined();
+    expect(shortcutOf(press('B', 'KeyB', { shift: true }))).toBeUndefined();
+  });
+
+  it('fires once per press, not again while the key is held', () => {
+    expect(
+      shortcutOf(press('ArrowDown', 'ArrowDown', { ctrl: true, repeat: true })),
+    ).toBeUndefined();
+    expect(shortcutOf(press('b', 'KeyB', { repeat: true }))).toBeUndefined();
+  });
+
+  it('never fires while typing in a field or anywhere inside editable content', () => {
+    expect(
+      shortcutOf({ ...press('Enter', 'Enter', { ctrl: true }), target: input('text') }),
+    ).toBeUndefined();
+    // The Notes editor: a button inside it (an image's resize handle) is still in the editor.
+    const editor = document.createElement('div');
+    editor.setAttribute('contenteditable', 'true');
+    const handle = document.createElement('button');
+    const view = document.createElement('div');
+    view.setAttribute('contenteditable', 'false');
+    view.append(handle);
+    editor.append(view);
+    document.body.append(editor);
+    expect(shortcutOf({ ...press('b', 'KeyB'), target: handle })).toBeUndefined();
+    editor.remove();
+  });
+
+  it('shows Activate and Blackout keys', () => {
+    expect(keyLabelOf('activate')).toBe('Ctrl+Entrée');
+    expect(keyLabelOf('activate-next')).toBe('Ctrl+↓');
+    expect(keyLabelOf('activate-previous')).toBe('Ctrl+↑');
+    expect(keyLabelOf('blackout')).toBe('B');
+  });
+});

@@ -1,6 +1,7 @@
 import { Moon, Radio } from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
 import { errorMessage } from './CampaignList';
+import { keyLabelOf, useShortcuts } from './keyboard';
 import { SceneCanvas } from './SceneCanvas';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
@@ -15,6 +16,9 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
   const onAir = useOnAir(control);
   const blackout = onAir?.blackout ?? false;
   const badge = blackout ? 'NOIR' : !onAir?.activeSceneId ? 'Rien à l’antenne' : null;
+
+  const blackoutKey = keyLabelOf('blackout');
+  useShortcuts({ blackout: () => void toggleBlackout() });
 
   async function toggleBlackout() {
     if (!control) return;
@@ -52,10 +56,11 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
       <button
         className={blackout ? 'primary-button' : 'secondary-button'}
         aria-pressed={blackout}
-        title="Fondre la diffusion au noir, ou revenir à la scène active"
+        title={`Fondre la diffusion au noir, ou revenir à la scène active (touche ${blackoutKey})`}
+        aria-keyshortcuts={blackoutKey}
         onClick={() => void toggleBlackout()}
       >
-        <Moon size={14} /> Noir
+        <Moon size={14} /> Noir {blackoutKey && <kbd aria-hidden>{blackoutKey}</kbd>}
       </button>
     </section>
   );

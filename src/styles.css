@@ -1301,7 +1301,9 @@ button {
   font-size: 11px;
   color: var(--muted);
 }
-.now-playing .panel-heading button kbd {
+.now-playing .panel-heading button kbd,
+.scene-editor-heading button kbd,
+.on-air-monitor > button kbd {
   font-size: 11px;
   opacity: 0.75;
 }

@@ -6,8 +6,8 @@ import { useEffect, useRef } from 'react';
  * in another window (only the focused window gets key presses).
  *
  * Every shortcut is a row of `KEY_MAP`, read by `shortcutOf`; components react to them through
- * `useShortcuts`. A new shortcut (M3 #56) is a new `Shortcut` and a new row; remapping (M4 #71)
- * replaces the rows of the remappable shortcuts.
+ * `useShortcuts`. A new shortcut is a new `Shortcut` and a new row; remapping (M4 #71) replaces
+ * the rows of the remappable shortcuts.
  */
 
 /** Input types that take no typed text: a shortcut may fire while one has focus. */
@@ -23,10 +23,15 @@ const NON_TEXT_INPUTS = new Set([
   'submit',
 ]);
 
-/** Whether `target` (a key event's target) is a place where the Game Master types text. */
+/**
+ * Whether `target` (a key event's target) is a place where the Game Master types text. Anything
+ * inside editable content counts, the Notes editor's own buttons too (an image's resize handle):
+ * its keys belong to the editor.
+ */
 export function isTypingIn(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
+  if (target.closest('[contenteditable]:not([contenteditable="false"])')) return true;
   if (target instanceof HTMLTextAreaElement) return true;
   if (target instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(target.type);
   return false;
@@ -39,8 +44,15 @@ export type PadKeyPosition = (typeof PAD_KEY_POSITIONS)[number];
 /** The Scene edit shortcuts: Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes. */
 export type EditShortcut = 'undo' | 'redo';
 
+/**
+ * The Activate shortcuts: Activate the Selected Scene, or the Scene after or before the Active
+ * Scene in the running order. Shift held as well forces a Cut, this once.
+ */
+export type ActivateShortcut = 'activate' | 'activate-next' | 'activate-previous';
+
 /** Everything a key can do in the Control window. */
-export type Shortcut = EditShortcut | 'silence' | `pad-${PadKeyPosition}`;
+export type Shortcut =
+  EditShortcut | ActivateShortcut | 'blackout' | 'silence' | `pad-${PadKeyPosition}`;
 
 /**
  * One key press a shortcut answers to. `code` names a physical key, whatever the layout (the
@@ -64,6 +76,16 @@ export type KeyMap = Readonly<Record<Shortcut, readonly KeyBinding[]>>;
 /** Shortcuts that fire again while their key is held; the others fire once per press. */
 const REPEATING: ReadonlySet<Shortcut> = new Set<Shortcut>(['undo', 'redo']);
 
+/**
+ * Shortcuts whose keys answer with or without Shift, whatever their bindings say: Shift is not
+ * part of the key but asks for a forced Cut, which the handler reads from the key press.
+ */
+const SHIFT_FREE: ReadonlySet<Shortcut> = new Set<Shortcut>([
+  'activate',
+  'activate-next',
+  'activate-previous',
+]);
+
 function padBindings(position: PadKeyPosition): readonly KeyBinding[] {
   const label = String(position);
   return [
@@ -79,6 +101,10 @@ export const KEY_MAP: KeyMap = {
     { key: 'y', ctrl: true, label: 'Ctrl+Y' },
     { key: 'z', ctrl: true, shift: true, label: 'Ctrl+Maj+Z' },
   ],
+  activate: [{ key: 'enter', ctrl: true, label: 'Ctrl+Entrée' }],
+  'activate-next': [{ key: 'arrowdown', ctrl: true, label: 'Ctrl+↓' }],
+  'activate-previous': [{ key: 'arrowup', ctrl: true, label: 'Ctrl+↑' }],
+  blackout: [{ key: 'b', label: 'B' }],
   silence: [{ key: 's', label: 'S' }],
   'pad-1': padBindings(1),
   'pad-2': padBindings(2),
@@ -97,12 +123,12 @@ export type KeyPress = Pick<
   'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'target'
 >;
 
-function matches(binding: KeyBinding, press: KeyPress): boolean {
+function matches(binding: KeyBinding, press: KeyPress, shiftFree: boolean): boolean {
   if (binding.code !== undefined && binding.code !== press.code) return false;
   if (binding.key !== undefined && binding.key !== press.key.toLowerCase()) return false;
   return (
     (binding.ctrl ?? false) === (press.ctrlKey || press.metaKey) &&
-    (binding.shift ?? false) === press.shiftKey &&
+    (shiftFree || (binding.shift ?? false) === press.shiftKey) &&
     (binding.alt ?? false) === press.altKey
   );
 }
@@ -111,6 +137,10 @@ function matches(binding: KeyBinding, press: KeyPress): boolean {
 const SHORTCUTS: readonly Shortcut[] = [
   'undo',
   'redo',
+  'activate',
+  'activate-next',
+  'activate-previous',
+  'blackout',
   'silence',
   ...PAD_KEY_POSITIONS.map((position) => `pad-${position}` as const),
 ];
@@ -119,7 +149,7 @@ const SHORTCUTS: readonly Shortcut[] = [
 export function shortcutOf(press: KeyPress, keyMap: KeyMap = KEY_MAP): Shortcut | undefined {
   if (isTypingIn(press.target)) return undefined;
   const shortcut = SHORTCUTS.find((candidate) =>
-    keyMap[candidate].some((binding) => matches(binding, press)),
+    keyMap[candidate].some((binding) => matches(binding, press, SHIFT_FREE.has(candidate))),
   );
   if (shortcut === undefined || (press.repeat && !REPEATING.has(shortcut))) return undefined;
   return shortcut;
@@ -130,8 +160,11 @@ export function keyLabelOf(shortcut: Shortcut, keyMap: KeyMap = KEY_MAP): string
   return keyMap[shortcut][0]?.label;
 }
 
-/** What to do for each shortcut a component answers; the others pass through. */
-export type ShortcutHandlers = Partial<Record<Shortcut, () => void>>;
+/**
+ * What to do for each shortcut a component answers, given the key press (an Activate shortcut
+ * reads Shift from it); the others pass through.
+ */
+export type ShortcutHandlers = Partial<Record<Shortcut, (press: KeyPress) => void>>;
 
 /**
  * Calls the handler of each shortcut pressed anywhere in the window (`shortcutOf`), and keeps
@@ -148,7 +181,7 @@ export function useShortcuts(handlers: ShortcutHandlers) {
       const handler = shortcut && latest.current[shortcut];
       if (!handler) return;
       event.preventDefault();
-      handler();
+      handler(event);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

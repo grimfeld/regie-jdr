@@ -21,10 +21,10 @@ import type {
 import { layOutCanvas } from '../core/canvas';
 import { MAX_PASTED_IMAGE_BYTES } from '../core/mediaAddress';
 import { editorPictureOf } from '../core/onAir';
-import { moveInRunningOrder } from '../core/runningOrder';
+import { moveInRunningOrder, sceneNextTo } from '../core/runningOrder';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
-import { useShortcuts, type EditShortcut } from './keyboard';
+import { keyLabelOf, useShortcuts, type EditShortcut, type KeyPress } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
@@ -163,6 +163,27 @@ export function ScenesPanel({
     onAir?.campaignId === campaignId && onAir.activeSceneId === scene.id;
   const hasActive = onAir?.campaignId === campaignId && onAir.activeSceneId !== null;
   const isLastActive = (scene: Scene) => !hasActive && scene.id === lastActiveId;
+
+  /** Activates the Scene after or before the Active Scene; the Selected Scene stays as it is. */
+  function activateNextTo(direction: 'next' | 'previous', press: KeyPress) {
+    const from = hasActive ? onAir.activeSceneId : null;
+    const sceneId = sceneNextTo(
+      scenes.map((scene) => scene.id),
+      from,
+      direction,
+    );
+    if (control && sceneId !== undefined) {
+      void activateScene(control, sceneId, activateOptionsOf(press));
+    }
+  }
+  // The Activate shortcuts, anywhere in the window except while typing; Shift forces a Cut.
+  useShortcuts({
+    activate: (press) => {
+      if (control && selected) void activateScene(control, selected.id, activateOptionsOf(press));
+    },
+    'activate-next': (press) => activateNextTo('next', press),
+    'activate-previous': (press) => activateNextTo('previous', press),
+  });
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -537,6 +558,9 @@ function SceneEditor(props: EditorProps) {
   }
   // Ctrl+Z / Ctrl+Y anywhere in the window, except while typing in a field.
   useShortcuts({ undo: () => travel('undo'), redo: () => travel('redo') });
+  const activateKey = keyLabelOf('activate');
+  const nextKey = keyLabelOf('activate-next');
+  const previousKey = keyLabelOf('activate-previous');
 
   async function submitRename(event: FormEvent) {
     event.preventDefault();
@@ -578,10 +602,11 @@ function SceneEditor(props: EditorProps) {
           </button>
           <button
             className="primary-button"
-            title="Maj+clic : activer en Cut"
+            title={`Activer cette scène (${activateKey}). ${nextKey} / ${previousKey} : activer la scène suivante / précédente. Avec Maj : en Cut`}
+            aria-keyshortcuts={activateKey}
             onClick={(event) => props.onActivate(activateOptionsOf(event))}
           >
-            Activer
+            Activer <kbd aria-hidden>{activateKey}</kbd>
           </button>
         </div>
       ) : (
