@@ -11,6 +11,8 @@ import {
   dissolveEnded,
   dissolveStarted,
   firstLayers,
+  millisecondsOfSecondsText,
+  secondsTextOf,
   parseFadeDuration,
   withLeaving,
   withNewestPicture,
@@ -192,5 +194,33 @@ describe('the picture layers a renderer draws through Transitions', () => {
       'cantina',
       'hangar, edited',
     ]);
+  });
+});
+
+describe('a duration typed in seconds', () => {
+  it.each([
+    ['4,5', 4500],
+    ['4.5', 4500],
+    [' 3 ', 3000],
+    ['0,25', 250],
+    [',5', 500],
+    ['2.', 2000],
+    ['0,0004', 0],
+  ])('reads "%s" as %i ms', (text, milliseconds) => {
+    expect(millisecondsOfSecondsText(text)).toBe(milliseconds);
+  });
+
+  it.each(['', ' ', ',', '1,2,3', '1.2,3', '-1', 'abc', '1e3', 'Infinity', '4 5'])(
+    'refuses "%s"',
+    (text) => {
+      expect(millisecondsOfSecondsText(text)).toBeUndefined();
+    },
+  );
+
+  it('shows milliseconds as seconds with a French decimal comma', () => {
+    expect(secondsTextOf(4500)).toBe('4,5');
+    expect(secondsTextOf(3000)).toBe('3');
+    expect(secondsTextOf(250)).toBe('0,25');
+    expect(millisecondsOfSecondsText(secondsTextOf(1500))).toBe(1500);
   });
 });

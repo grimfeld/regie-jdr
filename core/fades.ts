@@ -49,6 +49,27 @@ export function parseMusicCrossfade(value: unknown): number | undefined {
   return durationWithin(MUSIC_CROSSFADE_MS, value);
 }
 
+/** Seconds as typed: digits, with at most one decimal comma (French) or dot. */
+const SECONDS_TEXT = /^\s*(\d*)(?:[.,](\d*))?\s*$/;
+
+/**
+ * The whole milliseconds a duration typed in seconds stands for ("4,5" and "4.5" both give
+ * 4500), or undefined when the text is not a number of seconds. Bounds are the parse functions'
+ * business.
+ */
+export function millisecondsOfSecondsText(text: string): number | undefined {
+  const match = SECONDS_TEXT.exec(text);
+  if (!match) return undefined;
+  const [, whole = '', fraction = ''] = match;
+  if (whole === '' && fraction === '') return undefined;
+  return Math.round(Number(`${whole || '0'}.${fraction || '0'}`) * 1000);
+}
+
+/** Milliseconds as the seconds a duration field shows, with a French decimal comma. */
+export function secondsTextOf(milliseconds: number): string {
+  return String(milliseconds / 1000).replace('.', ',');
+}
+
 /**
  * The durations the Game Master sets for changes during play (Settings): the Activate duration
  * and the Music crossfade duration.

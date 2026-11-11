@@ -5,17 +5,16 @@ import type { Settings } from '../shared/domain';
 import {
   ACTIVATE_DURATION_MS,
   FADE_DURATION_MS,
+  millisecondsOfSecondsText,
   MUSIC_CROSSFADE_MS,
   parseActivateDuration,
   parseFadeDuration,
   parseMusicCrossfade,
+  secondsTextOf,
 } from '../core/fades';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
-
-/** Milliseconds as the seconds the field shows. */
-const toSeconds = (milliseconds: number) => String(milliseconds / 1000);
 
 /**
  * The fade settings, for the whole app, each kept across restarts:
@@ -87,8 +86,9 @@ export function FadeSetting({ control }: { control: ControlBridge | undefined })
 }
 
 /**
- * One duration setting, typed in seconds: each valid value typed is saved at once; the field
- * shows the saved value (its default until known) once left.
+ * One duration setting, typed in seconds with a decimal comma or dot: each valid value typed is
+ * saved at once; the field shows the saved value (its default until known) once left. A text
+ * field, not a number one: a number field refuses the comma a French Game Master types.
  */
 function DurationField(props: {
   label: string;
@@ -103,8 +103,8 @@ function DurationField(props: {
 
   async function type(text: string) {
     setTyped(text);
-    const durationMs = Math.round(Number(text.replace(',', '.')) * 1000);
-    if (!save || text.trim() === '' || parse(durationMs) === undefined) return;
+    const durationMs = millisecondsOfSecondsText(text);
+    if (!save || durationMs === undefined || parse(durationMs) === undefined) return;
     try {
       await save(durationMs);
     } catch (error) {
@@ -116,11 +116,10 @@ function DurationField(props: {
     <label className="fade-setting-field">
       <span>{label}</span>
       <input
-        type="number"
-        min={bounds.min / 1000}
-        max={bounds.max / 1000}
-        step={0.1}
-        value={typed ?? toSeconds(saved ?? bounds.default)}
+        type="text"
+        inputMode="decimal"
+        title={`De ${secondsTextOf(bounds.min)} à ${secondsTextOf(bounds.max)} secondes`}
+        value={typed ?? secondsTextOf(saved ?? bounds.default)}
         onChange={(event) => void type(event.currentTarget.value)}
         onBlur={() => setTyped(null)}
       />
