@@ -189,12 +189,15 @@ export function createOnAirCommands(deps: {
     return saved;
   }
 
-  /** Puts the Active Scene back on air as saved, when it is `sceneId` of `campaignId`. */
+  /**
+   * Puts the Active Scene back on air as saved, picture and sound, when it is `sceneId` of
+   * `campaignId`: a live drag may have shown, or made heard, an update that was never saved.
+   */
   async function showSavedActiveScene(campaignId: CampaignId, sceneId: SceneId) {
     const current = onAir.current();
     if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
     const saved = await scenes.get(campaignId, sceneId);
-    if (saved) onAir.showActiveScene(saved.id, await picture(saved));
+    if (saved) await showActive(saved, 'volume');
   }
 
   /**
@@ -270,7 +273,7 @@ export function createOnAirCommands(deps: {
         try {
           return await applyEdit(campaignId, sceneId, edit);
         } catch (error) {
-          // A live drag (Overlay or Background framing) may have shown unsaved transient
+          // A live drag (Overlay, Background framing, Music level) may have shown unsaved transient
           // updates on air: show the Scene as saved again. What the Game Master is told is the
           // edit's own failure, so a failure here is dropped.
           await showSavedActiveScene(campaignId, sceneId).catch(() => undefined);

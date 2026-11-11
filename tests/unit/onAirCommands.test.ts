@@ -605,6 +605,23 @@ describe('on-air commands', () => {
       });
     });
 
+    it('puts the saved Music level back in the mix when the committed drag fails', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await playing(ctx);
+      await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+        kind: 'set-music-level',
+        level: 0.4,
+      });
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 0.4 })]);
+      ctx.failSaves(new Error('disk full'));
+
+      await expect(
+        ctx.commands.editScene(ctx.campaign.id, scene.id, { kind: 'set-music-level', level: 0.4 }),
+      ).rejects.toThrow('disk full');
+
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 1 })]);
+    });
+
     it('reorder and remove are saved and undoable; removing the current Music stops it', async () => {
       const ctx = await setupWithMusic();
       const scene = await playing(ctx);
