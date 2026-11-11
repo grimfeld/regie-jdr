@@ -33,6 +33,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 ## Milestone logs
 
 - [M1 log](milestone-m1.md): slice order and outcomes for #21.
+- [M2 log](milestone-m2.md): slice order and outcomes for #33.
 
 ## Cross-milestone
 
