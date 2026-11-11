@@ -9,6 +9,7 @@ import { MediaLibrary } from './MediaLibrary';
 import { NowPlaying } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
+import { SoundboardPanel, useSoundboard } from './Soundboard';
 import { showNotice } from './notices';
 
 const themes: { id: ThemeId; label: string; subtitle: string }[] = [
@@ -259,6 +260,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   const [importRevision, setImportRevision] = useState(0);
 
   const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
+  // Per Campaign, whichever Scene is active. Read again when a Media is deleted (its pads go).
+  const soundboard = useSoundboard(control, campaign.id, mediaRevision);
 
   return (
     <>
@@ -294,6 +297,12 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
         <aside className="control-column">
           <OnAirMonitor control={control} />
           <NowPlaying control={control} />
+          <SoundboardPanel
+            control={control}
+            campaignId={campaign.id}
+            soundboard={soundboard}
+            libraryRevision={mediaRevision + importRevision}
+          />
           <FadeSetting control={control} />
           <div className="panel">
             <div className="panel-heading">

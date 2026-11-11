@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AudioLines, Music2, Volume2, Waves } from 'lucide-react';
+import { AudioLines, Music2, Volume2, Waves, Zap } from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
 import type { AudioSounding, SoundingVoice, VoiceState } from '../shared/domain';
 import { MASTER_VOLUME } from '../core/audioMix';
@@ -24,11 +24,13 @@ function RoleIcon({ role }: { role: SoundingVoice['role'] }) {
 /**
  * The "En cours" strip, next to the On-air monitor: what is actually sounding, as the audio
  * engine reports it (a file that failed to load shows as such), and the Master volume.
- * Later slices add here: play/pause (#36), Ambiences on (#37), Silence (#40), pads (#39).
+ * Pads sounding (#39) show after the voices.
+ * Later slices add here: play/pause (#36), Ambiences on (#37), Silence (#40).
  */
 export function NowPlaying({ control }: { control: ControlBridge | undefined }) {
   const sounding = useSounding(control);
   const voices = sounding?.voices ?? [];
+  const pads = sounding?.pads ?? [];
   return (
     <section className="panel now-playing" aria-label="En cours">
       <div className="panel-heading">
@@ -39,7 +41,7 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
           </h2>
         </div>
       </div>
-      {voices.length === 0 ? (
+      {voices.length === 0 && pads.length === 0 ? (
         <p className="now-playing-empty">Aucun son.</p>
       ) : (
         <ul className="now-playing-list" aria-label="Sons en cours">
@@ -50,6 +52,13 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
               <small>{stateLabels[voice.state]}</small>
             </li>
           ))}
+          {pads.map((pad) => (
+            <li key={`pad-${pad.padId}`} data-role="pad" data-state="playing">
+              <Zap size={14} aria-hidden />
+              <span className="now-playing-name">{pad.name}</span>
+              <small>bruitage</small>
+            </li>
+          ))}
         </ul>
       )}
       <MasterVolume control={control} />
@@ -58,7 +67,7 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
 }
 
 /** What is sounding, kept up to date; null until first known. */
-function useSounding(control: ControlBridge | undefined): AudioSounding | null {
+export function useSounding(control: ControlBridge | undefined): AudioSounding | null {
   const [sounding, setSounding] = useState<AudioSounding | null>(null);
   useEffect(() => {
     if (!control) return;

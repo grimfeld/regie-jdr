@@ -29,9 +29,11 @@ test('the Campaign screen has no placeholder preview or audio controls that do n
 
   await expect(controlWindow.getByRole('region', { name: 'Scènes' })).toBeVisible();
   await expect(controlWindow.getByRole('button', { name: 'Importer des images' })).toBeVisible();
-  // The one slider shown is the Master volume, wired to the audio engine (tests/app/audio.spec.ts).
-  await expect(controlWindow.getByRole('slider')).toHaveCount(1);
+  // The sliders shown are the Master volume, wired to the audio engine (tests/app/audio.spec.ts),
+  // and the Soundboard level (tests/app/soundboard.spec.ts).
+  await expect(controlWindow.getByRole('slider')).toHaveCount(2);
   await expect(controlWindow.getByRole('slider', { name: 'Volume général' })).toBeVisible();
+  await expect(controlWindow.getByRole('slider', { name: 'Niveau de la table' })).toBeVisible();
   await expect(controlWindow.getByText('APERÇU JOUEURS')).toHaveCount(0);
   await expect(controlWindow.getByLabel('TITRE DE LA SCÈNE')).toHaveCount(0);
 });
