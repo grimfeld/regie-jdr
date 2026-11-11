@@ -3,6 +3,8 @@ import {
   emptyNotes,
   MAX_NOTES_DEPTH,
   MAX_NOTES_SIZE,
+  MAX_NOTES_IMAGE_WIDTH,
+  MIN_NOTES_IMAGE_WIDTH,
   notesFromPlainText,
   parseNotes,
 } from '../../core/notes';
@@ -53,6 +55,7 @@ const everything = doc(
   },
   { type: 'blockquote', content: [paragraph(text('« Qui va là ? »', 'italic')), image()] },
   image(),
+  { type: 'image', attrs: { mediaId: MAP_ID, width: 40 } },
   {
     type: 'bulletList',
     content: [{ type: 'listItem', content: [paragraph(text('Plan')), image()] }],
@@ -75,6 +78,17 @@ describe('parseNotes', () => {
         doc({ type: 'image', attrs: { mediaId: MAP_ID, src: 'regie-media://x', alt: 'carte' } }),
       ),
     ).toEqual(doc(image()));
+  });
+
+  it('keeps an image width from 10 to 100 % of the panel, and none as the default size', () => {
+    for (const width of [MIN_NOTES_IMAGE_WIDTH, 55, MAX_NOTES_IMAGE_WIDTH]) {
+      const sized: NotesNode = { type: 'image', attrs: { mediaId: MAP_ID, width } };
+      expect(parseNotes(doc(sized))).toEqual(doc(sized));
+    }
+    // The editor saves an image at its default size with a null width.
+    expect(parseNotes(doc({ type: 'image', attrs: { mediaId: MAP_ID, width: null } }))).toEqual(
+      doc(image()),
+    );
   });
 
   it('drops fields that are not part of the notes', () => {
@@ -134,6 +148,13 @@ describe('parseNotes', () => {
       doc(image('data:image/png;base64,iVBORw0KGgo=')),
     ],
     ['an image with a Media id in capitals', doc(image(MAP_ID.toUpperCase()))],
+    ...[9, 101, 0, -50, 55.5, Number.NaN, Infinity, '50', '50%', true].map(
+      (width) =>
+        [
+          `an image width of ${String(width)}`,
+          doc({ type: 'image', attrs: { mediaId: MAP_ID, width } }),
+        ] as const,
+    ),
     ['an image with content', doc({ ...image(), content: [paragraph()] })],
     ['an image inside a paragraph', doc(paragraph(image()))],
     [

@@ -10,8 +10,7 @@
  * it, keeping only the fields it knows. No Node dependency: the windows run this module.
  *
  * Adding a kind of content: a row of BLOCK_NODES with its attributes and the same extension in
- * the editor. An image's width in the panel (#53) is another attribute of its row; the Media
- * reference scan (#54) reads `mediaId` off the image nodes.
+ * the editor. The Media reference scan (#54) reads `mediaId` off the image nodes.
  */
 import type { NotesDocument, NotesMark, NotesNode } from '../shared/domain.js';
 import { isRecord } from './guards.js';
@@ -51,6 +50,31 @@ export function isNotesMediaId(value: unknown): value is string {
   return typeof value === 'string' && MEDIA_ID.test(value);
 }
 
+/** Narrowest and widest an image in the Notes may be, in % of the width it stands in. */
+export const MIN_NOTES_IMAGE_WIDTH = 10;
+export const MAX_NOTES_IMAGE_WIDTH = 100;
+
+/** Whether `value` is a width an image in the Notes may have: a whole % from 10 to 100. */
+export function isNotesImageWidth(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= MIN_NOTES_IMAGE_WIDTH &&
+    value <= MAX_NOTES_IMAGE_WIDTH
+  );
+}
+
+/**
+ * An image's attributes: its Media id and, once the Game Master has resized it, its width in % of
+ * the width it stands in (the Notes panel, or the quote or list holding it). No width, or a null
+ * one as the editor saves it: the default size, the image's own width up to the whole panel.
+ */
+function imageAttrs({ mediaId, width = null }: Record<string, unknown>): Attrs | undefined {
+  if (!isNotesMediaId(mediaId)) return undefined;
+  if (width === null) return { mediaId };
+  return isNotesImageWidth(width) ? { mediaId, width } : undefined;
+}
+
 const ORDERED_LIST_TYPES: readonly (string | null)[] = [null, '1', 'a', 'A', 'i', 'I'];
 
 /** Nodes that may stand at block level: in the document, a quote or a list item. */
@@ -75,7 +99,7 @@ const BLOCK_NODES: Readonly<Record<string, NodeRule>> = {
   taskList: { content: { items: { taskItem: TASK_ITEM } } },
   image: {
     content: 'none',
-    attrs: ({ mediaId }) => (isNotesMediaId(mediaId) ? { mediaId } : undefined),
+    attrs: imageAttrs,
   },
 };
 
