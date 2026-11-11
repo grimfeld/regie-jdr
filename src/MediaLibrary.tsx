@@ -16,6 +16,7 @@ import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
+import { ListenButton, ListeningWarning, useListening } from './Listening';
 import { gridColumns, gridWindow } from './virtualGrid';
 
 const categoryLabels: Record<ImageCategory, string> = {
@@ -90,6 +91,7 @@ export function MediaLibrary({
   const hasImages = media.some((item) => item.kind === 'image');
   const hasSounds = media.some((item) => item.kind === 'audio');
   const missingSounds = useMissingMedia(sounds);
+  const listening = useListening(control);
 
   useEffect(() => {
     if (!control) return;
@@ -333,6 +335,8 @@ export function MediaLibrary({
           </label>
         </div>
       )}
+      {hasSounds && <ListeningWarning listening={listening} />}
+      {listening.player}
       <ul className="media-library sound-library" aria-label="Sons">
         {sounds.map((item) => (
           <li className="media-item" key={item.id}>
@@ -355,6 +359,7 @@ export function MediaLibrary({
                 {formatDuration(item.durationSeconds)}
               </span>
             </span>
+            <ListenButton sound={item} listening={listening} missing={missingSounds.has(item.id)} />
             {deleteButton(item)}
           </li>
         ))}
