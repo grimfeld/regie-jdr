@@ -124,6 +124,47 @@ describe('pad voices', () => {
     expect(pads.sounding()).toEqual([]);
     expect(pads.press(press('p1'))).toEqual([expect.objectContaining({ voiceId: 2 })]);
   });
+
+  it('retunes the pad sounds still sounding to new levels, with a short ramp', () => {
+    const pads = createPadVoices();
+    pads.press(press('p1'));
+    pads.press(press('p2'));
+    pads.press(press('p1'));
+
+    const commands = pads.retune(
+      new Map([
+        ['p1', { name: 'Pad p1', gain: 0.25 }],
+        ['p2', { name: 'Pad p2', gain: 0.5 }],
+      ]),
+    );
+
+    // p2 kept its level: nothing to send for it.
+    expect(commands).toEqual([
+      { kind: 'gain', voiceIds: [1, 3], gain: 0.25, fadeMs: AUDIO_FADE_MS.volume },
+    ]);
+    // Pressed again later, it plays at the level given then; a second retune to the same
+    // level changes nothing.
+    expect(pads.retune(new Map([['p1', { name: 'Pad p1', gain: 0.25 }]]))).toEqual([]);
+  });
+
+  it('renames the pads sounding, as the "En cours" strip shows them', () => {
+    const pads = createPadVoices();
+    pads.press(press('p1'));
+    pads.report({ voices: [{ voiceId: 1, state: 'playing' }], upTo: 1 });
+
+    pads.retune(new Map([['p1', { name: 'Hurlement', gain: 0.5 }]]));
+
+    expect(pads.sounding()).toEqual([{ padId: 'p1', name: 'Hurlement' }]);
+  });
+
+  it('leaves alone the pad sounds of pads it is not told about (a pad removed)', () => {
+    const pads = createPadVoices();
+    pads.press(press('p1'));
+    pads.report({ voices: [{ voiceId: 1, state: 'playing' }], upTo: 1 });
+
+    expect(pads.retune(new Map())).toEqual([]);
+    expect(pads.sounding()).toEqual([{ padId: 'p1', name: 'Pad p1' }]);
+  });
 });
 
 describe('pad gain', () => {

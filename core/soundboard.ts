@@ -157,6 +157,16 @@ export interface SoundboardStore {
   edit(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   /** Removes every pad of a Media (it was deleted from the library). */
   removeMedia(campaignId: CampaignId, mediaId: MediaId): Promise<void>;
+  /**
+   * Each pad's name and level (padGain at `masterVolume`), for the pad sounds still sounding
+   * (core/padVoices.ts `retune`): as saved, or with `unsaved` applied but not saved (a level
+   * slider being dragged). Pads whose Media is gone are left out.
+   */
+  tuning(
+    campaignId: CampaignId,
+    masterVolume: number,
+    unsaved?: SoundboardEdit,
+  ): Promise<Map<string, { name: string; gain: number }>>;
   /** What pressing a pad plays, at `masterVolume`. Throws when the pad or its Media is gone. */
   press(campaignId: CampaignId, padId: string, masterVolume: number): Promise<PadPress>;
   /**
@@ -224,6 +234,22 @@ export function createSoundboardStore(deps: {
         const pads = board.pads.filter((pad) => pad.mediaId !== mediaId);
         if (pads.length !== board.pads.length) await write(file, { ...board, pads });
       });
+    },
+
+    async tuning(campaignId, masterVolume, unsaved) {
+      const saved = await read(await fileOf(campaignId), campaignId);
+      const board = unsaved ? applySoundboardEdit(saved, unsaved, newId) : saved;
+      const media = await library.list(campaignId);
+      const tuned = new Map<string, { name: string; gain: number }>();
+      for (const pad of board.pads) {
+        const item = media.find((candidate) => candidate.id === pad.mediaId);
+        if (!item) continue;
+        tuned.set(pad.id, {
+          name: pad.label ?? item.name,
+          gain: padGain(masterVolume, board.volume, pad.volume),
+        });
+      }
+      return tuned;
     },
 
     async press(campaignId, padId, masterVolume) {

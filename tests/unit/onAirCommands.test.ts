@@ -484,6 +484,31 @@ describe('on-air commands', () => {
       return scene;
     }
 
+    it('renaming a sounding Media renames its voice, which plays on as it was', async () => {
+      const ctx = await setupWithMusic();
+      await playing(ctx);
+      await ctx.commands.pickMusic(ctx.music[1].id);
+      const before = ctx.audio.mix();
+
+      const renamed = await ctx.commands.renameMedia(ctx.campaign.id, ctx.music[1].id, 'Rixe');
+
+      expect(renamed.name).toBe('Rixe');
+      expect(ctx.audio.mix().voices).toEqual([{ ...before.voices[0], name: 'Rixe' }]);
+      expect((await ctx.library.list(ctx.campaign.id)).map((media) => media.name)).toContain(
+        'Rixe',
+      );
+    });
+
+    it('renaming a Media of a Scene that is not active changes nothing heard', async () => {
+      const ctx = await setupWithMusic();
+      await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      await ctx.commands.renameMedia(ctx.campaign.id, ctx.music[0].id, 'Rixe');
+
+      expect(ctx.mixes).toEqual([]);
+    });
+
     it('picking a track crossfades to it in 2 s, without saving it into the Scene', async () => {
       const ctx = await setupWithMusic();
       const scene = await playing(ctx);

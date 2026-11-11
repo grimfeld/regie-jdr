@@ -20,7 +20,7 @@ import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
-import type { MediaImportKind } from '../shared/contract.js';
+import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
 import type { PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
@@ -186,6 +186,12 @@ async function createControlWindow() {
     webPreferences: secureWebPreferences('control'),
   });
   rememberBounds(controlWindow, 'control');
+  // Each load of the page starts a new audio engine (ADR-0002), holding nothing yet: what the
+  // old one reported is stale.
+  controlWindow.webContents.on('did-navigate', () => {
+    engine.engineStarted();
+    sendEvent(controlWindow?.webContents, 'audio:sounding-changed', engine.sounding());
+  });
   if (process.env.VITE_DEV_SERVER_URL) {
     loadPage('control', controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL));
     controlWindow.webContents.openDevTools({ mode: 'detach' });
@@ -317,6 +323,23 @@ function startApp() {
       sendEvent(controlWindow?.webContents, 'audio:pad-command', command);
     }
   };
+  /**
+   * The pad sounds still sounding take the pads' names and levels now (`unsaved`: a slider
+   * being dragged), so a level, pad volume or Master volume change is heard at once. The change
+   * itself is saved already: a failure here is only logged.
+   */
+  const retunePads = async (unsaved?: SoundboardEdit) => {
+    const { campaignId } = onAir.current();
+    if (!campaignId) return;
+    try {
+      const { masterVolume } = await settingsStore.get();
+      const tuning = await soundboards.tuning(campaignId, masterVolume, unsaved);
+      sendPadCommands(padVoices.retune(tuning));
+      sendSounding();
+    } catch (error) {
+      log.warn('Retuning the pad sounds failed', error);
+    }
+  };
   /** A Campaign opened, switched or closed: its pad sounds stop with the rest of the audio. */
   const stopPads = () => {
     sendPadCommands(padVoices.clear());
@@ -404,7 +427,11 @@ function startApp() {
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
-      'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
+      'media:rename': async ({ campaignId, mediaId, name }) => {
+        const renamed = await commands.renameMedia(campaignId, mediaId, name);
+        await retunePads();
+        return renamed;
+      },
       'media:delete': async ({ campaignId, mediaId, confirmed }) => {
         const deletion = await commands.deleteMedia(campaignId, mediaId, confirmed);
         if (deletion.deleted) {
@@ -427,13 +454,12 @@ function startApp() {
       'settings:set-master-volume': async ({ masterVolume }) => {
         const saved = await settingsStore.setMasterVolume(masterVolume);
         audio.setMasterVolume(saved.masterVolume);
+        await retunePads();
         return saved;
       },
-      // The engine reads the mix as it starts (or restarts, with the Control window): it holds
-      // nothing then, so its last report and its pad sounds are stale.
+      // The engine reads the mix as it starts (or restarts, with the Control window): it is
+      // told which Sound effects to keep decoded (its last report is forgotten on did-navigate).
       'audio:get-mix': () => {
-        engine.engineStarted();
-        sendSounding();
         preloadPads();
         return audio.mix();
       },
@@ -453,6 +479,7 @@ function startApp() {
       'soundboard:edit': async ({ campaignId, edit }) => {
         const saved = await soundboards.edit(campaignId, edit);
         if (edit.kind === 'add-pad' || edit.kind === 'remove-pad') preloadPads();
+        await retunePads();
         return saved;
       },
       'soundboard:press': async ({ campaignId, padId }) => {

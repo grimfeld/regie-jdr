@@ -44,6 +44,13 @@ export interface PadVoices {
   clear(change?: AudioChange): PadCommand[];
   /** The engine (re)started, holding nothing: forgets every pad sound without a command. */
   forget(): void;
+  /**
+   * The pads' names and levels changed (a level or pad volume set, the Master volume, a pad or
+   * its Media renamed): the pad sounds still sounding take them, so every level slider is heard
+   * at once. `pads` gives each pad's name and padGain(); pads missing from it are left alone.
+   * Returns the commands ramping each changed level.
+   */
+  retune(pads: ReadonlyMap<string, { name: string; gain: number }>): PadCommand[];
 }
 
 /** A pad's level: Master volume × Soundboard level × pad volume. */
@@ -55,6 +62,8 @@ interface PadVoice {
   voiceId: PadVoiceId;
   padId: string;
   name: string;
+  /** Its level, as last sent to the engine. */
+  gain: number;
   /** Loading until the engine reports it. */
   state: VoiceState;
 }
@@ -88,7 +97,7 @@ export function createPadVoices(): PadVoices {
           fadeMs: AUDIO_FADE_MS.pad,
         });
       }
-      voices.push({ voiceId: lastId, padId, name, state: 'loading' });
+      voices.push({ voiceId: lastId, padId, name, gain, state: 'loading' });
       commands.push({ kind: 'play', voiceId: lastId, src, gain });
       return commands;
     },
@@ -116,6 +125,23 @@ export function createPadVoices(): PadVoices {
 
     forget() {
       voices = [];
+    },
+
+    retune(pads) {
+      const changed = new Map<number, PadVoiceId[]>();
+      voices = voices.map((voice) => {
+        const pad = pads.get(voice.padId);
+        if (!pad) return voice;
+        if (pad.gain !== voice.gain)
+          changed.set(pad.gain, [...(changed.get(pad.gain) ?? []), voice.voiceId]);
+        return { ...voice, name: pad.name, gain: pad.gain };
+      });
+      return [...changed].map(([gain, voiceIds]) => ({
+        kind: 'gain',
+        voiceIds,
+        gain,
+        fadeMs: AUDIO_FADE_MS.volume,
+      }));
     },
   };
 }

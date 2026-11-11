@@ -179,6 +179,25 @@ test('Music is reordered and removed, saved and undoable; edits of a Scene off a
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/, /Auberge/]);
 });
 
+test('renaming a sounding Music renames it in the "En cours" strip; it plays on', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await sceneWithMusic(regie);
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+
+  await soundInLibrary(controlWindow, 'Auberge')
+    .getByRole('button', { name: 'Renommer Auberge' })
+    .click();
+  const rename = controlWindow.getByLabel('Nouveau nom de Auberge');
+  await rename.fill('Poney fringant');
+  await rename.press('Enter');
+
+  await expect(sounding(controlWindow, 'Poney fringant')).toHaveAttribute('data-state', 'playing');
+  await expect(strip(controlWindow)).toHaveCount(1);
+});
+
 test('removing the current Music from the Active Scene stops it', async ({ regie }) => {
   const { controlWindow } = regie;
   await sceneWithMusic(regie);

@@ -317,8 +317,8 @@ export interface InvokeChannels {
   /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
   'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
   /**
-   * The current mix, for the audio engine (on start and on every reload): it holds no pad
-   * sounds then, so the main process forgets them.
+   * The current mix, for the audio engine (on start and on every reload of the Control window,
+   * when the main process forgets what the old engine reported).
    */
   'audio:get-mix': { payload: void; result: AudioMix };
   /** The audio engine reports what is actually sounding. */

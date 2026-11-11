@@ -245,6 +245,29 @@ describe('Soundboard store', () => {
     expect(await store.sounds(campaign.id)).toEqual([s2]);
   });
 
+  it('gives each pad’s name and level, as saved or with an unsaved edit (a slider dragged)', async () => {
+    const { campaign, store } = await setup();
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    await store.edit(campaign.id, { kind: 'rename-pad', padId: 'pad2', label: 'Épée' });
+    await store.edit(campaign.id, { kind: 'set-pad-volume', padId: 'pad1', volume: 0.5 });
+
+    expect(await store.tuning(campaign.id, 0.5)).toEqual(
+      new Map([
+        ['pad1', { name: 'Nom s1', gain: 0.25 }],
+        ['pad2', { name: 'Épée', gain: 0.5 }],
+      ]),
+    );
+    expect(await store.tuning(campaign.id, 1, { kind: 'set-level', volume: 0.5 })).toEqual(
+      new Map([
+        ['pad1', { name: 'Nom s1', gain: 0.25 }],
+        ['pad2', { name: 'Épée', gain: 0.5 }],
+      ]),
+    );
+    // The unsaved edit is not saved.
+    expect((await store.get(campaign.id)).volume).toBe(1);
+  });
+
   it('refuses to press a pad that is gone', async () => {
     const { campaign, store } = await setup();
     await expect(store.press(campaign.id, 'nope', 1)).rejects.toThrow(SoundboardError);

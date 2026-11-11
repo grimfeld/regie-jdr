@@ -347,7 +347,8 @@ export type PadVoiceId = number;
 
 /**
  * What the main process tells the audio engine about pad sounds (core/padVoices.ts): play one
- * at `gain` (Master volume included), cut some with a short fade, or preload the pads' sounds.
+ * at `gain` (Master volume included), cut some with a short fade, ramp some to a new level,
+ * or preload the pads' sounds.
  */
 export type PadCommand =
   | { kind: 'play'; voiceId: PadVoiceId; src: string; gain: number }
@@ -356,7 +357,9 @@ export type PadCommand =
    * The Sound effects of the open Campaign's pads (Media addresses): the engine decodes them
    * ahead of a press and frees every other it holds (Campaign switched, pad removed).
    */
-  | { kind: 'preload'; srcs: string[] };
+  | { kind: 'preload'; srcs: string[] }
+  /** Ramps pad sounds still sounding to a new level (a level slider moved). */
+  | { kind: 'gain'; voiceIds: PadVoiceId[]; gain: number; fadeMs: number };
 
 /**
  * The audio engine's report on pad sounds: the state of each it holds, and the last pad sound

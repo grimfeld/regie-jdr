@@ -12,7 +12,7 @@ import type { AudioOnAir } from './audioOnAir.js';
 import type { PadVoices } from './padVoices.js';
 
 export interface EngineLink {
-  /** The engine (re)started and reads the mix: it holds no voice and no pad sound yet. */
+  /** The engine (re)started with a load of the Control window: it holds nothing yet. */
   engineStarted(): void;
   /** The engine's report on the voices of the mix. */
   engineReported(report: AudioEngineReport): void;

@@ -125,6 +125,19 @@ export function startPadPlayer(
     report();
   }
 
+  /** Ramps pad sounds to a new level: they keep playing. */
+  function regain(voiceIds: readonly PadVoiceId[], target: number, fadeMs: number) {
+    const now = context.currentTime;
+    for (const voiceId of voiceIds) {
+      const sound = sounds.get(voiceId);
+      if (!sound) continue;
+      const { gain } = sound.gain;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(Math.min(1, Math.max(0, target)), now + fadeMs / 1000);
+    }
+  }
+
   function apply(command: PadCommand) {
     // Decoding needs no running context: a preload alone does not start audio.
     if (context.state === 'suspended' && command.kind !== 'preload') {
@@ -140,6 +153,9 @@ export function startPadPlayer(
         return;
       case 'preload':
         preload(command.srcs);
+        return;
+      case 'gain':
+        regain(command.voiceIds, command.gain, command.fadeMs);
         return;
     }
   }

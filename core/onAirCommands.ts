@@ -99,6 +99,11 @@ export interface OnAirCommands {
    */
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /**
+   * Renames a Media of a Campaign; returns it as saved. A Media sounding on the Active Scene
+   * keeps playing as it was, under its new name (the "En cours" strip shows it).
+   */
+  renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  /**
    * Deletes a Media. Unused Media goes at once. Media that Scenes use is only listed with
    * those Scenes unless `confirmed`; then the Media, its file and its placements in those
    * Scenes are removed, and the broadcast drops it if the Active Scene showed it.
@@ -357,6 +362,21 @@ export function createOnAirCommands(deps: {
         histories.clear(campaignId, sceneId);
         if (onAir.current().campaignId !== campaignId) return;
         if (onAir.clearActiveScene(sceneId)) audio.clear();
+      }),
+
+    renameMedia: (campaignId, mediaId, name) =>
+      serialized(async () => {
+        const renamed = await library.rename(campaignId, mediaId, name);
+        const current = onAir.current();
+        if (renamed.kind !== 'audio' || current.campaignId !== campaignId) return renamed;
+        if (current.activeSceneId === null) return renamed;
+        const active = await scenes.get(campaignId, current.activeSceneId);
+        if (!active) return renamed;
+        // Names travel with the mix's voices: the same mix, renamed, changes no level. The
+        // picture never shows Media names, so it stays as it is.
+        const media = await library.list(campaignId);
+        audio.showActiveScene(active, media, 'volume', await missingAudio(active, media));
+        return renamed;
       }),
 
     deleteMedia: (campaignId, mediaId, confirmed) =>
