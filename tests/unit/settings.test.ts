@@ -8,13 +8,15 @@ describe('settings', () => {
   const dir = useTempDir();
   const reopen = () => createSettingsStore(openStorage(dir.path));
 
-  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade and a full Master volume', async () => {
+  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade, a full Master volume, a 1.5 s Activate and a 2 s Music crossfade', async () => {
     expect(await reopen().get()).toEqual({
       theme: 'imperium',
       windowBounds: {},
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 
@@ -47,6 +49,8 @@ describe('settings', () => {
       lastActiveSceneByCampaign: { 'star-wars': 'cantina' },
       fadeDurationMs: 600,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 
@@ -68,6 +72,8 @@ describe('settings', () => {
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 
@@ -89,6 +95,8 @@ describe('settings', () => {
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 900,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 
@@ -124,6 +132,86 @@ describe('settings', () => {
     expect((await reopen().get()).masterVolume).toBe(0.4);
   });
 
+  it('give Settings saved before Milestone 3 the default Activate and Music crossfade durations', async () => {
+    const storage = openStorage(dir.path);
+    await fs.writeFile(
+      storage.settingsFile,
+      JSON.stringify({
+        schemaVersion: 3,
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        fadeDurationMs: 900,
+        masterVolume: 0.4,
+      }),
+    );
+    expect(await reopen().get()).toEqual({
+      theme: 'retro',
+      windowBounds: {},
+      lastActiveSceneByCampaign: {},
+      fadeDurationMs: 900,
+      masterVolume: 0.4,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
+    });
+  });
+
+  it('keep stored Activate and Music crossfade durations and drop unusable ones', async () => {
+    const storage = openStorage(dir.path);
+    const write = (activateDurationMs: unknown, musicCrossfadeMs: unknown) =>
+      fs.writeFile(
+        storage.settingsFile,
+        JSON.stringify({
+          schemaVersion: 4,
+          theme: 'retro',
+          windowBounds: {},
+          lastActiveSceneByCampaign: {},
+          fadeDurationMs: 600,
+          masterVolume: 1,
+          activateDurationMs,
+          musicCrossfadeMs,
+        }),
+      );
+    await write(3000, 5000);
+    expect(await reopen().get()).toMatchObject({
+      activateDurationMs: 3000,
+      musicCrossfadeMs: 5000,
+    });
+    for (const unusable of [0, 60_000, 1500.5, 'slow', null]) {
+      await write(unusable, unusable);
+      expect(await reopen().get()).toMatchObject({
+        activateDurationMs: 1500,
+        musicCrossfadeMs: 2000,
+      });
+    }
+  });
+
+  it('remember the Activate and Music crossfade durations across a restart', async () => {
+    expect((await reopen().setActivateDuration(3000)).activateDurationMs).toBe(3000);
+    expect((await reopen().setMusicCrossfade(4500)).musicCrossfadeMs).toBe(4500);
+    expect(await reopen().get()).toMatchObject({
+      activateDurationMs: 3000,
+      musicCrossfadeMs: 4500,
+    });
+  });
+
+  it('refuse Activate and Music crossfade durations out of bounds, keeping the saved ones', async () => {
+    await reopen().setActivateDuration(3000);
+    await reopen().setMusicCrossfade(4500);
+    await expect(reopen().setActivateDuration(50)).rejects.toThrow(
+      'La durée d’activation doit être comprise entre 0.1 et 5 secondes.',
+    );
+    await expect(reopen().setActivateDuration(5001)).rejects.toThrow();
+    await expect(reopen().setMusicCrossfade(10_001)).rejects.toThrow(
+      'La durée du fondu entre musiques doit être comprise entre 0.1 et 10 secondes.',
+    );
+    await expect(reopen().setMusicCrossfade(-1)).rejects.toThrow();
+    expect(await reopen().get()).toMatchObject({
+      activateDurationMs: 3000,
+      musicCrossfadeMs: 4500,
+    });
+  });
+
   it('remember the global theme across a restart', async () => {
     await reopen().setTheme('fantasy');
     expect((await reopen().get()).theme).toBe('fantasy');
@@ -146,6 +234,8 @@ describe('settings', () => {
       lastActiveSceneByCampaign: { 'star-wars': 'hangar', warhammer: 'cathedral' },
       fadeDurationMs: 600,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 
@@ -179,6 +269,8 @@ describe('settings', () => {
       lastActiveSceneByCampaign: { 'star-wars': 'cantina' },
       fadeDurationMs: 1000,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 
@@ -199,6 +291,8 @@ describe('settings', () => {
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
       masterVolume: 1,
+      activateDurationMs: 1500,
+      musicCrossfadeMs: 2000,
     });
   });
 });

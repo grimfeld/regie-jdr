@@ -24,7 +24,7 @@ import {
   pickedMusic,
   type MixInput,
 } from './audioMix.js';
-import type { AudioChange } from './fades.js';
+import { DEFAULT_PLAY_DURATIONS, type AudioChange, type PlayDurations } from './fades.js';
 
 export interface AudioOnAir {
   /** The current mix. */
@@ -75,6 +75,11 @@ export interface AudioOnAir {
   setMasterVolume(masterVolume: number): AudioMix;
   /** The Master volume the mix is heard at. */
   masterVolume(): number;
+  /**
+   * The Activate and Music crossfade durations (Settings, already checked), for the next
+   * Activate and the next track picked. What sounds now does not change: no new mix.
+   */
+  setPlayDurations(durations: PlayDurations): void;
   /** Calls `listener` with each new mix. Returns the unsubscribe function. */
   subscribe(listener: (mix: AudioMix) => void): () => void;
 }
@@ -92,6 +97,7 @@ export function createAudioOnAir(): AudioOnAir {
     audio: { music: null },
     missing: new Set(),
     silence: false,
+    durations: DEFAULT_PLAY_DURATIONS,
   };
   let mix: AudioMix = { voices: [], missing: [], fadeMs: 0, version: 0 };
   const listeners = new Set<(mix: AudioMix) => void>();
@@ -160,6 +166,9 @@ export function createAudioOnAir(): AudioOnAir {
     setSilence: (on) => change({ ...input, silence: on }, 'silence'),
     setMasterVolume: (masterVolume) => change({ ...input, masterVolume }, 'volume'),
     masterVolume: () => input.masterVolume,
+    setPlayDurations: ({ activateDurationMs, musicCrossfadeMs }) => {
+      input = { ...input, durations: { activateDurationMs, musicCrossfadeMs } };
+    },
     subscribe: (listener) => {
       const own = (snapshot: AudioMix) => listener(snapshot);
       listeners.add(own);

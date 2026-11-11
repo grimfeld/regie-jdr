@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAudioOnAir } from '../../core/audioOnAir';
-import { AUDIO_FADE_MS } from '../../core/fades';
+import { ACTIVATE_DURATION_MS, AUDIO_FADE_MS } from '../../core/fades';
 import type { AudioMedia, AudioMix, Media, Scene } from '../../shared/domain';
 import { emptyNotes } from '../../core/notes';
 
@@ -67,8 +67,8 @@ describe('Activating a Scene changes the mix', () => {
       { mediaId: 'm2', gain: 1, playing: true },
       { mediaId: 'a2', gain: 1, playing: true },
     ]);
-    expect(mix.fadeMs).toBe(AUDIO_FADE_MS.activate);
-    expect(AUDIO_FADE_MS.activate).toBe(1500);
+    expect(mix.fadeMs).toBe(ACTIVATE_DURATION_MS.default);
+    expect(ACTIVATE_DURATION_MS.default).toBe(1500);
   });
 
   it('switches the audio over a very short fade (0.1 s) on a Cut, so nothing clicks', () => {
@@ -98,7 +98,7 @@ describe('Activating a Scene changes the mix', () => {
       none,
       'crossfade',
     );
-    expect(mix.fadeMs).toBe(AUDIO_FADE_MS.activate);
+    expect(mix.fadeMs).toBe(ACTIVATE_DURATION_MS.default);
   });
 
   it('keeps a shared Ambience as the same voice, only changing its gain', () => {
@@ -123,7 +123,7 @@ describe('Activating a Scene changes the mix', () => {
 
     const crowd = (mix: AudioMix) => mix.voices.find((voice) => voice.mediaId === 'a1');
     expect(crowd(after)).toEqual({ ...crowd(before), gain: 0.4 });
-    expect(after.fadeMs).toBe(AUDIO_FADE_MS.activate);
+    expect(after.fadeMs).toBe(ACTIVATE_DURATION_MS.default);
   });
 
   it('keeps a shared Music playing when it is the new Scene’s first, at the new level', () => {
@@ -199,6 +199,6 @@ describe('Activating a Scene changes the mix', () => {
     const mix = audioOnAir.activateScene(scene('muet'), library, none);
 
     expect(mix.voices).toEqual([]);
-    expect(mix.fadeMs).toBe(AUDIO_FADE_MS.activate);
+    expect(mix.fadeMs).toBe(ACTIVATE_DURATION_MS.default);
   });
 });

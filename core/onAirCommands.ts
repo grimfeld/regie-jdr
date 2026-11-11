@@ -48,7 +48,7 @@ import {
   type UndoMove,
   withNotesOf,
 } from './undoHistory.js';
-import type { AudioChange } from './fades.js';
+import type { AudioChange, PlayDurations } from './fades.js';
 import type { SoundboardStore } from './soundboard.js';
 import type { CampaignRepository } from './storage/index.js';
 
@@ -68,6 +68,13 @@ export interface OnAirCommands {
    * Campaign, and a restart, clear it.
    */
   setBlackout(on: boolean): Promise<OnAirState>;
+  /**
+   * Sets the Activate and Music crossfade durations (Settings, already checked): the picture
+   * and the audio of the next Activate with a Crossfade change together over the Activate
+   * duration; the next track picked crossfades over the Music crossfade duration. A Cut and the
+   * other fades stay as they are; nothing on air or sounding changes now.
+   */
+  setPlayDurations(durations: PlayDurations): void;
   /**
    * Applies one edit command to a Scene of a Campaign and saves it; returns the Scene as saved.
    * When it is the Active Scene, the Broadcast window shows the edit at once; any other Scene
@@ -328,6 +335,11 @@ export function createOnAirCommands(deps: {
         }
         return onAir.setBlackout(on);
       }),
+
+    setPlayDurations: (durations) => {
+      onAir.setActivateDuration(durations.activateDurationMs);
+      audio.setPlayDurations(durations);
+    },
 
     editScene: (campaignId, sceneId, edit) =>
       serialized(async () => {

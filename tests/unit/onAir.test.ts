@@ -323,6 +323,22 @@ describe('a Transition on Activate', () => {
     expect(onAir.setFadeDuration(900).transition).toEqual(transition);
   });
 
+  it('crossfades over the Activate duration setting from the next Activate on; a Cut stays instant', () => {
+    const onAir = opened();
+    const { transition, version } = onAir.activateScene('cantina', cantina);
+    onAir.setActivateDuration(4000);
+    // A Transition carries its own duration: nothing on air changes.
+    expect(onAir.current()).toMatchObject({ transition, version });
+    expect(onAir.activateScene('hangar', blank).transition).toMatchObject({
+      kind: 'crossfade',
+      durationMs: 4000,
+    });
+    expect(onAir.activateScene('cantina', cantina, 'cut').transition).toMatchObject({
+      kind: 'cut',
+      durationMs: 0,
+    });
+  });
+
   it('cuts to the incoming Scene at once: a Cut takes no time', () => {
     const onAir = opened();
     onAir.activateScene('cantina', cantina);

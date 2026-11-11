@@ -58,6 +58,11 @@ export interface OnAir {
    * duration changes nothing, so reading it from Settings at start-up starts no new version.
    */
   setFadeDuration(fadeDurationMs: number): OnAirState;
+  /**
+   * Sets the Activate duration a Crossfade takes (the Settings value, already checked), from
+   * the next Activate on: a Transition carries its own duration, so nothing on air changes.
+   */
+  setActivateDuration(activateDurationMs: number): void;
   /** Calls `listener` with each new snapshot. Returns the unsubscribe function. */
   subscribe(listener: (snapshot: OnAirState) => void): () => void;
 }
@@ -75,6 +80,7 @@ export interface OnAirOptions {
 export function createOnAir({ now = Date.now }: OnAirOptions = {}): OnAir {
   // Never reset, so a renderer never mistakes a new Transition for one it already ran.
   let transitions = 0;
+  let activateDurationMs: number = ACTIVATE_DURATION_MS.default;
   let state: OnAirState = {
     campaignId: null,
     activeSceneId: null,
@@ -122,7 +128,7 @@ export function createOnAir({ now = Date.now }: OnAirOptions = {}): OnAir {
         from: state.activeSceneId,
         to: sceneId,
         startedAt: now(),
-        durationMs: kind === 'cut' ? 0 : ACTIVATE_DURATION_MS,
+        durationMs: kind === 'cut' ? 0 : activateDurationMs,
       };
       return change({ ...state, campaignId, activeSceneId: sceneId, scene, transition });
     },
@@ -137,6 +143,9 @@ export function createOnAir({ now = Date.now }: OnAirOptions = {}): OnAir {
     setBlackout: (on) => change({ ...state, blackout: on }),
     setFadeDuration: (fadeDurationMs) =>
       fadeDurationMs === state.fadeDurationMs ? copy(state) : change({ ...state, fadeDurationMs }),
+    setActivateDuration: (durationMs) => {
+      activateDurationMs = durationMs;
+    },
     subscribe: (listener) => {
       const own = (snapshot: OnAirState) => listener(snapshot);
       listeners.add(own);

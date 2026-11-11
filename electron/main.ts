@@ -304,15 +304,16 @@ function startApp() {
     soundboards,
   });
   // The renderers fade with the saved duration, carried by the on-air state; audio plays at
-  // the saved Master volume.
+  // the saved Master volume; Activate and track changes take the saved durations.
   settingsStore
     .get()
-    .then(({ fadeDurationMs, masterVolume }) => {
+    .then(({ fadeDurationMs, masterVolume, activateDurationMs, musicCrossfadeMs }) => {
       onAir.setFadeDuration(fadeDurationMs);
       audio.setMasterVolume(masterVolume);
+      commands.setPlayDurations({ activateDurationMs, musicCrossfadeMs });
     })
     .catch((error: unknown) => {
-      log.error('Reading the fade duration and the Master volume failed', error);
+      log.error('Reading the fade, Master volume and play duration settings failed', error);
     });
   const currentSounding = () => engine.sounding();
   // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
@@ -456,6 +457,16 @@ function startApp() {
       'settings:set-fade-duration': async ({ fadeDurationMs }) => {
         const saved = await settingsStore.setFadeDuration(fadeDurationMs);
         onAir.setFadeDuration(saved.fadeDurationMs);
+        return saved;
+      },
+      'settings:set-activate-duration': async ({ activateDurationMs }) => {
+        const saved = await settingsStore.setActivateDuration(activateDurationMs);
+        commands.setPlayDurations(saved);
+        return saved;
+      },
+      'settings:set-music-crossfade': async ({ musicCrossfadeMs }) => {
+        const saved = await settingsStore.setMusicCrossfade(musicCrossfadeMs);
+        commands.setPlayDurations(saved);
         return saved;
       },
       'settings:set-master-volume': async ({ masterVolume }) => {

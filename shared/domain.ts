@@ -219,6 +219,16 @@ export interface Settings {
   fadeDurationMs: number;
   /** The Master volume, 0..1, applied to all app audio. */
   masterVolume: number;
+  /**
+   * The Activate duration, in milliseconds: how long Activating a Scene with a Crossfade takes,
+   * picture and audio together (bounds in core/fades.ts). A Cut stays instant.
+   */
+  activateDurationMs: number;
+  /**
+   * The Music crossfade duration, in milliseconds: how long picking another track of the
+   * Active Scene's Music list crossfades (bounds in core/fades.ts).
+   */
+  musicCrossfadeMs: number;
 }
 
 /** A visible Background as the Broadcast window draws it. */

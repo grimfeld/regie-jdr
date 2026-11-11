@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVATE_DURATION_MS,
   AUDIO_FADE_MS,
+  audioFadeMs,
+  DEFAULT_PLAY_DURATIONS,
   FADE_DURATION_MS,
+  MUSIC_CROSSFADE_MS,
+  parseActivateDuration,
+  parseMusicCrossfade,
   dissolveEnded,
   dissolveStarted,
   firstLayers,
@@ -15,6 +20,38 @@ import {
 
 const keyOf = (item: { id: string }) => item.id;
 const shown = (...ids: string[]) => ids.map((id) => ({ key: id, item: { id }, leaving: false }));
+
+describe('the Activate and Music crossfade durations', () => {
+  it('default to 1.5 s and 2 s', () => {
+    expect(DEFAULT_PLAY_DURATIONS).toEqual({ activateDurationMs: 1500, musicCrossfadeMs: 2000 });
+    expect(ACTIVATE_DURATION_MS.default).toBe(1500);
+    expect(MUSIC_CROSSFADE_MS.default).toBe(2000);
+  });
+
+  it.each([
+    ['the Activate duration', parseActivateDuration, ACTIVATE_DURATION_MS],
+    ['the Music crossfade duration', parseMusicCrossfade, MUSIC_CROSSFADE_MS],
+  ])('%s accepts whole milliseconds within its bounds only', (_label, parse, bounds) => {
+    expect(parse(bounds.default)).toBe(bounds.default);
+    expect(parse(bounds.min)).toBe(bounds.min);
+    expect(parse(bounds.max)).toBe(bounds.max);
+    expect(parse(bounds.min - 1)).toBeUndefined();
+    expect(parse(bounds.max + 1)).toBeUndefined();
+    expect(parse(1500.5)).toBeUndefined();
+    expect(parse('1500')).toBeUndefined();
+    expect(parse(undefined)).toBeUndefined();
+  });
+
+  it('time an Activate with a Crossfade and a track picked; every other fade stays fixed', () => {
+    const durations = { activateDurationMs: 3000, musicCrossfadeMs: 4500 };
+    expect(audioFadeMs('activate', durations)).toBe(3000);
+    expect(audioFadeMs('crossfade', durations)).toBe(4500);
+    expect(audioFadeMs('cut', durations)).toBe(AUDIO_FADE_MS.cut);
+    expect(audioFadeMs('silence', durations)).toBe(AUDIO_FADE_MS.silence);
+    expect(audioFadeMs('ambience', durations)).toBe(AUDIO_FADE_MS.ambience);
+    expect(audioFadeMs('pause', durations)).toBe(AUDIO_FADE_MS.pause);
+  });
+});
 
 describe('the fade duration', () => {
   it('defaults to 0.6 s, within its bounds', () => {
@@ -106,11 +143,6 @@ describe('the picture layers a renderer draws through Transitions', () => {
   const DURATION = 1000;
   const [cantina] = firstLayers(0, 'cantina');
   const keys = (layers: readonly { key: number }[]) => layers.map((layer) => layer.key);
-
-  it('Activate dissolves picture and sound over the same 1.5 s', () => {
-    expect(ACTIVATE_DURATION_MS).toBe(1500);
-    expect(AUDIO_FADE_MS.activate).toBe(ACTIVATE_DURATION_MS);
-  });
 
   it('draws the first picture as it is, with no dissolve', () => {
     expect(firstLayers(0, 'cantina')).toEqual([

@@ -1,8 +1,10 @@
 /**
  * Fades: how long showing and hiding takes, and what the renderer keeps drawing while an item
- * fades out. All fade timing lives here, so a later duration (Activate, Crossfade) sits beside
- * it. No Node or Electron dependency: the windows run this module.
+ * fades out. All fade timing lives here: the fade, Activate and Music crossfade duration
+ * settings and the fixed audio fades. No Node or Electron dependency: the windows run this
+ * module.
  */
+import type { Settings } from '../shared/domain.js';
 
 /** The fade duration setting, in milliseconds: its default and its bounds (0: no fade). */
 export const FADE_DURATION_MS = { default: 600, min: 0, max: 3000 } as const;
@@ -15,27 +17,62 @@ export function parseFadeDuration(value: unknown): number | undefined {
 }
 
 /**
- * How long Activating a Scene takes, in milliseconds: the picture's Crossfade and the audio
- * fade alike, so sound and picture change together. Fixed for now; the Activate duration
- * setting (#50) replaces it.
+ * The Activate duration setting, in milliseconds: how long Activating a Scene with a Crossfade
+ * takes, the picture's dissolve and the audio fade alike, so sound and picture change together.
+ * At least a tenth of a second, so the audio never clicks (a Cut is the instant change).
  */
-export const ACTIVATE_DURATION_MS = 1500;
+export const ACTIVATE_DURATION_MS = { default: 1500, min: 100, max: 5000 } as const;
 
 /**
- * How long each kind of audio change takes, in milliseconds: fixed in Milestone 2, settings in
- * Milestone 3 (#50). The audio engine fades new voices in, ramps changed ones and fades out
- * voices that left over the duration the mix carries (core/audioMix.ts picks it).
+ * The Music crossfade duration setting, in milliseconds: how long picking another track of the
+ * Active Scene's Music list crossfades.
+ */
+export const MUSIC_CROSSFADE_MS = { default: 2000, min: 100, max: 10000 } as const;
+
+/** A whole number of milliseconds within `bounds`, or undefined. */
+function durationWithin(
+  bounds: { readonly min: number; readonly max: number },
+  value: unknown,
+): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return undefined;
+  if (value < bounds.min || value > bounds.max) return undefined;
+  return value;
+}
+
+/** An Activate duration in whole milliseconds within ACTIVATE_DURATION_MS, or undefined. */
+export function parseActivateDuration(value: unknown): number | undefined {
+  return durationWithin(ACTIVATE_DURATION_MS, value);
+}
+
+/** A Music crossfade duration in whole milliseconds within MUSIC_CROSSFADE_MS, or undefined. */
+export function parseMusicCrossfade(value: unknown): number | undefined {
+  return durationWithin(MUSIC_CROSSFADE_MS, value);
+}
+
+/**
+ * The durations the Game Master sets for changes during play (Settings): the Activate duration
+ * and the Music crossfade duration.
+ */
+export type PlayDurations = Pick<Settings, 'activateDurationMs' | 'musicCrossfadeMs'>;
+
+/** The play durations until the Game Master changes them. */
+export const DEFAULT_PLAY_DURATIONS: PlayDurations = {
+  activateDurationMs: ACTIVATE_DURATION_MS.default,
+  musicCrossfadeMs: MUSIC_CROSSFADE_MS.default,
+};
+
+/**
+ * How long each fixed kind of audio change takes, in milliseconds. Activating with a Crossfade
+ * and picking another track take the play durations instead (`audioFadeMs`). The audio engine
+ * fades new voices in, ramps changed ones and fades out voices that left over the duration the
+ * mix carries (core/audioMix.ts picks it).
  */
 export const AUDIO_FADE_MS = {
-  /** Activating a Scene: the outgoing Scene's audio fades out, the new one's fades in. */
-  activate: ACTIVATE_DURATION_MS,
   /**
    * Activating a Scene with a Cut: the picture changes at once, the audio switches over this
    * very short fade so nothing clicks.
    */
   cut: 100,
-  /** Picking another track of the Active Scene's Music list. */
-  crossfade: 2000,
   /** Switching an Ambience on or off. */
   ambience: 1000,
   /** Pausing, resuming or stopping the Music, or removing it from the Active Scene. */
@@ -52,8 +89,23 @@ export const AUDIO_FADE_MS = {
   pad: 80,
 } as const;
 
-/** The kind of change a new mix makes, which sets how long it fades (AUDIO_FADE_MS). */
-export type AudioChange = keyof typeof AUDIO_FADE_MS;
+/** A kind of audio change with a fixed fade (AUDIO_FADE_MS). */
+export type FixedAudioChange = keyof typeof AUDIO_FADE_MS;
+
+/**
+ * The kind of change a new mix makes, which sets how long it fades: `activate` (a Scene
+ * Activated with a Crossfade: the outgoing Scene's audio fades out, the new one's fades in) and
+ * `crossfade` (picking another track of the Active Scene's Music list) take the play durations,
+ * the others AUDIO_FADE_MS.
+ */
+export type AudioChange = FixedAudioChange | 'activate' | 'crossfade';
+
+/** How long `change` fades, in milliseconds, with the play durations `durations`. */
+export function audioFadeMs(change: AudioChange, durations: PlayDurations): number {
+  if (change === 'activate') return durations.activateDurationMs;
+  if (change === 'crossfade') return durations.musicCrossfadeMs;
+  return AUDIO_FADE_MS[change];
+}
 
 /** An item the renderer draws: shown, or `leaving` (fading out, as it was last drawn). */
 export interface Fading<T> {

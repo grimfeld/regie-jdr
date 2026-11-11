@@ -39,7 +39,7 @@ import { MAX_PASTED_IMAGE_BYTES } from './mediaAddress.js';
 import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
-import { parseFadeDuration } from './fades.js';
+import { parseActivateDuration, parseFadeDuration, parseMusicCrossfade } from './fades.js';
 import { parseAudioEngineReport } from './audioMix.js';
 import { parsePadReport } from './padVoices.js';
 import { parseSoundboardEdit } from './soundboard.js';
@@ -126,6 +126,20 @@ function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
 function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
   const fadeDurationMs = isRecord(value) ? parseFadeDuration(value.fadeDurationMs) : undefined;
   return fadeDurationMs === undefined ? INVALID : { fadeDurationMs };
+}
+
+function activateDurationOf(value: unknown): Parsed<{ activateDurationMs: number }> {
+  const activateDurationMs = isRecord(value)
+    ? parseActivateDuration(value.activateDurationMs)
+    : undefined;
+  return activateDurationMs === undefined ? INVALID : { activateDurationMs };
+}
+
+function musicCrossfadeOf(value: unknown): Parsed<{ musicCrossfadeMs: number }> {
+  const musicCrossfadeMs = isRecord(value)
+    ? parseMusicCrossfade(value.musicCrossfadeMs)
+    : undefined;
+  return musicCrossfadeMs === undefined ? INVALID : { musicCrossfadeMs };
 }
 
 function masterVolumeOf(value: unknown): Parsed<{ masterVolume: number }> {
@@ -377,6 +391,8 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
   'settings:set-fade-duration': { from: controlOnly, parse: onePayload(fadeDurationOf) },
   'settings:set-master-volume': { from: controlOnly, parse: onePayload(masterVolumeOf) },
+  'settings:set-activate-duration': { from: controlOnly, parse: onePayload(activateDurationOf) },
+  'settings:set-music-crossfade': { from: controlOnly, parse: onePayload(musicCrossfadeOf) },
   // The audio engine runs in the Control window (ADR-0002): the Broadcast window gets no audio.
   'audio:get-mix': { from: controlOnly, parse: noPayload },
   'audio:report': { from: controlOnly, parse: onePayload(engineReport) },

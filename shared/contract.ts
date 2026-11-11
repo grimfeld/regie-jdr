@@ -381,7 +381,8 @@ export interface InvokeChannels {
   'notices:take': { payload: void; result: string[] };
   /**
    * The global Settings: home page theme, window bounds, each Campaign's last Active Scene
-   * (for highlighting only: nothing goes on air after a restart) and the fade duration.
+   * (for highlighting only: nothing goes on air after a restart), the fade duration, the Master
+   * volume, the Activate duration and the Music crossfade duration.
    */
   'settings:get': { payload: void; result: Settings };
   /** Change the theme of the Campaign list home page. */
@@ -393,6 +394,16 @@ export interface InvokeChannels {
   'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
   /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
   'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
+  /**
+   * Change the Activate duration (milliseconds, bounds in core/fades.ts): the next Activate
+   * with a Crossfade dissolves the picture and fades the audio over it.
+   */
+  'settings:set-activate-duration': { payload: { activateDurationMs: number }; result: Settings };
+  /**
+   * Change the Music crossfade duration (milliseconds, bounds in core/fades.ts): the next track
+   * picked crossfades over it.
+   */
+  'settings:set-music-crossfade': { payload: { musicCrossfadeMs: number }; result: Settings };
   /**
    * The current mix, for the audio engine (on start and on every reload of the Control window,
    * when the main process forgets what the old engine reported).
@@ -558,6 +569,8 @@ export interface ControlBridge extends BroadcastBridge {
   setHomeTheme(theme: ThemeId): Promise<Settings>;
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   setMasterVolume(masterVolume: number): Promise<Settings>;
+  setActivateDuration(activateDurationMs: number): Promise<Settings>;
+  setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
   toggleSilence(): Promise<AudioSounding>;

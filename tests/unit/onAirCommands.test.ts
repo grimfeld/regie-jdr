@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createAudioOnAir } from '../../core/audioOnAir';
-import { AUDIO_FADE_MS } from '../../core/fades';
+import { ACTIVATE_DURATION_MS, AUDIO_FADE_MS, MUSIC_CROSSFADE_MS } from '../../core/fades';
 import { createMediaLibrary } from '../../core/media';
 import { mediaFileName } from '../../core/mediaAddress';
 import { createOnAir } from '../../core/onAir';
@@ -346,7 +346,7 @@ describe('on-air commands', () => {
       await ctx.commands.activateScene(scene.id);
 
       expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
-      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.activate);
+      expect(ctx.audio.mix().fadeMs).toBe(ACTIVATE_DURATION_MS.default);
       expect(ctx.mixes).toHaveLength(1);
     });
 
@@ -368,6 +368,37 @@ describe('on-air commands', () => {
 
       await ctx.commands.activateScene(scene.id, { forceCut: true });
 
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.cut);
+    });
+
+    it('the Activate duration setting times picture and audio of the next Crossfade together', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      // Bagarre first: Activating it changes what is heard.
+      const created = await ctx.scenes.create(ctx.campaign.id, 'Bagarre');
+      const other = await ctx.scenes.save({ ...created, music: [ctx.music[1].id] });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      const mixes = ctx.mixes.length;
+
+      ctx.commands.setPlayDurations({ activateDurationMs: 3500, musicCrossfadeMs: 2000 });
+      // Nothing heard changes until the next Activate.
+      expect(ctx.mixes).toHaveLength(mixes);
+
+      const { transition } = await ctx.commands.activateScene(other.id);
+      expect(transition).toMatchObject({ kind: 'crossfade', durationMs: 3500 });
+      expect(ctx.audio.mix().fadeMs).toBe(3500);
+    });
+
+    it('a Cut stays instant, whatever the Activate duration setting', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      ctx.commands.setPlayDurations({ activateDurationMs: 3500, musicCrossfadeMs: 2000 });
+
+      const { transition } = await ctx.commands.activateScene(scene.id, { forceCut: true });
+
+      expect(transition).toMatchObject({ kind: 'cut', durationMs: 0 });
       expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.cut);
     });
 
@@ -623,7 +654,7 @@ describe('on-air commands', () => {
       await ctx.commands.pickMusic(ctx.music[1].id);
 
       expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[1].id, playing: true }]);
-      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.crossfade);
+      expect(ctx.audio.mix().fadeMs).toBe(MUSIC_CROSSFADE_MS.default);
       expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
       expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
         undo: null,
@@ -632,6 +663,20 @@ describe('on-air commands', () => {
       // The next Activate starts from the first Music again.
       await ctx.commands.activateScene(scene.id);
       expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+    });
+
+    it('picking a track crossfades over the Music crossfade duration setting', async () => {
+      const ctx = await setupWithMusic();
+      await playing(ctx);
+      ctx.commands.setPlayDurations({ activateDurationMs: 1500, musicCrossfadeMs: 6000 });
+
+      await ctx.commands.pickMusic(ctx.music[1].id);
+
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[1].id, playing: true }]);
+      expect(ctx.audio.mix().fadeMs).toBe(6000);
+      // Pausing keeps its own fixed fade.
+      await ctx.commands.setMusicPlayback('paused');
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.pause);
     });
 
     it('refuses a pick with no Active Scene or of a Music not in its list', async () => {

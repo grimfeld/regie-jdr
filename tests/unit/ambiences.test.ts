@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { audioChangeOf } from '../../core/audioMix';
 import { createAudioOnAir } from '../../core/audioOnAir';
 import { createCampaign } from '../../core/campaigns';
-import { AUDIO_FADE_MS } from '../../core/fades';
+import { ACTIVATE_DURATION_MS, AUDIO_FADE_MS } from '../../core/fades';
 import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
@@ -160,7 +160,7 @@ describe('Scene Ambiences on air', () => {
       ctx.auberge.id,
       ctx.feu.id,
     ]);
-    expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.activate);
+    expect(ctx.audio.mix().fadeMs).toBe(ACTIVATE_DURATION_MS.default);
   });
 
   it('edits on a Scene that is not active are saved and silent', async () => {
