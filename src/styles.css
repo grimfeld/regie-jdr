@@ -657,7 +657,7 @@ button {
   padding: 2px 8px;
   border: 1px solid var(--accent);
   border-radius: 999px;
-  color: var(--accent2);
+  color: var(--accent-strong);
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
