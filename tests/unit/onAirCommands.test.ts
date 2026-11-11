@@ -418,6 +418,30 @@ describe('on-air commands', () => {
       });
     });
 
+    it('refuses to bring back a Music deleted after its step was undone', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Vide');
+      const added = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'add-music',
+        mediaId: ctx.music[0].id,
+      });
+      expect(added.music).toEqual([ctx.music[0].id]);
+      await ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id);
+      // The Scene no longer uses the Music: it goes at once, and the history stays.
+      expect(await ctx.commands.deleteMedia(ctx.campaign.id, ctx.music[0].id, false)).toMatchObject(
+        { deleted: true },
+      );
+
+      await expect(ctx.commands.redoSceneEdit(ctx.campaign.id, scene.id)).rejects.toThrow(
+        'Un média de cette étape a été supprimé',
+      );
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: null,
+        redo: null,
+      });
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.music).toEqual([]);
+    });
+
     it('the Master volume sets every level, without restarting anything', async () => {
       const ctx = await setupWithMusic();
       const scene = await withMusic(ctx);
