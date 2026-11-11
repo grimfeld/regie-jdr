@@ -8,7 +8,7 @@
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
-import type { MediaDeletion, OverlayTransform, UndoState } from '../shared/contract.js';
+import type { MediaDeletion, TransientEdit, UndoState } from '../shared/contract.js';
 import { randomUUID } from 'node:crypto';
 import type { CampaignId, Media, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
 import { audioChangeOf } from './audioMix.js';
@@ -17,12 +17,11 @@ import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
 import { addedMedia, applySceneEdit, type SceneEdit } from './sceneEdits.js';
-import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
+import { mediaOfScene, SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import { createSerialQueue } from './serialQueue.js';
 import {
   createUndoHistories,
   isSameValue,
-  mergeKeyOf,
   undoLabel,
   type UndoHistories,
   type UndoMove,
@@ -51,16 +50,13 @@ export interface OnAirCommands {
    */
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   /**
-   * Shows a transient update of a live drag (a move or resize of an Overlay): on the Active
-   * Scene, the broadcast shows the saved Scene with `edit` applied; nothing is saved and no
-   * undo step is recorded. On any other Scene it does nothing. The drag ends with the same
-   * edit through `editScene`, which saves it as one step.
+   * Shows a transient update of a live drag (a move or resize of an Overlay, a framing slider
+   * of a Background): on the Active Scene, the broadcast shows the saved Scene with `edit`
+   * applied; nothing is saved and no undo step is recorded. On any other Scene it does
+   * nothing. The drag ends with the same edit through `editScene`, which saves it as one step;
+   * if that fails, the Scene as saved goes back on air.
    */
-  showTransientEdit(
-    campaignId: CampaignId,
-    sceneId: SceneId,
-    edit: OverlayTransform,
-  ): Promise<void>;
+  showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
   /** What can be undone and redone on a Scene: the labels of its next undo and redo. */
   undoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   /**
@@ -139,10 +135,34 @@ export function createOnAirCommands(deps: {
     }
   }
 
+  /** Applies one edit to a Scene, saves it and records it in the Scene's undo history. */
+  async function applyEdit(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit) {
+    const scene = await scenes.get(campaignId, sceneId);
+    if (!scene) throw new SceneError('Cette scène n’existe plus.');
+    const media = await library.list(campaignId);
+    checkAdded(edit, media);
+    const saved = await saveScene(applySceneEdit(scene, edit, newId), audioChangeOf(edit));
+    histories.record({
+      before: scene,
+      after: saved,
+      label: undoLabel(scene, edit, (id) => media.find((item) => item.id === id)?.name),
+    });
+    return saved;
+  }
+
+  /** Puts the Active Scene back on air as saved, when it is `sceneId` of `campaignId`. */
+  async function showSavedActiveScene(campaignId: CampaignId, sceneId: SceneId) {
+    const current = onAir.current();
+    if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
+    const saved = await scenes.get(campaignId, sceneId);
+    if (saved) onAir.showActiveScene(saved.id, await picture(saved));
+  }
+
   /**
    * Undoes or redoes (`move`) on a Scene, applied literally: the Scene saved before the step
    * comes back. A Scene changed outside its history since (its placements of a deleted Media)
-   * cannot be: its history is cleared.
+   * cannot be, nor can a step that would bring back a deleted Media (removed from the Scene
+   * before it was deleted): its history is cleared.
    */
   async function travel(
     campaignId: CampaignId,
@@ -156,6 +176,13 @@ export function createOnAirCommands(deps: {
     if (!isSameValue(scene, move.expected)) {
       histories.clear(campaignId, sceneId);
       throw new SceneError('La scène a changé entre-temps : son historique est effacé.');
+    }
+    const known = new Set((await library.list(campaignId)).map((media) => media.id));
+    if (!mediaOfScene(move.restore).every((mediaId) => known.has(mediaId))) {
+      histories.clear(campaignId, sceneId);
+      throw new SceneError(
+        'Un média de cette étape a été supprimé de la bibliothèque : l’historique de la scène est effacé.',
+      );
     }
     return saveScene(move.restore, 'undo');
   }
@@ -201,18 +228,15 @@ export function createOnAirCommands(deps: {
 
     editScene: (campaignId, sceneId, edit) =>
       serialized(async () => {
-        const scene = await scenes.get(campaignId, sceneId);
-        if (!scene) throw new SceneError('Cette scène n’existe plus.');
-        const media = await library.list(campaignId);
-        checkAdded(edit, media);
-        const saved = await saveScene(applySceneEdit(scene, edit, newId), audioChangeOf(edit));
-        histories.record({
-          before: scene,
-          after: saved,
-          label: undoLabel(scene, edit, (id) => media.find((item) => item.id === id)?.name),
-          mergeKey: mergeKeyOf(edit),
-        });
-        return saved;
+        try {
+          return await applyEdit(campaignId, sceneId, edit);
+        } catch (error) {
+          // A live drag (Overlay or Background framing) may have shown unsaved transient
+          // updates on air: show the Scene as saved again. What the Game Master is told is the
+          // edit's own failure, so a failure here is dropped.
+          await showSavedActiveScene(campaignId, sceneId).catch(() => undefined);
+          throw error;
+        }
       }),
 
     showTransientEdit: (campaignId, sceneId, edit) =>

@@ -2,7 +2,14 @@
 
 How one agent implements one slice issue. Written 2026-11-10. If a step here turns out wrong, report it so this page gets a dated correction.
 
-Main checkout: `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr` (MAIN below). The milestone branch is checked out there. Never edit files in MAIN.
+Integration checkout (MAIN below): the checkout that holds your milestone branch. Never edit files in MAIN.
+
+| Milestone branch | MAIN (from 2026-11-11) |
+|---|---|
+| `m1-visual-mvp` | `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr` |
+| `m2-audio-mvp` | `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/m2-integration` |
+
+The wiki is newest in the M1 checkout's `docs/wiki/` until M1 closes; read it there. Create slice worktrees with `git -C MAIN worktree add ...` (paths in step 2 are relative to MAIN of the repo root, `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n>`).
 
 ## 1. Read first
 

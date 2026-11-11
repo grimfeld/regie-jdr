@@ -184,6 +184,45 @@ export async function writeToneWav(
   return file;
 }
 
+/** A colour as red, green and blue from 0 to 255. */
+export interface Colour {
+  red: number;
+  green: number;
+  blue: number;
+}
+
+/**
+ * Writes a plain-colour PNG of `width` × `height` named `name` in the data folder, to pick,
+ * made by the app's own image facilities. Different colours give different content, so
+ * different Media.
+ */
+export async function picturePng(
+  { app, dataDir }: RunningApp,
+  name: string,
+  size: { width: number; height: number },
+  colour: Colour = { red: 200, green: 40, blue: 0 },
+): Promise<string> {
+  const base64 = await app.evaluate(
+    ({ nativeImage }, { width, height, red, green, blue }) => {
+      const bitmap = Buffer.alloc(width * height * 4);
+      for (let i = 0; i < bitmap.length; i += 4) {
+        // BGRA
+        bitmap[i] = blue;
+        bitmap[i + 1] = green;
+        bitmap[i + 2] = red;
+        bitmap[i + 3] = 255;
+      }
+      return nativeImage.createFromBitmap(bitmap, { width, height }).toPNG().toString('base64');
+    },
+    { ...size, ...colour },
+  );
+  const folder = path.join(dataDir, 'picked');
+  await fs.mkdir(folder, { recursive: true });
+  const file = path.join(folder, name);
+  await fs.writeFile(file, Buffer.from(base64, 'base64'));
+  return file;
+}
+
 /** `test` with a `regie` fixture: the built app running on a fresh temporary data folder. */
 export const test = base.extend<{ regie: RunningApp }>({
   regie: async ({}, use) => {

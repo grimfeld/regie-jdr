@@ -12,6 +12,8 @@ interface Props {
   onLoad?: (size: { width: number; height: number }) => void;
   /** Called once the loaded image is decoded too: it can be drawn whole from then on. */
   onDecoded?: () => void;
+  /** Called when the Media's file is missing (its address answers 404). */
+  onMissing?: () => void;
 }
 
 /**
@@ -22,7 +24,7 @@ interface Props {
  *   decoded, so it is never drawn half-done.
  */
 export function MediaImage(props: Props) {
-  const { address, alt, window: shownIn, className, onLoad, onDecoded } = props;
+  const { address, alt, window: shownIn, className, onLoad, onDecoded, onMissing } = props;
   // Per address, so another address (another Media, or the file put back) is tried again.
   const [state, setState] = useState<{ address: string; status: 'loaded' | 'missing' }>();
   const status = state?.address === address ? state.status : 'loading';
@@ -58,7 +60,10 @@ export function MediaImage(props: Props) {
         // A decoding failure still leaves a loaded image: show it as the browser can.
         void image.decode().then(decoded, decoded);
       }}
-      onError={() => setState({ address, status: 'missing' })}
+      onError={() => {
+        setState({ address, status: 'missing' });
+        onMissing?.();
+      }}
     />
   );
 }

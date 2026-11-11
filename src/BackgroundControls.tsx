@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
-import type { SceneEdit } from '../shared/contract';
+import type { BackgroundFraming, SceneEdit } from '../shared/contract';
 import type { Background, BackgroundFit } from '../shared/domain';
 import { MAX_ZOOM, MIN_ZOOM } from '../core/canvas';
+import type { FramingGesture } from './useBackgroundFraming';
 
 interface Props {
   background: Background;
@@ -14,19 +15,33 @@ interface Props {
   name: string;
   /** Sends an edit; a failure is shown as a notice. */
   onEdit: (command: SceneEdit) => void;
+  /** Where the framing sliders report their live values and their release. */
+  framing: FramingGesture;
 }
+
+type Framing = Omit<BackgroundFraming, 'kind' | 'placementId'>;
 
 /**
  * A Background's own controls on its row: move it up or down the stack, Cover or Contain, and
  * in Cover its zoom and focal point. Each change sends one Scene edit (a slider sends it once
- * released), so undo takes it back in one step.
+ * released, its framing shown live meanwhile), so undo takes it back in one step.
  */
-export function BackgroundControls({ background, index, count, name, onEdit }: Props) {
+export function BackgroundControls({ background, index, count, name, onEdit, framing }: Props) {
   const placementId = background.id;
   const { zoom, focus } = background;
   // Only the value a slider changed is sent: the core keeps the others as saved.
-  const frame = (framing: { zoom?: number; focus?: { x?: number; y?: number } }) =>
-    onEdit({ kind: 'frame-background', placementId, ...framing });
+  const slider = (framingOf: (value: number) => Framing) => {
+    const edit = (value: number): BackgroundFraming => ({
+      kind: 'frame-background',
+      placementId,
+      ...framingOf(value),
+    });
+    return {
+      onLive: (value: number) => framing.onLive(edit(value)),
+      onRelease: (value: number | undefined) =>
+        framing.onRelease(value === undefined ? undefined : edit(value)),
+    };
+  };
 
   return (
     <>
@@ -75,7 +90,7 @@ export function BackgroundControls({ background, index, count, name, onEdit }: P
             min={MIN_ZOOM}
             max={MAX_ZOOM}
             step={0.05}
-            onCommit={(value) => frame({ zoom: value })}
+            {...slider((value) => ({ zoom: value }))}
           />
           <FramingSlider
             label="Horizontal"
@@ -84,7 +99,7 @@ export function BackgroundControls({ background, index, count, name, onEdit }: P
             min={0}
             max={1}
             step={0.01}
-            onCommit={(value) => frame({ focus: { x: value } })}
+            {...slider((value) => ({ focus: { x: value } }))}
           />
           <FramingSlider
             label="Vertical"
@@ -93,7 +108,7 @@ export function BackgroundControls({ background, index, count, name, onEdit }: P
             min={0}
             max={1}
             step={0.01}
-            onCommit={(value) => frame({ focus: { y: value } })}
+            {...slider((value) => ({ focus: { y: value } }))}
           />
         </div>
       )}
@@ -107,9 +122,9 @@ const FITS: readonly { fit: BackgroundFit; label: string }[] = [
 ];
 
 /**
- * A slider that follows the pointer or the arrow keys, and commits its value once released
- * (pointer up, key up, or leaving it), so a whole gesture is one edit. Until the saved value
- * comes back, it keeps showing the value it committed.
+ * A slider that follows the pointer or the arrow keys, reporting each value live, and commits
+ * its value once released (pointer up, key up, or leaving it), so a whole gesture is one edit.
+ * Until the saved value comes back, it keeps showing the value it committed.
  */
 function FramingSlider(props: {
   label: string;
@@ -118,9 +133,12 @@ function FramingSlider(props: {
   min: number;
   max: number;
   step: number;
-  onCommit: (value: number) => void;
+  /** The slider moved to `value`, not saved yet. */
+  onLive: (value: number) => void;
+  /** The slider was released on `value`, or undefined when it is back on the saved value. */
+  onRelease: (value: number | undefined) => void;
 }) {
-  const { label, name, value, min, max, step, onCommit } = props;
+  const { label, name, value, min, max, step, onLive, onRelease } = props;
   // The value being chosen, the saved value it was chosen from, and whether it was sent.
   const [draft, setDraft] = useState<{ shown: number; from: number; sent: boolean }>();
   const current = draft?.from === value ? draft : undefined;
@@ -128,10 +146,11 @@ function FramingSlider(props: {
     if (!current || current.sent) return;
     if (current.shown === value) {
       setDraft(undefined);
+      onRelease(undefined);
       return;
     }
     setDraft({ ...current, sent: true });
-    onCommit(current.shown);
+    onRelease(current.shown);
   };
   return (
     <label className="framing-slider">
@@ -143,7 +162,11 @@ function FramingSlider(props: {
         max={max}
         step={step}
         value={current ? current.shown : value}
-        onChange={(e) => setDraft({ shown: Number(e.target.value), from: value, sent: false })}
+        onChange={(e) => {
+          const shown = Number(e.target.value);
+          setDraft({ shown, from: value, sent: false });
+          onLive(shown);
+        }}
         onPointerUp={commit}
         onKeyUp={commit}
         onBlur={commit}

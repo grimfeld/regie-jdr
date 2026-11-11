@@ -36,6 +36,7 @@ import {
   parseMediaAddress,
 } from './mediaAddress.js';
 import { createKeyedSerialQueue } from './serialQueue.js';
+import type { Logger } from './logger.js';
 import { createThumbnails, type ImageResizer } from './thumbnails.js';
 import type { DocumentType, Storage } from './storage/index.js';
 
@@ -225,19 +226,29 @@ async function storeFile(source: string, mediaFolder: string, media: Media): Pro
   await fsp.rename(partial, target);
 }
 
-/** `resizer` makes the library thumbnails (core/thumbnails.ts). */
-export function createMediaLibrary(storage: Storage, resizer: ImageResizer): MediaLibrary {
+/**
+ * `resizer` makes the library thumbnails (core/thumbnails.ts); `log` hears of a thumbnail that
+ * could not be made at import (nothing is logged without it).
+ */
+export function createMediaLibrary(
+  storage: Storage,
+  resizer: ImageResizer,
+  options: { log?: Pick<Logger, 'warn'> } = {},
+): MediaLibrary {
+  const { log } = options;
   /** Serializes the read-modify-write of each Campaign's index. */
   const serialized = createKeyedSerialQueue<CampaignId>();
   const thumbnails = createThumbnails(resizer);
 
   /**
    * Makes an imported image's thumbnail if it is missing. A failure does not fail the import:
-   * the thumbnail is made again when the library asks for it, and that failure is logged.
+   * it is logged, and the thumbnail is made again when the library asks for it.
    */
   async function prepareThumbnail(folder: string, media: Media): Promise<void> {
     if (media.kind !== 'image') return;
-    await thumbnails.ensure(folder, media).catch(() => undefined);
+    await thumbnails.ensure(folder, media).catch((error: unknown) => {
+      log?.warn(`Could not make the thumbnail of imported image ${media.id}`, error);
+    });
   }
 
   async function campaignFolder(campaignId: CampaignId): Promise<string> {

@@ -85,18 +85,28 @@ function useFading<T>(
     drawn = withLeaving(drawn, items, keyOf);
     setState({ content, drawn });
   }
-  const leaving = drawn.some((entry) => entry.leaving);
+  // The timer restarts only when the set of leaving items changes, never on a mere redraw: a
+  // live drag redraws every frame, and a Hidden item must still leave the Broadcast window's DOM
+  // once its fade is over (ADR-0003).
+  const leaving = JSON.stringify(drawn.filter((entry) => entry.leaving).map((entry) => entry.key));
   useEffect(() => {
-    if (!leaving) return;
+    if (leaving === '[]') return;
     const timer = setTimeout(() => {
       setState((current) => ({ ...current, drawn: withoutLeaving(current.drawn) }));
     }, fadeDurationMs);
     return () => clearTimeout(timer);
-  }, [drawn, leaving, fadeDurationMs]);
+  }, [leaving, fadeDurationMs]);
   return drawn;
 }
 
 const byId = (item: { id: string }) => item.id;
+
+/**
+ * The proportions the Control window lays out a missing Media with, so its "Média manquant"
+ * placeholder takes a place on the canvas (it has no image to measure). The Broadcast window
+ * draws nothing for it.
+ */
+const MISSING_MEDIA_SIZE: Size = { width: 1, height: 1 };
 const asText = (text: string) => text;
 
 /**
@@ -126,8 +136,8 @@ interface PlacementProps {
 function Placement(props: PlacementProps) {
   const { kind, entry, box, window: shownIn, onImageSize, editing, children } = props;
   const { item } = entry;
-  // The image decoded, by address: another address waits again.
-  const [decoded, setDecoded] = useState<string>();
+  // The image decoded, or found missing (Control window), by address: another address waits again.
+  const [ready, setReady] = useState<string>();
   const selected = editing?.selectedOverlayId === item.id;
   return (
     <div
@@ -136,7 +146,7 @@ function Placement(props: PlacementProps) {
         .join(' ')}
       data-background-id={kind === 'background' ? item.id : undefined}
       data-overlay-id={kind === 'overlay' ? item.id : undefined}
-      data-fade={fadeOf(entry, decoded === item.src)}
+      data-fade={fadeOf(entry, ready === item.src)}
       style={placed(box)}
       {...(editing && {
         onPointerDown: (event: PointerEvent<HTMLElement>) =>
@@ -149,7 +159,12 @@ function Placement(props: PlacementProps) {
         alt=""
         window={shownIn}
         onLoad={(natural) => onImageSize(item.src, natural)}
-        onDecoded={() => setDecoded(item.src)}
+        onDecoded={() => setReady(item.src)}
+        onMissing={() => {
+          if (shownIn !== 'control') return;
+          onImageSize(item.src, MISSING_MEDIA_SIZE);
+          setReady(item.src);
+        }}
       />
       {editing && selected && (
         <span

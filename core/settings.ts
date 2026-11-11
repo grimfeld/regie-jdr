@@ -24,6 +24,8 @@ export interface SettingsStore {
   setTheme(theme: ThemeId): Promise<Settings>;
   setWindowBounds(window: SettingsWindow, bounds: WindowBounds): Promise<Settings>;
   setLastActiveScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
+  /** A deleted Scene: no longer its Campaign's last Active Scene, if it was. */
+  forgetScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
   /** Throws a SettingsError for a duration outside FADE_DURATION_MS. */
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   /** Throws a SettingsError for a volume outside 0..1. */
@@ -123,6 +125,12 @@ export function createSettingsStore(storage: Storage): SettingsStore {
         ...settings,
         lastActiveSceneByCampaign: { ...settings.lastActiveSceneByCampaign, [campaignId]: sceneId },
       })),
+    forgetScene: (campaignId, sceneId) =>
+      change((settings) => {
+        if (settings.lastActiveSceneByCampaign[campaignId] !== sceneId) return settings;
+        const { [campaignId]: _forgotten, ...kept } = settings.lastActiveSceneByCampaign;
+        return { ...settings, lastActiveSceneByCampaign: kept };
+      }),
     setFadeDuration: (fadeDurationMs) => {
       if (parseFadeDuration(fadeDurationMs) === undefined) {
         const { min, max } = FADE_DURATION_MS;

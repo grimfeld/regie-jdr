@@ -56,6 +56,27 @@ describe('media library', () => {
     expect(await fs.readFile(path.join(mediaFolder, `${ABC_SHA256}.png`), 'utf8')).toBe('abc');
   });
 
+  it('imports an image whose thumbnail cannot be made, and logs why', async () => {
+    const storage = openStorage(path.join(dir.path, 'data'));
+    const campaign = await createCampaign(storage.campaigns, 'Star Wars');
+    const warnings: { message: string; detail: unknown }[] = [];
+    const library = createMediaLibrary(storage, fakeResizer(['broken']).resizer, {
+      log: { warn: (message, detail) => warnings.push({ message, detail }) },
+    });
+
+    const result = await library.import(campaign.id, [await sourceFile('Ruine.png', 'broken')], {
+      accept: 'image',
+    });
+
+    expect(result.imported).toHaveLength(1);
+    expect(warnings).toEqual([
+      {
+        message: expect.stringContaining('thumbnail'),
+        detail: expect.objectContaining({ message: 'not an image' }),
+      },
+    ]);
+  });
+
   it('keeps the library after the storage is reopened (restart)', async () => {
     const { campaign, library } = await setup();
     const { imported } = await library.import(campaign.id, [await sourceFile('Cantina.png')], {

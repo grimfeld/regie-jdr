@@ -31,10 +31,15 @@ describe('on-air commands', () => {
     const mixes: AudioMix[] = [];
     audio.subscribe((mix) => mixes.push(mix));
     let placements = 0;
+    // When set, the commands' Scene saves fail, as on a full or read-only disk.
+    let saveFailure: Error | undefined;
     const commands = createOnAirCommands({
       campaigns: storage.campaigns,
       library,
-      scenes,
+      scenes: {
+        ...scenes,
+        save: (scene) => (saveFailure ? Promise.reject(saveFailure) : scenes.save(scene)),
+      },
       onAir,
       audio,
       newId: () => `p${++placements}`,
@@ -53,6 +58,9 @@ describe('on-air commands', () => {
       broadcast,
       audio,
       mixes,
+      failSaves: (failure: Error | undefined) => {
+        saveFailure = failure;
+      },
     };
   }
 
@@ -428,6 +436,18 @@ describe('on-air commands', () => {
       expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.4, y: 0.6 } });
     });
 
+    it('puts the saved Scene back on air when the committed edit fails', async () => {
+      const ctx = await setup();
+      const { saved, edit } = await dragging(ctx);
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+      ctx.failSaves(new Error('disk full'));
+
+      await expect(edit(move(0.2, 0.3))).rejects.toThrow('disk full');
+
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.5, y: 0.5 } });
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
+    });
+
     it('never touches the broadcast, nor saves, on a Scene that is not active', async () => {
       const ctx = await setup();
       const { saved } = await dragging(ctx, false);
@@ -451,6 +471,30 @@ describe('on-air commands', () => {
         }),
       ).rejects.toThrow('Cet élément n’est plus sur la scène.');
       expect(ctx.broadcast.length).toBe(sent);
+    });
+  });
+
+  it('shows a live framing of a Background on the Active Scene without saving it', async () => {
+    const ctx = await setup();
+    const scene = await sceneShowing(ctx, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+
+    await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+      kind: 'frame-background',
+      placementId: 'bg-Cantina',
+      zoom: 2,
+      focus: { x: 0.25 },
+    });
+
+    expect(ctx.broadcast.at(-1)?.scene?.backgrounds[0]).toMatchObject({
+      zoom: 2,
+      focus: { x: 0.25, y: 0.5 },
+    });
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
+    expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+      undo: null,
+      redo: null,
     });
   });
 
@@ -738,15 +782,25 @@ describe('on-air commands', () => {
       expect(await undo()).toEqual(placed);
     });
 
-    it('merges quick moves of one Overlay (a nudge burst) into one step', async () => {
+    it('keeps a drag and a resize of one Overlay as two steps, however quick', async () => {
       const ctx = await setup();
       const { placed, edit, undo, state } = await editing(ctx);
-      for (const x of [0.51, 0.52, 0.53]) {
-        await edit({ kind: 'transform-overlay', placementId: 'p1', position: { x } });
-      }
+      const moved = await edit({
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.4, y: 0.5 },
+      });
+      await edit({
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.4, y: 0.5 },
+        height: 0.3,
+      });
+      expect((await state()).undo).toBe('redimensionner Cantina');
 
+      expect(await undo()).toEqual(moved);
+      expect((await state()).undo).toBe('déplacer Cantina');
       expect(await undo()).toEqual(placed);
-      expect((await state()).undo).toBe('placer Cantina en superposition');
     });
 
     it('refuses to undo or redo with nothing to, in French', async () => {
@@ -798,6 +852,20 @@ describe('on-air commands', () => {
 
       expect(await state()).toEqual({ undo: null, redo: null });
       await expect(undo()).rejects.toThrow('Rien à annuler.');
+    });
+
+    it('refuses to bring back a placement whose Media was deleted after it was removed', async () => {
+      const ctx = await setup();
+      const { scene, edit, undo, redo, state } = await editing(ctx);
+      const removed = await edit({ kind: 'remove-placement', placementId: 'p1' });
+      // The Scene no longer uses the image: it goes at once, and the history stays.
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false);
+
+      await expect(undo()).rejects.toThrow('Un média de cette étape a été supprimé');
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(removed);
+      expect(onAirOverlays(ctx)).toEqual([]);
+      await expect(redo()).rejects.toThrow('Rien à rétablir.');
     });
 
     it('refuses an undo once the Scene changed outside its history, and clears it', async () => {

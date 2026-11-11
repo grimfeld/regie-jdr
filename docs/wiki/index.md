@@ -16,11 +16,13 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 
 - [Scene rendering and Scene edits](subsystem-scene-rendering-and-edits.md): shared renderer, broadcast projection, how to add a SceneEdit.
 
+- [Audio engine and mix](subsystem-audio.md): where audio plays, the pure mix, plug-in points for #36 to #43.
 - [Media library](subsystem-media-library.md): thumbnails, search, rename, WebP caveat.
 
 ## Recurring problems
 
 - [Piped merge hides a failed fast-forward](problem-piped-merge-hides-failure.md)
+- [Flaky whole-app tests](problem-flaky-app-tests.md)
 
 ## Process
 
@@ -33,6 +35,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 ## Milestone logs
 
 - [M1 log](milestone-m1.md): slice order and outcomes for #21.
+- [M2 log](milestone-m2.md): slice order and outcomes for #33.
 
 ## Cross-milestone
 

@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SceneEdit } from '../../shared/contract';
 import type { Scene } from '../../shared/domain';
-import {
-  MERGE_WINDOW_MS,
-  UNDO_DEPTH,
-  createUndoHistories,
-  mergeKeyOf,
-  undoLabel,
-} from '../../core/undoHistory';
+import { UNDO_DEPTH, createUndoHistories, undoLabel } from '../../core/undoHistory';
 
 function scene(id: string, name = id, campaignId = 'c1'): Scene {
   return {
@@ -46,14 +40,7 @@ const mediaName = (id: string) => names[id];
 
 describe('undo histories', () => {
   function setup() {
-    let time = 0;
-    const histories = createUndoHistories({ now: () => time });
-    return {
-      histories,
-      advance: (ms: number) => {
-        time += ms;
-      },
-    };
+    return { histories: createUndoHistories() };
   }
 
   it('undoes then redoes a recorded edit, naming it on both buttons', () => {
@@ -121,41 +108,14 @@ describe('undo histories', () => {
     expect(histories.state('c1', 's1').undo).toBeNull();
   });
 
-  it('merges quick successive edits with the same merge key into one step', () => {
-    const { histories, advance } = setup();
-    const at = (x: number): Scene => ({
-      ...withOrc,
-      overlays: withOrc.overlays.map((item) => ({ ...item, position: { x, y: 0.5 } })),
-    });
-    histories.record({ before: at(0.5), after: at(0.6), label: 'déplacer Orc', mergeKey: 'k' });
-    advance(MERGE_WINDOW_MS);
-    histories.record({ before: at(0.6), after: at(0.7), label: 'déplacer Orc', mergeKey: 'k' });
-    expect(histories.nextUndo('c1', 's1')).toEqual({ expected: at(0.7), restore: at(0.5) });
-    histories.undone('c1', 's1');
-    expect(histories.nextUndo('c1', 's1')).toBeUndefined();
-  });
-
-  it('does not merge edits apart in time, with other keys, or after an undo', () => {
-    const { histories, advance } = setup();
+  it('keeps each recorded edit as its own step, however quick', () => {
+    const { histories } = setup();
     const named = (n: number) => scene('s1', `n${n}`);
-    histories.record({ before: named(0), after: named(1), label: 'a', mergeKey: 'k' });
-    advance(MERGE_WINDOW_MS + 1);
-    histories.record({ before: named(1), after: named(2), label: 'b', mergeKey: 'k' });
-    histories.record({ before: named(2), after: named(3), label: 'c', mergeKey: 'other' });
-    histories.record({ before: named(3), after: named(4), label: 'd' });
-    histories.record({ before: named(4), after: named(5), label: 'e' });
+    histories.record({ before: named(0), after: named(1), label: 'déplacer Orc' });
+    histories.record({ before: named(1), after: named(2), label: 'redimensionner Orc' });
+    expect(histories.nextUndo('c1', 's1')).toEqual({ expected: named(2), restore: named(1) });
     histories.undone('c1', 's1');
-    histories.record({ before: named(4), after: named(6), label: 'f', mergeKey: 'k' });
-    histories.record({ before: named(6), after: named(7), label: 'g', mergeKey: 'k' });
-
-    const labels: string[] = [];
-    let state = histories.state('c1', 's1');
-    while (state.undo !== null) {
-      labels.push(state.undo);
-      histories.undone('c1', 's1');
-      state = histories.state('c1', 's1');
-    }
-    expect(labels).toEqual(['g', 'd', 'c', 'b', 'a']);
+    expect(histories.nextUndo('c1', 's1')).toEqual({ expected: named(1), restore: named(0) });
   });
 
   it('clears one Scene, or every Scene (Campaign switch)', () => {
@@ -167,15 +127,6 @@ describe('undo histories', () => {
     expect(histories.state('c1', 's2').undo).toBe('deux');
     histories.clearAll();
     expect(histories.state('c1', 's2').undo).toBeNull();
-  });
-});
-
-describe('merge keys', () => {
-  it('lets moves and resizes of one Overlay merge, and nothing else', () => {
-    const move: SceneEdit = { kind: 'transform-overlay', placementId: 'ov', position: { x: 0.1 } };
-    expect(mergeKeyOf(move)).toBe(mergeKeyOf({ ...move, height: 0.4 }));
-    expect(mergeKeyOf(move)).not.toBe(mergeKeyOf({ ...move, placementId: 'other' }));
-    expect(mergeKeyOf({ kind: 'set-visible', placementId: 'ov', visible: false })).toBeUndefined();
   });
 });
 

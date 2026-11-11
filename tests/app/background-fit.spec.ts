@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import type { ControlBridge, SceneEdit } from '../../shared/contract';
 import type { Media, Scene } from '../../shared/domain';
@@ -8,10 +6,15 @@ import {
   fixture,
   launchApp,
   openBroadcastWindow,
+  picturePng,
   stubFilePicker,
   test,
   type RunningApp,
 } from './harness';
+
+/** A square image (not 16:9, so Cover crops it and Contain leaves bars), in blue. */
+const SQUARE = { width: 90, height: 90 };
+const BLUE = { red: 0, green: 0, blue: 220 };
 
 /** Calls the Control window's bridge, as its interface does. */
 function bridgeOf(controlWindow: Page) {
@@ -27,28 +30,6 @@ function bridgeOf(controlWindow: Page) {
     );
 }
 
-/** A square PNG (not 16:9, so Cover crops it and Contain leaves bars), in the data folder. */
-async function squarePng({ app, dataDir }: RunningApp): Promise<string> {
-  const base64 = await app.evaluate(({ nativeImage }) => {
-    const size = 90;
-    const bitmap = Buffer.alloc(size * size * 4);
-    for (let i = 0; i < bitmap.length; i += 4) {
-      // BGRA: blue.
-      bitmap[i] = 220;
-      bitmap[i + 3] = 255;
-    }
-    return nativeImage
-      .createFromBitmap(bitmap, { width: size, height: size })
-      .toPNG()
-      .toString('base64');
-  });
-  const folder = path.join(dataDir, 'picked');
-  await fs.mkdir(folder, { recursive: true });
-  const file = path.join(folder, 'Carre.png');
-  await fs.writeFile(file, Buffer.from(base64, 'base64'));
-  return file;
-}
-
 /**
  * The only Campaign, "Star Wars", with a Scene "Cantina" holding two visible Backgrounds: the
  * 16:9 red fixture at the bottom, the square "Carre" on top. The Control window is reloaded,
@@ -59,7 +40,10 @@ async function cantina(running: RunningApp) {
   const call = bridgeOf(controlWindow);
   const campaign = await call<{ id: string }>('createCampaign', 'Star Wars');
   await call('openCampaign', campaign.id);
-  await stubFilePicker(app, [fixture('red-16x9.png'), await squarePng(running)]);
+  await stubFilePicker(app, [
+    fixture('red-16x9.png'),
+    await picturePng(running, 'Carre.png', SQUARE, BLUE),
+  ]);
   const { imported } = await call<{ imported: Media[] }>('importMedia', campaign.id, {
     accept: 'image',
   });
@@ -154,6 +138,47 @@ test('on the Active Scene, Contain, zoom and pan reach the On-air monitor and th
   await backgroundList(controlWindow).getByLabel('Vertical de Carre').press('Home');
   const topLeft = { x: 0, y: 0, width: 4, height: 7.11 };
   for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(topLeft);
+});
+
+test('on the Active Scene, a framing slider shows its framing in all three views during the drag, and saves it once on release', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  const { square } = await cantina(regie);
+  const broadcastWindow = await activate(regie);
+  const all = views(controlWindow, broadcastWindow);
+  const covered = { x: 0, y: -0.39, width: 1, height: 1.78 };
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(covered);
+  const savedZoom = async () => {
+    const call = bridgeOf(controlWindow);
+    const [campaign] = await call<{ id: string }[]>('listCampaigns');
+    const [scene] = await call<Scene[]>('listScenes', campaign.id);
+    return scene.backgrounds.find((item) => item.id === square)?.zoom;
+  };
+
+  // Press the zoom slider's thumb (at its left end, zoom 1) and drag it to the right end.
+  const slider = backgroundList(controlWindow).getByLabel('Zoom de Carre');
+  await slider.scrollIntoViewIfNeeded();
+  const box = await slider.boundingBox();
+  if (!box) throw new Error('The zoom slider is not shown.');
+  const middle = box.y + box.height / 2;
+  await controlWindow.mouse.move(box.x + 4, middle);
+  await controlWindow.mouse.down();
+  await controlWindow.mouse.move(box.x + box.width + 20, middle, { steps: 10 });
+
+  // Still held: shown everywhere, saved nowhere.
+  const zoomed = { x: -1.5, y: -3.06, width: 4, height: 7.11 };
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(zoomed);
+  expect(await savedZoom()).toBe(1);
+
+  await controlWindow.mouse.up();
+  await expect.poll(savedZoom).toBe(4);
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(zoomed);
+
+  // The whole drag is one undo step.
+  await controlWindow.keyboard.press('Control+z');
+  await expect.poll(savedZoom).toBe(1);
+  for (const view of all) await expect.poll(() => backgroundBox(view, square)).toEqual(covered);
 });
 
 test('reordering Backgrounds changes which covers which in all three views; the list shows the top first', async ({

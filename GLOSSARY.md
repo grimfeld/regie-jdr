@@ -106,7 +106,8 @@ _Avoid_: Backdrop, layer, Scenery (that is the category)
 
 **Overlay**:
 One freely positioned and sized placement of an image Media on a Scene, always above every Background, with its own visibility and optional Label. The same Media can be placed as several Overlays.
-_Avoid_: Token, layer, instance, figure
+UI: Superposition
+_Avoid_: Token, layer, instance, figure, Character (that is the category)
 
 **Label**:
 A player-facing name plate on an Overlay, shown or hidden independently of the Overlay itself.
@@ -132,6 +133,10 @@ _Avoid_: Current scene, edited scene, draft
 The small read-only view in the Control window showing exactly what the Broadcast window shows.
 UI: À l'antenne
 _Avoid_: Preview, program monitor
+
+**Broadcast projection**:
+What of the Active Scene reaches the Broadcast window: its shown Backgrounds, Overlays and Labels, its Scene title, and Blackout. Hidden placements, Notes, the Scene's name and Media names are never part of it.
+_Avoid_: Broadcast scene, public scene, on-air copy
 
 **Blackout**:
 A temporary on-air fade to black that hides the Active Scene from players without changing it. Picture only: audio keeps playing. Not saved into any Scene.

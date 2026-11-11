@@ -107,7 +107,7 @@ test('an unhandled rejection in the main process is logged and the app keeps wor
   await stillWorks(controlWindow);
 });
 
-test('an interface error shows a recoverable message instead of a blank window', async ({
+test('an interface error in the Broadcast window shows the players only black, is logged, and recovers by itself', async ({
   regie,
 }) => {
   const { app, controlWindow, dataDir } = regie;
@@ -123,12 +123,10 @@ test('an interface error shows a recoverable message instead of a blank window',
     broadcast?.webContents.send('onAir:changed', null);
   });
 
-  const message = broadcastWindow.getByRole('alert');
-  await expect(message).toContainText('Un problème est survenu dans cette fenêtre.');
   await expect(screen).toBeHidden();
+  await expect(broadcastWindow.locator('#root')).toBeEmpty();
+  await expect(broadcastWindow.getByRole('button')).toHaveCount(0);
   await expect.poll(() => logFile(dataDir)).toMatch(/ERROR Window error: Interface error: /);
 
-  await message.getByRole('button', { name: 'Réessayer' }).click();
   await expect(screen).toHaveAttribute('data-version', '0');
-  await expect(message).toBeHidden();
 });

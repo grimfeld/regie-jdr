@@ -349,6 +349,14 @@ describe('Scene channels', () => {
       ok: true,
       payload: transient,
     });
+    const framing = {
+      ...transient,
+      edit: { kind: 'frame-background', placementId: 'b1', zoom: 2 },
+    };
+    expect(checkInvoke('scenes:show-transient', 'control', [framing])).toEqual({
+      ok: true,
+      payload: framing,
+    });
   });
 
   it('accept an edit command, keeping only contract fields', () => {
@@ -392,7 +400,7 @@ describe('Scene channels', () => {
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],
     ['an unknown edit', 'scenes:edit', [{ ...edit, edit: { kind: 'replace-scene' } }]],
-    ['a transient update that is not a move or resize', 'scenes:show-transient', [edit]],
+    ['a transient update that is not a move, resize or framing', 'scenes:show-transient', [edit]],
     ['a transient update with no Scene', 'scenes:show-transient', [{ ...transient, sceneId: '' }]],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
