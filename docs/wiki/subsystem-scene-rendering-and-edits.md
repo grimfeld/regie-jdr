@@ -66,3 +66,11 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Undo granularity: `src/useOverlayTransforms.ts` sends one committed `transform-overlay` per gesture (pointer release, or 500 ms after the last nudge, or blur/editor close). Transient updates never touch `editScene`, so #32's history gets one step per gesture.
 - `src/transientUpdates.ts`: at most one update per animation frame, none while one is in flight, latest only (unit-tested).
 - `SceneCanvas` has an optional `editing` prop; the Broadcast window never gets handlers.
+
+## Fades (#31, 2026-11-11, `bbd3ac7`)
+
+- `Settings.fadeDurationMs` (default 600, 0 to 3000; settings schema 2 with migration), saved over Control-only `settings:set-fade-duration`; UI "Fondus" number field in seconds under the On-air monitor (no slider: `smoke.spec` forbids sliders on the Campaign screen).
+- The Broadcast window reads no Settings, so the duration travels in `OnAirState.fadeDurationMs` (allow-list updated).
+- All fade timing in renderer-safe `core/fades.ts`.
+- Fade-out on broadcast: `SceneCanvas` keeps drawing a removed item from the last picture at its stack place and drops it after the fade (`withLeaving`). Images stay transparent until `img.decode()` resolves. Labels and Scene title cross-fade on change; Blackout fades both ways. Fading-out Overlays ignore pointer input.
+- Side effect: Activating another Scene dissolves over the fade duration. See [carry-forward](carry-forward.md).

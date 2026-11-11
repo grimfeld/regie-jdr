@@ -28,6 +28,7 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - `GLOSSARY.md` lacks "broadcast projection". Source: #22 report.
 - Flaky test: `tests/app/placing.spec.ts:202` failed once in a full run (likely race between placing twice and show/hide preview). Fix the race; no retries. Source: #27 report.
 - Manual check: real drag from Windows Explorer. Source: #27 report.
+- Manual check: revealing a large image shows no empty or half-drawn frame; fades feel right. Source: #31 report.
 - Background slider shows framing only on release, not during drag. Source: #28 report.
 - Test PNG generator duplicated (`tests/app/background-fit.spec.ts`, `library.spec.ts` `picturePng`); move to `tests/app/harness.ts`. Source: #28 report.
 - 2026-11-11: #26 placing Media merged at `b8a3580` (325 unit, 77 app tests). Kept the image picker for keyboard users.
@@ -37,3 +38,4 @@ Slice issues carry no "Blocked by" lines, so the chief of staff ordered them by 
 - 2026-11-11: #28 Background stack and fit merged at `984374f` (366 unit, 83 app tests). No deviations. List order now top-first.
 - 2026-11-11: #27 Explorer drag-import merged at `a65b466` (379 unit, 87 app tests). See [library page](subsystem-media-library.md).
 - 2026-11-11: #29 Overlay transforms merged at `d733c25` (417 unit, 91 app tests). No deviations. Made `placing.spec.ts` wait for both Overlay rows (timing fix); check whether that was the flaky line 202.
+- 2026-11-11: #31 fades merged at `bbd3ac7` (452 unit, 94 app tests). Changed `labels-title.spec` to count only Labels not fading out.

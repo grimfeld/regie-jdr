@@ -30,6 +30,10 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 
 - [M1 log](milestone-m1.md): slice order and outcomes for #21.
 
+## Cross-milestone
+
+- [Carry-forward](carry-forward.md): facts from one milestone that later milestones need.
+
 ## User preferences
 
 - [Game Master's working preferences](user-preferences.md)
