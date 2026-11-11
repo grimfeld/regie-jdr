@@ -20,3 +20,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - A Notes save pending under 500 ms is lost if the app quits then; flush on quit. Source: #51 report.
 - Merge-forward from M2: scenes schema versions/migrations may conflict if M2 bumps the scenes schema; harness helpers duplicated with M2 closeout. Source: #51 report.
 - 2026-11-12: #46 running order merged at `1a54d3e` (805 unit, 134 app tests). No migration needed (already creation order). Gap: no keyboard reorder.
+- 2026-11-12: #52 Notes images merged at `f936525` (851 unit, 140 app tests). `ambiences.spec.ts:116` failed once under load (drag test, see flaky-tests rule).
