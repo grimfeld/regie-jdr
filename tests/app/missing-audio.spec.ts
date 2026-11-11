@@ -161,7 +161,9 @@ test('an Ambience whose file was deleted is badged in the Scene’s Ambience lis
   await expect(musicList(controlWindow)).not.toContainText('Média manquant');
 });
 
-test('a Soundboard pad whose file was deleted is badged', async ({ regie }) => {
+test('a Soundboard pad whose file was deleted is badged; pressing it says so', async ({
+  regie,
+}) => {
   const { controlWindow, dataDir } = regie;
   await createCampaign(controlWindow, 'Star Wars');
   const folder = path.join(dataDir, 'sons-a-importer');
@@ -179,4 +181,8 @@ test('a Soundboard pad whose file was deleted is badged', async ({ regie }) => {
   await controlWindow.evaluate(() => window.dispatchEvent(new Event('focus')));
 
   await expect(pad.getByRole('img', { name: 'Média manquant : Épée' })).toBeVisible();
+
+  await pad.click();
+  await expect(controlWindow.getByRole('alert')).toContainText('« Épée » est introuvable');
+  await expect(pad).toHaveAttribute('aria-pressed', 'false');
 });

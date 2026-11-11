@@ -137,10 +137,22 @@ describe('untrusted Soundboard edits', () => {
 describe('Soundboard store', () => {
   const dir = useTempDir();
 
-  async function setup(media: Media[] = [sound('s1'), sound('s2'), sound('m1', 'music'), image]) {
+  async function setup(
+    media: Media[] = [sound('s1'), sound('s2'), sound('m1', 'music'), image],
+    missing: ReadonlySet<string> = new Set(),
+  ) {
     const storage = openStorage(path.join(dir.path, 'data'));
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
-    const library = { list: () => Promise.resolve(media) };
+    const library = {
+      list: () => Promise.resolve(media),
+      /** Every file is there, but those of the `missing` Media ids. */
+      resolveAddress: (url: string) =>
+        Promise.resolve(
+          [...missing].some((id) => url.includes(id))
+            ? undefined
+            : { file: url, mimeType: 'audio/wav' },
+        ),
+    };
     const store = createSoundboardStore({ storage, library, newId: counter() });
     return { storage, campaign, store };
   }
@@ -158,7 +170,10 @@ describe('Soundboard store', () => {
 
     const reopened = createSoundboardStore({
       storage: openStorage(storage.root),
-      library: { list: () => Promise.resolve([]) },
+      library: {
+        list: () => Promise.resolve([]),
+        resolveAddress: () => Promise.resolve(undefined),
+      },
     });
     expect(await reopened.get(campaign.id)).toEqual({
       campaignId: campaign.id,
@@ -266,6 +281,15 @@ describe('Soundboard store', () => {
     );
     // The unsaved edit is not saved.
     expect((await store.get(campaign.id)).volume).toBe(1);
+  });
+
+  it('refuses to press a pad whose file is missing, saying so', async () => {
+    const { campaign, store } = await setup(undefined, new Set(['s1']));
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+
+    await expect(store.press(campaign.id, 'pad1', 1)).rejects.toThrow(
+      '« Nom s1 » est introuvable (fichier supprimé ou déplacé hors de l’application).',
+    );
   });
 
   it('refuses to press a pad that is gone', async () => {

@@ -167,7 +167,10 @@ export interface SoundboardStore {
     masterVolume: number,
     unsaved?: SoundboardEdit,
   ): Promise<Map<string, { name: string; gain: number }>>;
-  /** What pressing a pad plays, at `masterVolume`. Throws when the pad or its Media is gone. */
+  /**
+   * What pressing a pad plays, at `masterVolume`. Throws when the pad or its Media is gone, or
+   * (a SoundboardError saying so) when its file is missing: deleted or moved outside the app.
+   */
   press(campaignId: CampaignId, padId: string, masterVolume: number): Promise<PadPress>;
   /**
    * The Media addresses of the Sound effects on the Campaign's pads, each once, in pad order:
@@ -179,7 +182,7 @@ export interface SoundboardStore {
 
 export function createSoundboardStore(deps: {
   storage: Storage;
-  library: Pick<MediaLibrary, 'list'>;
+  library: Pick<MediaLibrary, 'list' | 'resolveAddress'>;
   /** Names new pads; random UUIDs unless a test gives its own. */
   newId?: () => string;
 }): SoundboardStore {
@@ -257,10 +260,17 @@ export function createSoundboardStore(deps: {
       const pad = board.pads.find((item) => item.id === padId);
       if (!pad) throw new SoundboardError('Ce bruitage n’est plus sur la table.');
       const media = soundEffectOf(await library.list(campaignId), pad.mediaId);
+      const src = mediaAddress(media);
+      // The rule the Media protocol serves by: a file it would answer 404 for.
+      if (!(await library.resolveAddress(src, campaignId))) {
+        throw new SoundboardError(
+          `« ${media.name} » est introuvable (fichier supprimé ou déplacé hors de l’application).`,
+        );
+      }
       return {
         padId,
         name: pad.label ?? media.name,
-        src: mediaAddress(media),
+        src,
         gain: padGain(masterVolume, board.volume, pad.volume),
       };
     },
