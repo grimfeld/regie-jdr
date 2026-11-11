@@ -7,7 +7,8 @@
  * Thin by design: every decision (what sounds, at what level, how long a fade takes) is in the
  * mix. Here, each voice is a streamed media element routed through a gain node; a voice is
  * known by its Media, so one in both the old and the new mix keeps playing and only ramps.
- * Voices that leave the mix fade out, then are dropped. On start (and after a reload of the
+ * A new voice fades in from its first sound, not from the request, so loading never eats the
+ * fade. Voices that leave the mix fade out, then are dropped. On start (and after a reload of the
  * Control window) it reads the current mix, so the current Music starts from its beginning.
  *
  * Pad sounds (the Soundboard) have their own channel, src/padPlayer.ts, on the same context.
@@ -26,6 +27,11 @@ interface Voice {
   inMix: boolean;
   /** A pause or a drop waiting for a fade-out to end. */
   pending?: ReturnType<typeof setTimeout>;
+  /**
+   * The fade-in waiting for a new voice's first sound: ramping while the file still loads
+   * would spend the fade on silence and start the sound abruptly. Undefined once it sounded.
+   */
+  fadeIn?: { gain: number; fadeMs: number };
 }
 
 /** Starts the engine on `bridge`. Returns the function that stops it and silences everything. */
@@ -58,7 +64,7 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     gain.linearRampToValueAtTime(Math.min(1, Math.max(0, target)), now + fadeMs / 1000);
   }
 
-  function create({ src }: AudioVoice): Voice {
+  function create({ src, gain: target }: AudioVoice, fadeMs: number): Voice {
     const element = new Audio();
     // Read through CORS, or Web Audio would get silence from another origin's file.
     element.crossOrigin = 'anonymous';
@@ -67,8 +73,18 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     const gain = context.createGain();
     gain.gain.value = 0;
     context.createMediaElementSource(element).connect(gain).connect(context.destination);
-    const voice: Voice = { element, gain, state: 'loading', inMix: true };
-    element.addEventListener('playing', () => setState(voice, 'playing'));
+    const voice: Voice = {
+      element,
+      gain,
+      state: 'loading',
+      inMix: true,
+      fadeIn: { gain: target, fadeMs },
+    };
+    element.addEventListener('playing', () => {
+      if (voice.fadeIn) ramp(voice, voice.fadeIn.gain, voice.fadeIn.fadeMs);
+      voice.fadeIn = undefined;
+      setState(voice, 'playing');
+    });
     element.addEventListener('waiting', () => setState(voice, 'loading'));
     element.addEventListener('pause', () => setState(voice, 'paused'));
     element.addEventListener('error', () => setState(voice, 'failed'));
@@ -100,15 +116,18 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     for (const wanted of mix.voices) {
       let voice = voices.get(wanted.mediaId);
       if (!voice) {
-        voice = create(wanted);
+        voice = create(wanted, fadeMs);
         voices.set(wanted.mediaId, voice);
       }
       voice.inMix = true;
       const current = voice;
       if (wanted.playing) {
         play(current);
-        ramp(current, wanted.gain, fadeMs);
+        // Still loading: it fades in over the change that started it, to the newest level.
+        if (current.fadeIn) current.fadeIn = { ...current.fadeIn, gain: wanted.gain };
+        else ramp(current, wanted.gain, fadeMs);
       } else {
+        current.fadeIn = undefined;
         ramp(current, 0, fadeMs);
         after(current, fadeMs, () => current.element.pause());
       }
@@ -116,6 +135,7 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     for (const [mediaId, voice] of voices) {
       if (mix.voices.some((wanted) => wanted.mediaId === mediaId)) continue;
       voice.inMix = false;
+      voice.fadeIn = undefined;
       ramp(voice, 0, fadeMs);
       after(voice, fadeMs, () => drop(mediaId, voice));
     }
