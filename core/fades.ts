@@ -14,6 +14,33 @@ export function parseFadeDuration(value: unknown): number | undefined {
   return value;
 }
 
+/**
+ * How long each kind of audio change takes, in milliseconds: fixed in Milestone 2, settings in
+ * Milestone 3 (#50). The audio engine fades new voices in, ramps changed ones and fades out
+ * voices that left over the duration the mix carries (core/audioMix.ts picks it).
+ */
+export const AUDIO_FADE_MS = {
+  /** Activating a Scene: the outgoing Scene's audio fades out, the new one's fades in. */
+  activate: 1500,
+  /** Picking another track of the Active Scene's Music list. */
+  crossfade: 2000,
+  /** Switching an Ambience on or off. */
+  ambience: 1000,
+  /** Pausing or resuming the Music. */
+  pause: 300,
+  /** Silence on or off. */
+  silence: 500,
+  /** A volume change (Master, a Scene level, an Ambience): a short ramp, so nothing clicks. */
+  volume: 150,
+  /** Undo or redo on the Active Scene changing what is heard. */
+  undo: 1000,
+  /** Everything stops: a Campaign opened, switched or closed, the Active Scene deleted. */
+  stop: 300,
+} as const;
+
+/** The kind of change a new mix makes, which sets how long it fades (AUDIO_FADE_MS). */
+export type AudioChange = keyof typeof AUDIO_FADE_MS;
+
 /** An item the renderer draws: shown, or `leaving` (fading out, as it was last drawn). */
 export interface Fading<T> {
   key: string;

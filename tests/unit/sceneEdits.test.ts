@@ -200,6 +200,25 @@ describe('Scene edit commands', () => {
   });
 });
 
+describe('Scene Music list', () => {
+  it('adds Music at the end of the list, each Media once', () => {
+    const listed = applyAll(
+      empty,
+      { kind: 'add-music', mediaId: 'm1' },
+      { kind: 'add-music', mediaId: 'm2' },
+    );
+    expect(listed.music).toEqual(['m1', 'm2']);
+    expect(() => applyAll(listed, { kind: 'add-music', mediaId: 'm1' })).toThrow(
+      'Cette musique est déjà dans la scène.',
+    );
+  });
+
+  it('refuses a malformed add-music message', () => {
+    expect(parseSceneEdit({ kind: 'add-music', mediaId: '' })).toBeUndefined();
+    expect(parseSceneEdit({ kind: 'add-music' })).toBeUndefined();
+  });
+});
+
 describe('Overlay transform commands', () => {
   const placed = applyAll(
     empty,
@@ -433,6 +452,10 @@ describe('Scene edit commands from a window message', () => {
     [
       { kind: 'set-label-visible', overlayId: 'p1', visible: true, text: 'Garde' },
       { kind: 'set-label-visible', overlayId: 'p1', visible: true },
+    ],
+    [
+      { kind: 'add-music', mediaId: 'm1', toIndex: 0 },
+      { kind: 'add-music', mediaId: 'm1' },
     ],
     [
       { kind: 'set-title', title: 'Le vieux moulin', name: 'x' },

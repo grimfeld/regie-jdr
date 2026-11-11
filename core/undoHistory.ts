@@ -210,6 +210,8 @@ export function undoLabel(
         : `retirer l’étiquette (${placed(edit.overlayId)})`;
     case 'set-label-visible':
       return `${edit.visible ? 'afficher' : 'masquer'} l’étiquette (${placed(edit.overlayId)})`;
+    case 'add-music':
+      return `ajouter la musique ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
   }
 }
 

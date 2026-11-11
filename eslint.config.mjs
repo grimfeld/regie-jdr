@@ -13,6 +13,7 @@ const RENDERER_SAFE_CORE = [
   'guards',
   'librarySearch',
   'fades',
+  'audioMix',
 ];
 
 /**
@@ -192,6 +193,7 @@ export default tseslint.config(
                 '!./guards*',
                 '!./librarySearch*',
                 '!./fades*',
+                '!./audioMix*',
               ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',

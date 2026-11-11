@@ -21,12 +21,21 @@ import type {
   SceneEdit,
 } from '../shared/contract.js';
 import path from 'node:path';
-import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
+import type {
+  AudioEngineReport,
+  CampaignId,
+  ImageCategory,
+  MediaId,
+  SceneId,
+  ThemeId,
+} from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
 import { parseOverlayTransform, parseSceneEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 import { parseFadeDuration } from './fades.js';
+import { parseAudioEngineReport } from './audioMix.js';
+import { parseVolume } from './settings.js';
 import { isRecord } from './guards.js';
 
 /** The windows that can send messages. */
@@ -109,6 +118,15 @@ function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
 function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
   const fadeDurationMs = isRecord(value) ? parseFadeDuration(value.fadeDurationMs) : undefined;
   return fadeDurationMs === undefined ? INVALID : { fadeDurationMs };
+}
+
+function masterVolumeOf(value: unknown): Parsed<{ masterVolume: number }> {
+  const masterVolume = isRecord(value) ? parseVolume(value.masterVolume) : undefined;
+  return masterVolume === undefined ? INVALID : { masterVolume };
+}
+
+function engineReport(value: unknown): Parsed<AudioEngineReport> {
+  return parseAudioEngineReport(value) ?? INVALID;
 }
 
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
@@ -265,6 +283,11 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
   'settings:set-fade-duration': { from: controlOnly, parse: onePayload(fadeDurationOf) },
+  'settings:set-master-volume': { from: controlOnly, parse: onePayload(masterVolumeOf) },
+  // The audio engine runs in the Control window (ADR-0002): the Broadcast window gets no audio.
+  'audio:get-mix': { from: controlOnly, parse: noPayload },
+  'audio:report': { from: controlOnly, parse: onePayload(engineReport) },
+  'audio:get-sounding': { from: controlOnly, parse: noPayload },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

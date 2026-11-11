@@ -10,6 +10,9 @@ import { createCampaign, updateCampaign } from '../core/campaigns.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
+import { soundingOf } from '../core/audioMix.js';
+import { createAudioOnAir } from '../core/audioOnAir.js';
+import { parseByteRange } from '../core/byteRange.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
 import { createSceneLibrary } from '../core/scenes.js';
@@ -17,6 +20,7 @@ import { createSettingsStore, type SettingsStore, type SettingsWindow } from '..
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import type { MediaImportKind } from '../shared/contract.js';
+import type { AudioEngineReport } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
@@ -26,6 +30,10 @@ let settings: SettingsStore | null = null;
 const pendingWrites = new Set<Promise<unknown>>();
 // What is on air: in memory only, so nothing is on air after a restart.
 const onAir = createOnAir();
+// What plays (the audio part of the on-air state): in memory only, so nothing plays after a restart.
+const audio = createAudioOnAir();
+// What the audio engine (in the Control window, ADR-0002) last reported sounding.
+let engineReport: AudioEngineReport = { voices: [] };
 
 // Whole-app tests point the app at a temporary data folder.
 // Must stay before the single-instance lock, which is scoped to the data folder.
@@ -36,8 +44,19 @@ installErrorLogging();
 
 // Media are served via a custom scheme (core/mediaAddress.ts): file:// URLs are blocked
 // when the renderer is loaded from the Vite dev server (http origin).
+// `stream` lets audio stream from it; `corsEnabled` lets the audio engine route it through Web
+// Audio (a media element from another origin without CORS would play silence there).
 protocol.registerSchemesAsPrivileged([
-  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  {
+    scheme: MEDIA_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
 ]);
 
 // The page every window loads: the dev server, or the built index.html on disk.
@@ -71,8 +90,8 @@ app.on('web-contents-created', (_event, contents) => {
 /**
  * Serves Media files from the open Campaign's media folder only, with an explicit content type.
  * Anything else (another Campaign, malformed address, missing file, disallowed type, outside
- * the folder) is a 404.
- * Whole files only: range requests (audio seeking) come with the audio engine.
+ * the folder) is a 404. Byte ranges are served, so audio streams, seeks and loops. Any app page
+ * may read the files (CORS), so the audio engine can route them through Web Audio.
  */
 function registerMediaProtocol(library: MediaLibrary) {
   protocol.handle(MEDIA_SCHEME, async (request) => {
@@ -80,9 +99,36 @@ function registerMediaProtocol(library: MediaLibrary) {
     try {
       const resolved = await library.resolveAddress(request.url, onAir.current().campaignId);
       if (!resolved) return notFound();
-      const content = await fs.readFile(resolved.file);
+      const headers = {
+        'content-type': resolved.mimeType,
+        'cache-control': 'no-cache',
+        'accept-ranges': 'bytes',
+        'access-control-allow-origin': '*',
+      };
+      const { size } = await fs.stat(resolved.file);
+      const range = parseByteRange(request.headers.get('range'), size);
+      if (range === 'unsatisfiable') {
+        return new Response(null, {
+          status: 416,
+          headers: { ...headers, 'content-range': `bytes */${size}` },
+        });
+      }
+      if (!range) return new Response(await fs.readFile(resolved.file), { headers });
+      const length = range.end - range.start + 1;
+      const content = Buffer.alloc(length);
+      const file = await fs.open(resolved.file, 'r');
+      try {
+        await file.read(content, 0, length, range.start);
+      } finally {
+        await file.close();
+      }
       return new Response(content, {
-        headers: { 'content-type': resolved.mimeType, 'cache-control': 'no-cache' },
+        status: 206,
+        headers: {
+          ...headers,
+          'content-length': String(length),
+          'content-range': `bytes ${range.start}-${range.end}/${size}`,
+        },
       });
     } catch (error) {
       log.warn(`Media request failed: ${request.url}`, error);
@@ -260,26 +306,36 @@ function startApp() {
   const library = createMediaLibrary(storage, electronImageResizer);
   const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
-  // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
   const commands = createOnAirCommands({
     campaigns: storage.campaigns,
     library,
     scenes,
     onAir,
-    audio: {
-      halt: () => {
-        sendEvent(broadcastWindow?.webContents, 'audio:halt', null);
-        sendEvent(controlWindow?.webContents, 'audio:halt', null);
-      },
-    },
+    audio,
   });
-  // The renderers fade with the saved duration, carried by the on-air state.
+  // The renderers fade with the saved duration, carried by the on-air state; audio plays at
+  // the saved Master volume.
   settingsStore
     .get()
-    .then(({ fadeDurationMs }) => onAir.setFadeDuration(fadeDurationMs))
+    .then(({ fadeDurationMs, masterVolume }) => {
+      onAir.setFadeDuration(fadeDurationMs);
+      audio.setMasterVolume(masterVolume);
+    })
     .catch((error: unknown) => {
-      log.error('Reading the fade duration failed', error);
+      log.error('Reading the fade duration and the Master volume failed', error);
     });
+  // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
+  // Broadcast window gets no audio data.
+  const sendSounding = () =>
+    sendEvent(
+      controlWindow?.webContents,
+      'audio:sounding-changed',
+      soundingOf(audio.mix(), engineReport),
+    );
+  audio.subscribe((mix) => {
+    sendEvent(controlWindow?.webContents, 'audio:mix-changed', mix);
+    sendSounding();
+  });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
     sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
@@ -339,6 +395,17 @@ function startApp() {
         onAir.setFadeDuration(saved.fadeDurationMs);
         return saved;
       },
+      'settings:set-master-volume': async ({ masterVolume }) => {
+        const saved = await settingsStore.setMasterVolume(masterVolume);
+        audio.setMasterVolume(saved.masterVolume);
+        return saved;
+      },
+      'audio:get-mix': () => audio.mix(),
+      'audio:report': (report) => {
+        engineReport = report;
+        sendSounding();
+      },
+      'audio:get-sounding': () => soundingOf(audio.mix(), engineReport),
     },
     roleOf,
     log,

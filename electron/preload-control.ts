@@ -1,8 +1,10 @@
-// Control window bridge: the full API (contract: ControlBridge).
+// Control window bridges: the full API (contract: ControlBridge) and, apart, the audio engine's
+// (contract: AudioEngineBridge), which can only receive the mix and report what sounds.
 // Sandboxed preload: it can only require('electron'), so contract imports are type-only and
 // the small helpers below are repeated in preload-broadcast.ts.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
+  AudioEngineBridge,
   ControlBridge,
   EventChannel,
   EventChannels,
@@ -45,7 +47,6 @@ function subscribe<E extends EventChannel>(
 const bridge: ControlBridge = {
   getOnAir: () => invoke('onAir:get'),
   onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
-  onAudioHalt: (listener) => subscribe('audio:halt', () => listener()),
   openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
   closeCampaign: () => invoke('onAir:close-campaign'),
   activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
@@ -82,6 +83,17 @@ const bridge: ControlBridge = {
   getSettings: () => invoke('settings:get'),
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
   setFadeDuration: (fadeDurationMs) => invoke('settings:set-fade-duration', { fadeDurationMs }),
+  setMasterVolume: (masterVolume) => invoke('settings:set-master-volume', { masterVolume }),
+  getSounding: () => invoke('audio:get-sounding'),
+  onSoundingChanged: (listener) => subscribe('audio:sounding-changed', listener),
+};
+
+// The audio engine's bridge: tests/unit/bridges.test.ts checks it calls nothing else.
+const audioEngine: AudioEngineBridge = {
+  getMix: () => invoke('audio:get-mix'),
+  onMixChanged: (listener) => subscribe('audio:mix-changed', listener),
+  report: (report) => invoke('audio:report', report),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);
+contextBridge.exposeInMainWorld('regieAudio', audioEngine);

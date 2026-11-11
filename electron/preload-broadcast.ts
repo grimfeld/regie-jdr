@@ -45,7 +45,6 @@ function subscribe<E extends EventChannel>(
 const bridge: BroadcastBridge = {
   getOnAir: () => invoke('onAir:get'),
   onOnAirChanged: (listener) => subscribe('onAir:changed', listener),
-  onAudioHalt: (listener) => subscribe('audio:halt', () => listener()),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);

@@ -114,6 +114,16 @@ describe('settings', () => {
     }
   });
 
+  it('remember the Master volume across a restart, and refuse one out of 0..1', async () => {
+    expect((await reopen().setMasterVolume(0.4)).masterVolume).toBe(0.4);
+    expect((await reopen().get()).masterVolume).toBe(0.4);
+    await expect(reopen().setMasterVolume(1.5)).rejects.toThrow(
+      'Le volume général doit être compris entre 0 et 100 %.',
+    );
+    await expect(reopen().setMasterVolume(-0.1)).rejects.toThrow();
+    expect((await reopen().get()).masterVolume).toBe(0.4);
+  });
+
   it('remember the global theme across a restart', async () => {
     await reopen().setTheme('fantasy');
     expect((await reopen().get()).theme).toBe('fantasy');

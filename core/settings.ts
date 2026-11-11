@@ -7,6 +7,7 @@
 import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
 import type { DocumentType, Storage } from './storage/index.js';
+import { MASTER_VOLUME } from './audioMix.js';
 import { FADE_DURATION_MS, parseFadeDuration } from './fades.js';
 import { isRecord } from './guards.js';
 import { createSerialQueue } from './serialQueue.js';
@@ -25,10 +26,12 @@ export interface SettingsStore {
   setLastActiveScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
   /** Throws a SettingsError for a duration outside FADE_DURATION_MS. */
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
+  /** Throws a SettingsError for a volume outside 0..1. */
+  setMasterVolume(masterVolume: number): Promise<Settings>;
 }
 
 /** Master volume until the Game Master changes it: full. */
-export const DEFAULT_MASTER_VOLUME = 1;
+export const DEFAULT_MASTER_VOLUME = MASTER_VOLUME.default;
 
 /** A volume, 0..1, or undefined for anything else. */
 export function parseVolume(value: unknown): number | undefined {
@@ -130,6 +133,14 @@ export function createSettingsStore(storage: Storage): SettingsStore {
         );
       }
       return change((settings) => ({ ...settings, fadeDurationMs }));
+    },
+    setMasterVolume: (masterVolume) => {
+      if (parseVolume(masterVolume) === undefined) {
+        return Promise.reject(
+          new SettingsError('Le volume général doit être compris entre 0 et 100 %.'),
+        );
+      }
+      return change((settings) => ({ ...settings, masterVolume }));
     },
   };
 }

@@ -2,13 +2,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
+import { createAudioOnAir } from '../../core/audioOnAir';
+import { AUDIO_FADE_MS } from '../../core/fades';
 import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { createSceneLibrary } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
-import type { OnAirState } from '../../shared/domain';
+import type { AudioMix, OnAirState } from '../../shared/domain';
 import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
@@ -25,18 +27,16 @@ describe('on-air commands', () => {
     const onAir = createOnAir();
     const broadcast: OnAirState[] = [];
     onAir.subscribe((snapshot) => broadcast.push(snapshot));
-    let audioHalts = 0;
+    const audio = createAudioOnAir();
+    const mixes: AudioMix[] = [];
+    audio.subscribe((mix) => mixes.push(mix));
     let placements = 0;
     const commands = createOnAirCommands({
       campaigns: storage.campaigns,
       library,
       scenes,
       onAir,
-      audio: {
-        halt: () => {
-          audioHalts++;
-        },
-      },
+      audio,
       newId: () => `p${++placements}`,
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
@@ -51,7 +51,8 @@ describe('on-air commands', () => {
       campaign,
       image,
       broadcast,
-      audioHalts: () => audioHalts,
+      audio,
+      mixes,
     };
   }
 
@@ -219,7 +220,6 @@ describe('on-air commands', () => {
       activeSceneId: null,
       scene: null,
     });
-    expect(ctx.audioHalts()).toBe(1);
     await ctx.commands.activateScene(scene.id);
 
     expect(await ctx.commands.openCampaign(other.id)).toMatchObject({
@@ -227,9 +227,139 @@ describe('on-air commands', () => {
       activeSceneId: null,
       scene: null,
     });
-    expect(ctx.audioHalts()).toBe(2);
     expect(await ctx.commands.closeCampaign()).toMatchObject({ campaignId: null, scene: null });
-    expect(ctx.audioHalts()).toBe(3);
+  });
+
+  describe('audio', () => {
+    /** The on-air commands with two Music Media in the library, Taverne then Bagarre. */
+    async function setupWithMusic() {
+      const ctx = await setup();
+      const tracks = await Promise.all(
+        ['Taverne', 'Bagarre'].map(async (name) => {
+          const file = path.join(dir.path, `${name}.ogg`);
+          await fs.writeFile(file, name);
+          return file;
+        }),
+      );
+      const { imported } = await ctx.library.import(ctx.campaign.id, tracks, {
+        accept: 'audio',
+        role: 'music',
+      });
+      return { ...ctx, music: imported };
+    }
+
+    /** A Scene with both Music Media listed, Taverne first. */
+    async function withMusic(ctx: Awaited<ReturnType<typeof setupWithMusic>>, name = 'Taverne') {
+      const created = await ctx.scenes.create(ctx.campaign.id, name);
+      return ctx.scenes.save({ ...created, music: ctx.music.map((m) => m.id) });
+    }
+    const voices = (mix: AudioMix | undefined) =>
+      mix?.voices.map(({ mediaId, playing }) => ({ mediaId, playing }));
+
+    it('Activating a Scene plays its first Music, fading in', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+
+      await ctx.commands.activateScene(scene.id);
+
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.activate);
+      expect(ctx.mixes).toHaveLength(1);
+    });
+
+    it('opening, switching or closing a Campaign stops audio', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      const other = await createCampaign(ctx.storage.campaigns, 'Warhammer');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      await ctx.commands.openCampaign(other.id);
+      expect(ctx.audio.mix().voices).toEqual([]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.stop);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      await ctx.commands.closeCampaign();
+      expect(ctx.audio.mix().voices).toEqual([]);
+    });
+
+    it('nothing plays in a fresh audio state, as after a restart', () => {
+      expect(createAudioOnAir().mix()).toEqual({ voices: [], fadeMs: 0, version: 0 });
+    });
+
+    it('adding Music saves it in the Scene and makes no sound, Active or not', async () => {
+      const ctx = await setupWithMusic();
+      const empty = await ctx.scenes.create(ctx.campaign.id, 'Vide');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(empty.id);
+
+      const saved = await ctx.commands.editScene(ctx.campaign.id, empty.id, {
+        kind: 'add-music',
+        mediaId: ctx.music[1].id,
+      });
+
+      expect(saved.music).toEqual([ctx.music[1].id]);
+      expect(await ctx.scenes.get(ctx.campaign.id, empty.id)).toEqual(saved);
+      expect(ctx.mixes).toEqual([]);
+    });
+
+    it('refuses to add an image or a missing Media to the Music list', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Vide');
+      const add = (mediaId: string) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, { kind: 'add-music', mediaId });
+
+      await expect(add(ctx.image.id)).rejects.toThrow(
+        'Seule une musique peut aller dans la liste des musiques.',
+      );
+      await expect(add('inconnu')).rejects.toThrow('Ce média n’existe plus.');
+    });
+
+    it('a picture edit of the Active Scene keeps the Music playing, with no new mix', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      await ctx.commands.editScene(ctx.campaign.id, scene.id, { kind: 'set-title', title: 'Nuit' });
+
+      expect(ctx.mixes).toHaveLength(1);
+    });
+
+    it('deleting the Active Scene stops its audio', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      await ctx.commands.deleteScene(ctx.campaign.id, scene.id);
+
+      expect(ctx.audio.mix().voices).toEqual([]);
+    });
+
+    it('deleting the current Music stops it on air', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.music[0].id, true);
+
+      expect(ctx.audio.mix().voices).toEqual([]);
+    });
+
+    it('the Master volume sets every level, without restarting anything', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      const mix = ctx.audio.setMasterVolume(0.25);
+
+      expect(mix.voices).toEqual([expect.objectContaining({ gain: 0.25, playing: true })]);
+      expect(mix.fadeMs).toBe(AUDIO_FADE_MS.volume);
+    });
   });
 
   it('refuses unknown Campaigns and Scenes, and Activating with no Campaign open', async () => {

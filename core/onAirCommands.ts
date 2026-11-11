@@ -1,19 +1,22 @@
 /**
  * The on-air commands the Control window gives: open or close a Campaign, Activate a Scene,
- * start or end Blackout, edit a Scene and undo or redo its edits, delete Media (which can change Scenes, so the Active Scene's picture). They
- * check that Campaigns, Scenes and Media exist, save Scene edits, and keep the on-air state
- * (core/onAir.ts) in step. No Electron dependency.
+ * start or end Blackout, edit a Scene and undo or redo its edits, delete Media (which can change
+ * Scenes, so the Active Scene's picture and sound). They check that Campaigns, Scenes and Media
+ * exist, save Scene edits, and keep the on-air state (core/onAir.ts) and its audio part
+ * (core/audioOnAir.ts) in step. No Electron dependency.
  *
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
 import type { MediaDeletion, OverlayTransform, UndoState } from '../shared/contract.js';
 import { randomUUID } from 'node:crypto';
-import type { CampaignId, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
+import type { CampaignId, Media, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
+import { audioChangeOf } from './audioMix.js';
+import type { AudioOnAir } from './audioOnAir.js';
 import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
-import { applySceneEdit, placedMedia, type SceneEdit } from './sceneEdits.js';
+import { addedMedia, applySceneEdit, type SceneEdit } from './sceneEdits.js';
 import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import { createSerialQueue } from './serialQueue.js';
 import {
@@ -24,12 +27,8 @@ import {
   type UndoHistories,
   type UndoMove,
 } from './undoHistory.js';
+import type { AudioChange } from './fades.js';
 import type { CampaignRepository } from './storage/index.js';
-
-/** Where audio plays. No audio engine yet: stopping is announced to the windows. */
-export interface AudioOutput {
-  halt(): void;
-}
 
 export interface OnAirCommands {
   /** Opens (or switches to) a Campaign: stops audio, nothing is on air. */
@@ -89,7 +88,8 @@ export function createOnAirCommands(deps: {
   library: MediaLibrary;
   scenes: SceneLibrary;
   onAir: OnAir;
-  audio: AudioOutput;
+  /** The audio part of the on-air state: what the audio engine plays. */
+  audio: AudioOnAir;
   /** Names new placements; random UUIDs unless a test gives its own. */
   newId?: () => string;
   /** The Scenes' undo histories; fresh ones unless a test gives its own (with its clock). */
@@ -104,14 +104,39 @@ export function createOnAirCommands(deps: {
     return onAirSceneOf(scene, await library.list(scene.campaignId));
   }
 
-  /** Saves a Scene and, when it is the Active Scene, puts it on air. */
-  async function saveScene(scene: Scene) {
+  /** Puts the Active Scene, as it now is, on air: its picture and its sound. */
+  async function showActive(scene: Scene, change: AudioChange) {
+    const media = await library.list(scene.campaignId);
+    onAir.showActiveScene(scene.id, onAirSceneOf(scene, media));
+    audio.showActiveScene(scene, media, change);
+  }
+
+  /** Saves a Scene and, when it is the Active Scene, puts it on air (`change`: its audio fade). */
+  async function saveScene(scene: Scene, change: AudioChange) {
     const saved = await scenes.save(scene);
     const current = onAir.current();
     if (saved.campaignId === current.campaignId && saved.id === current.activeSceneId) {
-      onAir.showActiveScene(saved.id, await picture(saved));
+      await showActive(saved, change);
     }
     return saved;
+  }
+
+  /** Throws a MediaError unless the Media an edit adds is in the library and of the right kind. */
+  function checkAdded(edit: SceneEdit, media: readonly Media[]) {
+    const added = addedMedia(edit);
+    if (!added) return;
+    const item = media.find((candidate) => candidate.id === added.mediaId);
+    if (!item) throw new MediaError('Ce média n’existe plus.');
+    switch (added.kind) {
+      case 'image':
+        if (item.kind !== 'image') throw new MediaError('Seule une image peut être placée.');
+        return;
+      case 'music':
+        if (item.kind !== 'audio' || item.role !== 'music') {
+          throw new MediaError('Seule une musique peut aller dans la liste des musiques.');
+        }
+        return;
+    }
   }
 
   /**
@@ -132,7 +157,7 @@ export function createOnAirCommands(deps: {
       histories.clear(campaignId, sceneId);
       throw new SceneError('La scène a changé entre-temps : son historique est effacé.');
     }
-    return saveScene(move.restore);
+    return saveScene(move.restore, 'undo');
   }
 
   return {
@@ -141,14 +166,14 @@ export function createOnAirCommands(deps: {
         if (!(await campaigns.get(campaignId))) {
           throw new CampaignError('Cette campagne n’existe plus.');
         }
-        audio.halt();
+        audio.clear();
         histories.clearAll();
         return onAir.openCampaign(campaignId);
       }),
 
     closeCampaign: () =>
       serialized(() => {
-        audio.halt();
+        audio.clear();
         histories.clearAll();
         return onAir.closeCampaign();
       }),
@@ -161,7 +186,9 @@ export function createOnAirCommands(deps: {
         }
         const scene = await scenes.get(campaignId, sceneId);
         if (!scene) throw new SceneError('Cette scène n’existe plus.');
-        return onAir.activateScene(scene.id, await picture(scene));
+        const media = await library.list(campaignId);
+        audio.activateScene(scene, media);
+        return onAir.activateScene(scene.id, onAirSceneOf(scene, media));
       }),
 
     setBlackout: (on) =>
@@ -177,12 +204,8 @@ export function createOnAirCommands(deps: {
         const scene = await scenes.get(campaignId, sceneId);
         if (!scene) throw new SceneError('Cette scène n’existe plus.');
         const media = await library.list(campaignId);
-        const mediaId = placedMedia(edit);
-        if (mediaId !== undefined) {
-          const placing = media.find((item) => item.id === mediaId);
-          if (placing?.kind !== 'image') throw new MediaError('Ce média n’existe plus.');
-        }
-        const saved = await saveScene(applySceneEdit(scene, edit, newId));
+        checkAdded(edit, media);
+        const saved = await saveScene(applySceneEdit(scene, edit, newId), audioChangeOf(edit));
         histories.record({
           before: scene,
           after: saved,
@@ -223,7 +246,8 @@ export function createOnAirCommands(deps: {
       serialized(async () => {
         await scenes.delete(campaignId, sceneId);
         histories.clear(campaignId, sceneId);
-        if (onAir.current().campaignId === campaignId) onAir.clearActiveScene(sceneId);
+        if (onAir.current().campaignId !== campaignId) return;
+        if (onAir.clearActiveScene(sceneId)) audio.clear();
       }),
 
     deleteMedia: (campaignId, mediaId, confirmed) =>
@@ -245,9 +269,7 @@ export function createOnAirCommands(deps: {
         await library.delete(campaignId, mediaId);
         const current = onAir.current();
         const active = cleaned.find((scene) => scene.id === current.activeSceneId);
-        if (active && current.campaignId === campaignId) {
-          onAir.showActiveScene(active.id, await picture(active));
-        }
+        if (active && current.campaignId === campaignId) await showActive(active, 'stop');
         return { deleted: true, affectedScenes: cleaned.map(summary) };
       }),
   };

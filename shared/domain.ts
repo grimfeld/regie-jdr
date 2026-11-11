@@ -239,3 +239,71 @@ export interface OnAirState {
   fadeDurationMs: number;
   version: number;
 }
+
+/**
+ * What the current Music of the Active Scene is doing. Stopped: no Music sounds, the Scene's
+ * Ambiences play on.
+ */
+export type MusicPlayback = 'playing' | 'paused' | 'stopped';
+
+/**
+ * The audio part of the on-air state, owned by the main process beside OnAirState and never
+ * sent to the Broadcast window. Never saved: cleared when a Campaign is opened, switched or
+ * closed, and after a restart. Ambience on/off comes from the Active Scene itself.
+ */
+export interface AudioOnAirState {
+  /** The current Music: an entry of the Active Scene's Music list, or null for none. */
+  music: { mediaId: MediaId; playback: MusicPlayback } | null;
+}
+
+/**
+ * One long-running sound of the mix: the current Music or a switched-on Ambience, always
+ * looping. A voice is known by its Media: a Media in both the old and the new mix keeps
+ * playing and only changes level.
+ */
+export interface AudioVoice {
+  mediaId: MediaId;
+  role: 'music' | 'ambience';
+  /** The Media's name, for the Control window's "En cours" strip. */
+  name: string;
+  /** Media address (`regie-media:`). */
+  src: string;
+  /** Target level, 0..1, Master volume included. */
+  gain: number;
+  /** False: paused, keeping its position, so it resumes where it was. */
+  playing: boolean;
+}
+
+/**
+ * The mix: every voice that should be sounding, with its target level, and how long the
+ * engine takes to get there (fading in new voices, ramping changed ones, fading out voices
+ * that left). Computed by the app core (core/audioMix.ts), applied by the audio engine in the
+ * Control window (ADR-0002). `version` increases on every change, like OnAirState's.
+ */
+export interface AudioMix {
+  voices: AudioVoice[];
+  fadeMs: number;
+  version: number;
+}
+
+/** What the audio engine says a voice is doing: what is actually sounding, not what was asked. */
+export type VoiceState = 'loading' | 'playing' | 'paused' | 'failed';
+
+/** The audio engine's report: the state of each voice it holds. */
+export interface AudioEngineReport {
+  voices: { mediaId: MediaId; state: VoiceState }[];
+}
+
+/** A voice of the mix with what the engine reports of it, for the "En cours" strip. */
+export interface SoundingVoice {
+  mediaId: MediaId;
+  role: AudioVoice['role'];
+  name: string;
+  /** Loading until the engine reports it. */
+  state: VoiceState;
+}
+
+/** What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it. */
+export interface AudioSounding {
+  voices: SoundingVoice[];
+}

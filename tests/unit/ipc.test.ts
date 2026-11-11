@@ -38,6 +38,18 @@ describe('sender policy', () => {
     }
   });
 
+  it('keeps every audio channel from the Broadcast window: it gets no audio', () => {
+    for (const [channel, args] of [
+      ['audio:get-mix', []],
+      ['audio:report', [{ voices: [] }]],
+      ['audio:get-sounding', []],
+      ['settings:set-master-volume', [{ masterVolume: 0.5 }]],
+    ] as const) {
+      expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
+      expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
+    }
+  });
+
   it('rejects messages from a window that is neither the Control nor the Broadcast window', () => {
     expect(checkInvoke('onAir:get', undefined, [])).toMatchObject({ ok: false });
   });
@@ -468,5 +480,33 @@ describe('Settings channels', () => {
     expect(checkInvoke('settings:set-fade-duration', 'control', [...args])).toMatchObject({
       ok: false,
     });
+  });
+});
+
+describe('audio payload guards', () => {
+  it('keep only the fields of an engine report and a Master volume', () => {
+    expect(
+      checkInvoke('audio:report', 'control', [
+        { voices: [{ mediaId: 'm1', state: 'playing', src: 'x' }], extra: 1 },
+      ]),
+    ).toEqual({ ok: true, payload: { voices: [{ mediaId: 'm1', state: 'playing' }] } });
+    expect(
+      checkInvoke('settings:set-master-volume', 'control', [{ masterVolume: 0.5, x: 1 }]),
+    ).toEqual({ ok: true, payload: { masterVolume: 0.5 } });
+  });
+
+  it.each([
+    [
+      'a report with an unknown state',
+      'audio:report',
+      [{ voices: [{ mediaId: 'm', state: 'x' }] }],
+    ],
+    ['a report with no voices', 'audio:report', [{}]],
+    ['two reports', 'audio:report', [{ voices: [] }, { voices: [] }]],
+    ['a Master volume above 1', 'settings:set-master-volume', [{ masterVolume: 2 }]],
+    ['a Master volume as text', 'settings:set-master-volume', [{ masterVolume: '1' }]],
+    ['an argument to get the mix', 'audio:get-mix', [{}]],
+  ] as const)('reject %s', (_case, channel, args) => {
+    expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });
 });

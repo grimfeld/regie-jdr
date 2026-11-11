@@ -6,7 +6,10 @@
  * Adding a channel: see the checklist in core/ipc.ts.
  */
 import type {
+  AudioEngineReport,
+  AudioMix,
   AudioRole,
+  AudioSounding,
   BackgroundFit,
   Campaign,
   CampaignId,
@@ -82,7 +85,12 @@ export type SceneEdit =
    */
   | { kind: 'set-label-text'; overlayId: string; text: string }
   /** Shows or hides an Overlay's Label, independently of the Overlay. */
-  | { kind: 'set-label-visible'; overlayId: string; visible: boolean };
+  | { kind: 'set-label-visible'; overlayId: string; visible: boolean }
+  /**
+   * Adds a Music Media at the end of the Scene's Music list. A Media is listed once: adding one
+   * already listed is refused.
+   */
+  | { kind: 'add-music'; mediaId: MediaId };
 
 /**
  * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
@@ -250,14 +258,24 @@ export interface InvokeChannels {
    * through the on-air state.
    */
   'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
+  /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
+  'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
+  /** The current mix, for the audio engine (on start and on every reload). */
+  'audio:get-mix': { payload: void; result: AudioMix };
+  /** The audio engine reports what is actually sounding. */
+  'audio:report': { payload: AudioEngineReport; result: void };
+  /** What is sounding, for the "En cours" strip. */
+  'audio:get-sounding': { payload: void; result: AudioSounding };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
 export interface EventChannels {
   /** Every new on-air snapshot; a window ignores one older than what it shows. */
   'onAir:changed': OnAirState;
-  /** Halt all audio now (Campaign opened, switched or closed). For the audio engine. */
-  'audio:halt': null;
+  /** Every new mix, for the audio engine; it ignores one older than what it applies. */
+  'audio:mix-changed': AudioMix;
+  /** What is sounding changed (a new mix, or an engine report), for the "En cours" strip. */
+  'audio:sounding-changed': AudioSounding;
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -286,11 +304,24 @@ export interface IpcFailure {
 /** Stops a subscription. */
 export type Unsubscribe = () => void;
 
-/** Read-only bridge of the Broadcast window: read and subscribe, nothing else. */
+/**
+ * Read-only bridge of the Broadcast window: read and subscribe, nothing else. It gets no audio
+ * data: audio plays in the Control window (ADR-0002).
+ */
 export interface BroadcastBridge {
   getOnAir(): Promise<OnAirState>;
   onOnAirChanged(listener: (snapshot: OnAirState) => void): Unsubscribe;
-  onAudioHalt(listener: () => void): Unsubscribe;
+}
+
+/**
+ * Bridge of the audio engine, which runs in the Control window (ADR-0002), exposed apart from
+ * the Control bridge (`window.regieAudio`): it can only receive the mix and report what sounds,
+ * never change Scenes or the on-air state.
+ */
+export interface AudioEngineBridge {
+  getMix(): Promise<AudioMix>;
+  onMixChanged(listener: (mix: AudioMix) => void): Unsubscribe;
+  report(report: AudioEngineReport): Promise<void>;
 }
 
 /** Full bridge of the Control window. */
@@ -338,4 +369,7 @@ export interface ControlBridge extends BroadcastBridge {
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
+  setMasterVolume(masterVolume: number): Promise<Settings>;
+  getSounding(): Promise<AudioSounding>;
+  onSoundingChanged(listener: (sounding: AudioSounding) => void): Unsubscribe;
 }

@@ -139,11 +139,17 @@ export function resizedOverlay(
   };
 }
 
-/** Whether an edit places a Media (whose existence the caller checks). */
-export function placedMedia(edit: SceneEdit): MediaId | undefined {
-  return edit.kind === 'place-background' || edit.kind === 'place-overlay'
-    ? edit.mediaId
-    : undefined;
+/**
+ * The Media an edit adds to the Scene and what that Media must be: an image for a placement,
+ * Music for the Music list. The caller checks the library (core/onAirCommands.ts).
+ */
+export function addedMedia(
+  edit: SceneEdit,
+): { mediaId: MediaId; kind: 'image' | 'music' } | undefined {
+  if (edit.kind === 'place-background' || edit.kind === 'place-overlay') {
+    return { mediaId: edit.mediaId, kind: 'image' };
+  }
+  return edit.kind === 'add-music' ? { mediaId: edit.mediaId, kind: 'music' } : undefined;
 }
 
 /**
@@ -334,6 +340,11 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         return { ...overlay, label: { ...overlay.label, visible } };
       });
     }
+    case 'add-music':
+      if (scene.music.includes(edit.mediaId)) {
+        throw new SceneError('Cette musique est déjà dans la scène.');
+      }
+      return { ...scene, music: [...scene.music, edit.mediaId] };
   }
 }
 
@@ -452,6 +463,8 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
     case 'set-label-visible':
       if (!isId(value.overlayId) || typeof value.visible !== 'boolean') return undefined;
       return { kind: 'set-label-visible', overlayId: value.overlayId, visible: value.visible };
+    case 'add-music':
+      return isId(value.mediaId) ? { kind: 'add-music', mediaId: value.mediaId } : undefined;
     default:
       return undefined;
   }

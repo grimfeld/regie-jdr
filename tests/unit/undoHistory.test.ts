@@ -199,6 +199,8 @@ describe('undo labels', () => {
     [{ kind: 'set-label-text', overlayId: 'ov', text: ' ' }, 'retirer l’étiquette (Orc)'],
     [{ kind: 'set-label-visible', overlayId: 'ov', visible: true }, 'afficher l’étiquette (Orc)'],
     [{ kind: 'set-label-visible', overlayId: 'ov', visible: false }, 'masquer l’étiquette (Orc)'],
+    [{ kind: 'add-music', mediaId: 'm-map' }, 'ajouter la musique Port'],
+    [{ kind: 'add-music', mediaId: 'unknown' }, 'ajouter la musique'],
   ];
 
   it.each(cases)('names %j "%s"', (edit, label) => {
