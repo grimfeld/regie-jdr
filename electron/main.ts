@@ -453,6 +453,8 @@ function startApp() {
         const { masterVolume } = await settingsStore.get();
         sendPadCommands(padVoices.press(await soundboards.press(campaignId, padId, masterVolume)));
       },
+      'audio:pick-music': ({ mediaId }) => commands.pickMusic(mediaId),
+      'audio:set-music-playback': ({ playback }) => commands.setMusicPlayback(playback),
     },
     roleOf,
     log,

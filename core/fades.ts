@@ -26,7 +26,7 @@ export const AUDIO_FADE_MS = {
   crossfade: 2000,
   /** Switching an Ambience on or off. */
   ambience: 1000,
-  /** Pausing or resuming the Music. */
+  /** Pausing, resuming or stopping the Music, or removing it from the Active Scene. */
   pause: 300,
   /** Silence on or off. */
   silence: 500,

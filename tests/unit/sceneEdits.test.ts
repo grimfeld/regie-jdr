@@ -5,8 +5,8 @@ import {
   MAX_OVERLAY_HEIGHT,
   MIN_OVERLAY_HEIGHT,
   nudgedPosition,
-  parseTransientEdit,
   parseSceneEdit,
+  parseTransientEdit,
   placementEdit,
   resizedOverlay,
 } from '../../core/sceneEdits';
@@ -216,6 +216,76 @@ describe('Scene Music list', () => {
   it('refuses a malformed add-music message', () => {
     expect(parseSceneEdit({ kind: 'add-music', mediaId: '' })).toBeUndefined();
     expect(parseSceneEdit({ kind: 'add-music' })).toBeUndefined();
+  });
+
+  const three = { ...empty, music: ['m1', 'm2', 'm3'] };
+
+  it('moves a Music to another place in the list, a move past the end going last', () => {
+    expect(applyAll(three, { kind: 'move-music', mediaId: 'm3', toIndex: 0 }).music).toEqual([
+      'm3',
+      'm1',
+      'm2',
+    ]);
+    expect(applyAll(three, { kind: 'move-music', mediaId: 'm1', toIndex: 1 }).music).toEqual([
+      'm2',
+      'm1',
+      'm3',
+    ]);
+    expect(applyAll(three, { kind: 'move-music', mediaId: 'm1', toIndex: 9 }).music).toEqual([
+      'm2',
+      'm3',
+      'm1',
+    ]);
+  });
+
+  it('removes a Music, leaving the others in order', () => {
+    expect(applyAll(three, { kind: 'remove-music', mediaId: 'm2' }).music).toEqual(['m1', 'm3']);
+  });
+
+  it('refuses to move or remove a Music that is not listed, in French', () => {
+    for (const edit of [
+      { kind: 'move-music', mediaId: 'm9', toIndex: 0 },
+      { kind: 'remove-music', mediaId: 'm9' },
+    ] as const) {
+      expect(() => applyAll(three, edit)).toThrow('Cette musique n’est plus dans la scène.');
+    }
+  });
+
+  it('sets the Scene Music level, leaving the Ambience level', () => {
+    const quiet = applyAll(
+      { ...empty, volumes: { music: 1, ambience: 0.7 } },
+      { kind: 'set-music-level', level: 0.25 },
+    );
+    expect(quiet.volumes).toEqual({ music: 0.25, ambience: 0.7 });
+  });
+
+  it.each([
+    ['a move to no place', { kind: 'move-music', mediaId: 'm1', toIndex: -1 }],
+    ['a move to half a place', { kind: 'move-music', mediaId: 'm1', toIndex: 0.5 }],
+    ['a move of no Music', { kind: 'move-music', toIndex: 0 }],
+    ['a removal of no Music', { kind: 'remove-music', mediaId: '' }],
+    ['a level above 1', { kind: 'set-music-level', level: 1.5 }],
+    ['a level below 0', { kind: 'set-music-level', level: -0.1 }],
+    ['a level as text', { kind: 'set-music-level', level: '0.5' }],
+    ['no level', { kind: 'set-music-level', level: NaN }],
+  ])('refuses %s', (_case, value) => {
+    expect(parseSceneEdit(value)).toBeUndefined();
+  });
+
+  it('keeps only the fields of Music edits from a window message', () => {
+    expect(parseSceneEdit({ kind: 'move-music', mediaId: 'm1', toIndex: 2, x: 1 })).toEqual({
+      kind: 'move-music',
+      mediaId: 'm1',
+      toIndex: 2,
+    });
+    expect(parseSceneEdit({ kind: 'remove-music', mediaId: 'm1', toIndex: 2 })).toEqual({
+      kind: 'remove-music',
+      mediaId: 'm1',
+    });
+    expect(parseSceneEdit({ kind: 'set-music-level', level: 0, mediaId: 'm1' })).toEqual({
+      kind: 'set-music-level',
+      level: 0,
+    });
   });
 });
 
@@ -621,19 +691,24 @@ describe('Scene edit commands from a window message', () => {
     expect(parseSceneEdit(value)).toBeUndefined();
   });
 
-  it('accept only a transform or a framing as a transient update of a live drag', () => {
+  it('accept only a transform, a framing or a Music level as a transient update', () => {
     const move = { kind: 'transform-overlay', placementId: 'p1', position: { x: 0.2, y: 0.3 } };
     expect(parseTransientEdit({ ...move, extra: 1 })).toEqual(move);
     const resize = { ...move, height: 0.2 };
     expect(parseTransientEdit(resize)).toEqual(resize);
     const framing = { kind: 'frame-background', placementId: 'b1', zoom: 2, focus: { x: 0.3 } };
     expect(parseTransientEdit({ ...framing, extra: 1 })).toEqual(framing);
+    expect(parseTransientEdit({ kind: 'set-music-level', level: 0.5 })).toEqual({
+      kind: 'set-music-level',
+      level: 0.5,
+    });
     expect(
       parseTransientEdit({ kind: 'set-visible', placementId: 'p1', visible: true }),
     ).toBeUndefined();
     expect(
       parseTransientEdit({ kind: 'move-overlay', placementId: 'p1', toIndex: 0 }),
     ).toBeUndefined();
+    expect(parseTransientEdit({ kind: 'remove-music', mediaId: 'm1' })).toBeUndefined();
   });
 });
 

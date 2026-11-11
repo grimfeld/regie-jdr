@@ -44,6 +44,8 @@ describe('sender policy', () => {
       ['audio:report', [{ voices: [] }]],
       ['audio:get-sounding', []],
       ['settings:set-master-volume', [{ masterVolume: 0.5 }]],
+      ['audio:pick-music', [{ mediaId: 'm1' }]],
+      ['audio:set-music-playback', [{ playback: 'paused' }]],
     ] as const) {
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -357,6 +359,11 @@ describe('Scene channels', () => {
       ok: true,
       payload: framing,
     });
+    const level = { ...transient, edit: { kind: 'set-music-level', level: 0.5 } };
+    expect(checkInvoke('scenes:show-transient', 'control', [level])).toEqual({
+      ok: true,
+      payload: level,
+    });
   });
 
   it('accept an edit command, keeping only contract fields', () => {
@@ -492,6 +499,19 @@ describe('Settings channels', () => {
 });
 
 describe('audio payload guards', () => {
+  it('keep only the fields of a Music pick and a Music playback', () => {
+    expect(checkInvoke('audio:pick-music', 'control', [{ mediaId: 'm1', toIndex: 0 }])).toEqual({
+      ok: true,
+      payload: { mediaId: 'm1' },
+    });
+    for (const playback of ['playing', 'paused', 'stopped']) {
+      expect(checkInvoke('audio:set-music-playback', 'control', [{ playback, x: 1 }])).toEqual({
+        ok: true,
+        payload: { playback },
+      });
+    }
+  });
+
   it('keep only the fields of an engine report and a Master volume', () => {
     expect(
       checkInvoke('audio:report', 'control', [
@@ -514,6 +534,10 @@ describe('audio payload guards', () => {
     ['a Master volume above 1', 'settings:set-master-volume', [{ masterVolume: 2 }]],
     ['a Master volume as text', 'settings:set-master-volume', [{ masterVolume: '1' }]],
     ['an argument to get the mix', 'audio:get-mix', [{}]],
+    ['a pick of no Music', 'audio:pick-music', [{ mediaId: '' }]],
+    ['a pick of a number', 'audio:pick-music', [{ mediaId: 1 }]],
+    ['an unknown playback', 'audio:set-music-playback', [{ playback: 'louder' }]],
+    ['no playback', 'audio:set-music-playback', [{}]],
   ] as const)('reject %s', (_case, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });

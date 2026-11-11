@@ -27,6 +27,7 @@ import type {
   CampaignId,
   ImageCategory,
   MediaId,
+  MusicPlayback,
   PadReport,
   SceneId,
   ThemeId,
@@ -131,6 +132,20 @@ function masterVolumeOf(value: unknown): Parsed<{ masterVolume: number }> {
 
 function engineReport(value: unknown): Parsed<AudioEngineReport> {
   return parseAudioEngineReport(value) ?? INVALID;
+}
+
+function musicPick(value: unknown): Parsed<{ mediaId: MediaId }> {
+  if (!isRecord(value)) return INVALID;
+  const { mediaId } = value;
+  return typeof mediaId === 'string' && mediaId !== '' ? { mediaId } : INVALID;
+}
+
+const MUSIC_PLAYBACKS: readonly MusicPlayback[] = ['playing', 'paused', 'stopped'];
+
+function musicPlayback(value: unknown): Parsed<{ playback: MusicPlayback }> {
+  if (!isRecord(value)) return INVALID;
+  const playback = MUSIC_PLAYBACKS.find((known) => known === value.playback);
+  return playback === undefined ? INVALID : { playback };
 }
 
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
@@ -315,6 +330,8 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'soundboard:get': { from: controlOnly, parse: onePayload(campaignOf) },
   'soundboard:edit': { from: controlOnly, parse: onePayload(soundboardEdit) },
   'soundboard:press': { from: controlOnly, parse: onePayload(padPress) },
+  'audio:pick-music': { from: controlOnly, parse: onePayload(musicPick) },
+  'audio:set-music-playback': { from: controlOnly, parse: onePayload(musicPlayback) },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {

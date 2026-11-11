@@ -90,6 +90,8 @@ const bridge: ControlBridge = {
   getSoundboard: (campaignId) => invoke('soundboard:get', { campaignId }),
   editSoundboard: (campaignId, edit) => invoke('soundboard:edit', { campaignId, edit }),
   pressPad: (campaignId, padId) => invoke('soundboard:press', { campaignId, padId }),
+  pickMusic: (mediaId) => invoke('audio:pick-music', { mediaId }),
+  setMusicPlayback: (playback) => invoke('audio:set-music-playback', { playback }),
 };
 
 // The audio engine's bridge: tests/unit/bridges.test.ts checks it calls nothing else.

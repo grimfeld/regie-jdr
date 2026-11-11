@@ -184,6 +184,12 @@ export function undoLabel(
       return `régler le volume de l’ambiance ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
     case 'set-ambience-level':
       return 'régler le niveau des ambiances';
+    case 'move-music':
+      return `réordonner la musique ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'remove-music':
+      return `retirer la musique ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'set-music-level':
+      return 'régler le niveau des musiques';
   }
 }
 

@@ -368,6 +368,185 @@ describe('on-air commands', () => {
       expect(mix.voices).toEqual([expect.objectContaining({ gain: 0.25, playing: true })]);
       expect(mix.fadeMs).toBe(AUDIO_FADE_MS.volume);
     });
+
+    /** The Campaign open and a Scene with both Music Media Active, Taverne playing. */
+    async function playing(ctx: Awaited<ReturnType<typeof setupWithMusic>>) {
+      const scene = await withMusic(ctx);
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      return scene;
+    }
+
+    it('picking a track crossfades to it in 2 s, without saving it into the Scene', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await playing(ctx);
+
+      await ctx.commands.pickMusic(ctx.music[1].id);
+
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[1].id, playing: true }]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.crossfade);
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: null,
+        redo: null,
+      });
+      // The next Activate starts from the first Music again.
+      await ctx.commands.activateScene(scene.id);
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+    });
+
+    it('refuses a pick with no Active Scene or of a Music not in its list', async () => {
+      const ctx = await setupWithMusic();
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await expect(ctx.commands.pickMusic(ctx.music[0].id)).rejects.toThrow(
+        'Activez une scène pour choisir sa musique.',
+      );
+      const other = await ctx.scenes.create(ctx.campaign.id, 'Vide');
+      await ctx.commands.activateScene(other.id);
+      await expect(ctx.commands.pickMusic(ctx.music[0].id)).rejects.toThrow(
+        'Cette musique n’est pas dans la scène active.',
+      );
+      expect(ctx.mixes).toEqual([]);
+    });
+
+    it('pause keeps the Music in the mix, not playing; resume plays it again (0.3 s)', async () => {
+      const ctx = await setupWithMusic();
+      await playing(ctx);
+
+      await ctx.commands.setMusicPlayback('paused');
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: false }]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.pause);
+
+      await ctx.commands.setMusicPlayback('playing');
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.pause);
+    });
+
+    it('stop leaves only the Ambiences; play then starts the same track over', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await withMusic(ctx);
+      const rain = path.join(dir.path, 'Pluie.ogg');
+      await fs.writeFile(rain, 'Pluie');
+      const [ambience] = (
+        await ctx.library.import(ctx.campaign.id, [rain], { accept: 'audio', role: 'ambience' })
+      ).imported;
+      await ctx.scenes.save({
+        ...scene,
+        ambiences: [{ mediaId: ambience.id, on: true, volume: 1 }],
+      });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      await ctx.commands.pickMusic(ctx.music[1].id);
+
+      await ctx.commands.setMusicPlayback('stopped');
+      expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ambience.id, playing: true }]);
+
+      await ctx.commands.setMusicPlayback('playing');
+      expect(voices(ctx.audio.mix())).toEqual([
+        { mediaId: ctx.music[1].id, playing: true },
+        { mediaId: ambience.id, playing: true },
+      ]);
+    });
+
+    it('the Scene Music level is saved and ramped, an undo step of its own', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await playing(ctx);
+
+      const saved = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'set-music-level',
+        level: 0.5,
+      });
+
+      expect(saved.volumes.music).toBe(0.5);
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.volumes.music).toBe(0.5);
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 0.5 })]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.volume);
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: 'régler le niveau des musiques',
+        redo: null,
+      });
+
+      await ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id);
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 1 })]);
+    });
+
+    it('a Music level drag is heard on the Active Scene but neither saved nor undoable', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await playing(ctx);
+      const broadcast = ctx.broadcast.length;
+
+      for (const level of [0.8, 0.6, 0.4]) {
+        await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+          kind: 'set-music-level',
+          level,
+        });
+      }
+
+      expect(ctx.audio.mix().voices).toEqual([expect.objectContaining({ gain: 0.4 })]);
+      expect(ctx.broadcast).toHaveLength(broadcast);
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
+      expect((await ctx.commands.undoState(ctx.campaign.id, scene.id)).undo).toBeNull();
+
+      // The drag's end: one step.
+      await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'set-music-level',
+        level: 0.4,
+      });
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: 'régler le niveau des musiques',
+        redo: null,
+      });
+    });
+
+    it('reorder and remove are saved and undoable; removing the current Music stops it', async () => {
+      const ctx = await setupWithMusic();
+      const scene = await playing(ctx);
+      const [taverne, bagarre] = ctx.music.map((m) => m.id);
+
+      const moved = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'move-music',
+        mediaId: bagarre,
+        toIndex: 0,
+      });
+      expect(moved.music).toEqual([bagarre, taverne]);
+      // Reordering changes nothing heard.
+      expect(ctx.mixes).toHaveLength(1);
+
+      const removed = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+        kind: 'remove-music',
+        mediaId: taverne,
+      });
+      expect(removed.music).toEqual([bagarre]);
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(removed);
+      expect(ctx.audio.mix().voices).toEqual([]);
+      expect(ctx.audio.mix().fadeMs).toBe(AUDIO_FADE_MS.pause);
+
+      await ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id);
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.music).toEqual([bagarre, taverne]);
+      await ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id);
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.music).toEqual([taverne, bagarre]);
+    });
+
+    it('Music edits on a Scene that is not active make no sound', async () => {
+      const ctx = await setupWithMusic();
+      await playing(ctx);
+      const other = await withMusic(ctx, 'Forêt');
+
+      for (const edit of [
+        { kind: 'set-music-level', level: 0.2 },
+        { kind: 'move-music', mediaId: ctx.music[1].id, toIndex: 0 },
+        { kind: 'remove-music', mediaId: ctx.music[0].id },
+      ] as const) {
+        await ctx.commands.editScene(ctx.campaign.id, other.id, edit);
+      }
+      await ctx.commands.showTransientEdit(ctx.campaign.id, other.id, {
+        kind: 'set-music-level',
+        level: 0.9,
+      });
+
+      expect(ctx.mixes).toHaveLength(1);
+      expect((await ctx.scenes.get(ctx.campaign.id, other.id))?.music).toEqual([ctx.music[1].id]);
+    });
   });
 
   it('refuses unknown Campaigns and Scenes, and Activating with no Campaign open', async () => {

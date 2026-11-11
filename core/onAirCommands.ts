@@ -10,7 +10,15 @@
  */
 import type { MediaDeletion, TransientEdit, UndoState } from '../shared/contract.js';
 import { randomUUID } from 'node:crypto';
-import type { CampaignId, Media, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
+import type {
+  CampaignId,
+  Media,
+  MediaId,
+  MusicPlayback,
+  OnAirState,
+  Scene,
+  SceneId,
+} from '../shared/domain.js';
 import { audioChangeOf } from './audioMix.js';
 import type { AudioOnAir } from './audioOnAir.js';
 import { CampaignError } from './campaigns.js';
@@ -51,12 +59,19 @@ export interface OnAirCommands {
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   /**
    * Shows a transient update of a live drag (a move or resize of an Overlay, a framing slider
-   * of a Background): on the Active Scene, the broadcast shows the saved Scene with `edit`
-   * applied; nothing is saved and no undo step is recorded. On any other Scene it does
-   * nothing. The drag ends with the same edit through `editScene`, which saves it as one step;
-   * if that fails, the Scene as saved goes back on air.
+   * of a Background, a Music level slider): on the Active Scene, the broadcast shows (or the
+   * mix plays) the saved Scene with `edit` applied; nothing is saved and no undo step is
+   * recorded. On any other Scene it does nothing. The drag ends with the same edit through
+   * `editScene`, which saves it as one step; if that fails, the Scene as saved goes back on air.
    */
   showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
+  /**
+   * Crossfades to a Music of the Active Scene's list. Live playback: the Scene is not saved and
+   * no undo step is recorded, so the next Activate starts from its first Music.
+   */
+  pickMusic(mediaId: MediaId): Promise<void>;
+  /** Plays, pauses or stops the Active Scene's current Music; live playback, like `pickMusic`. */
+  setMusicPlayback(playback: MusicPlayback): Promise<void>;
   /** What can be undone and redone on a Scene: the labels of its next undo and redo. */
   undoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   /**
@@ -250,7 +265,26 @@ export function createOnAirCommands(deps: {
         if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
         const scene = await scenes.get(campaignId, sceneId);
         if (!scene) throw new SceneError('Cette scène n’existe plus.');
-        onAir.showActiveScene(sceneId, await picture(applySceneEdit(scene, edit, newId)));
+        const shown = applySceneEdit(scene, edit, newId);
+        switch (edit.kind) {
+          case 'transform-overlay':
+          case 'frame-background':
+            onAir.showActiveScene(sceneId, await picture(shown));
+            return;
+          case 'set-music-level':
+            audio.showActiveScene(shown, await library.list(campaignId), 'volume');
+            return;
+        }
+      }),
+
+    pickMusic: (mediaId) =>
+      serialized(() => {
+        audio.pickMusic(mediaId);
+      }),
+
+    setMusicPlayback: (playback) =>
+      serialized(() => {
+        audio.setMusicPlayback(playback);
       }),
 
     undoState: (campaignId, sceneId) => serialized(() => histories.state(campaignId, sceneId)),

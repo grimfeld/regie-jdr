@@ -162,6 +162,9 @@ describe('undo labels', () => {
       'régler le volume de l’ambiance Port',
     ],
     [{ kind: 'set-ambience-level', level: 0.5 }, 'régler le niveau des ambiances'],
+    [{ kind: 'move-music', mediaId: 'm-map', toIndex: 0 }, 'réordonner la musique Port'],
+    [{ kind: 'remove-music', mediaId: 'm-map' }, 'retirer la musique Port'],
+    [{ kind: 'set-music-level', level: 0.5 }, 'régler le niveau des musiques'],
   ];
 
   it.each(cases)('names %j "%s"', (edit, label) => {

@@ -5,7 +5,9 @@ import {
   latestMix,
   mixOf,
   musicAfterEdit,
+  musicWithPlayback,
   parseAudioEngineReport,
+  pickedMusic,
   soundingOf,
 } from '../../core/audioMix';
 import { AUDIO_FADE_MS } from '../../core/fades';
@@ -169,12 +171,71 @@ describe('the current Music', () => {
     expect(musicAfterEdit(scene({ music: ['m1'] }), current)).toBeNull();
     expect(musicAfterEdit(scene(), null)).toBeNull();
   });
+
+  it('picking a track of the Active Scene plays it, whatever played before', () => {
+    expect(pickedMusic(scene(), 'm2')).toEqual({ mediaId: 'm2', playback: 'playing' });
+  });
+
+  it('refuses a pick with no Active Scene or of a Music not in its list, in French', () => {
+    expect(() => pickedMusic(null, 'm1')).toThrow('Activez une scène pour choisir sa musique.');
+    expect(() => pickedMusic(scene({ music: ['m1'] }), 'm2')).toThrow(
+      'Cette musique n’est pas dans la scène active.',
+    );
+  });
+
+  it('pauses, resumes and stops the current Music, keeping which one it is', () => {
+    const current = { mediaId: 'm2', playback: 'playing' as const };
+    for (const playback of ['paused', 'playing', 'stopped'] as const) {
+      expect(musicWithPlayback(scene(), current, playback)).toEqual({ mediaId: 'm2', playback });
+    }
+  });
+
+  it('play with no current Music starts the first; pause or stop leaves none', () => {
+    expect(musicWithPlayback(scene(), null, 'playing')).toEqual({
+      mediaId: 'm1',
+      playback: 'playing',
+    });
+    expect(musicWithPlayback(scene(), null, 'paused')).toBeNull();
+    expect(musicWithPlayback(scene(), null, 'stopped')).toBeNull();
+    expect(() => musicWithPlayback(scene({ music: [] }), null, 'playing')).toThrow(
+      'La scène active n’a pas de musique.',
+    );
+    expect(() => musicWithPlayback(null, null, 'playing')).toThrow(
+      'Activez une scène pour lancer sa musique.',
+    );
+  });
+});
+
+describe('a crossfade between two tracks', () => {
+  const input = {
+    scene: scene({ volumes: { music: 0.5, ambience: 1 } }),
+    library,
+    masterVolume: 1,
+  };
+  const before = mixOf({ ...input, audio: playingM1 }, 'activate');
+  const after = mixOf(
+    { ...input, audio: { music: { mediaId: 'm2', playback: 'playing' } } },
+    'crossfade',
+  );
+
+  it('drops the old track and brings the new one in at the same level, over 2 s', () => {
+    expect(before.voices.map(({ mediaId, gain }) => ({ mediaId, gain }))).toEqual([
+      { mediaId: 'm1', gain: 0.5 },
+    ]);
+    expect(after.voices.map(({ mediaId, gain }) => ({ mediaId, gain }))).toEqual([
+      { mediaId: 'm2', gain: 0.5 },
+    ]);
+    expect(after.fadeMs).toBe(2000);
+  });
 });
 
 describe('fades of a Scene edit', () => {
-  it('adding Music takes a short ramp; picture edits change nothing that is heard', () => {
+  it('a Music level or list change takes a short ramp; removing the current Music fades it', () => {
     const edits: [SceneEdit, string][] = [
       [{ kind: 'add-music', mediaId: 'm1' }, 'volume'],
+      [{ kind: 'move-music', mediaId: 'm1', toIndex: 1 }, 'volume'],
+      [{ kind: 'set-music-level', level: 0.5 }, 'volume'],
+      [{ kind: 'remove-music', mediaId: 'm1' }, 'pause'],
       [{ kind: 'rename', name: 'x' }, 'volume'],
     ];
     for (const [edit, change] of edits) expect(audioChangeOf(edit)).toBe(change);

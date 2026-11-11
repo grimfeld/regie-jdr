@@ -16,6 +16,7 @@ import type {
   ImageCategory,
   Media,
   MediaId,
+  MusicPlayback,
   NormalizedPoint,
   OnAirState,
   PadCommand,
@@ -95,6 +96,15 @@ export type SceneEdit =
    */
   | { kind: 'add-music'; mediaId: MediaId }
   /**
+   * Moves a Music to `toIndex` in the Scene's Music list (0 is the first, which plays on
+   * Activate; past the end goes last).
+   */
+  | { kind: 'move-music'; mediaId: MediaId; toIndex: number }
+  /** Removes a Music from the Scene's Music list; if it was sounding, it stops. */
+  | { kind: 'remove-music'; mediaId: MediaId }
+  /** Sets the Scene's Music level (0..1). */
+  | { kind: 'set-music-level'; level: number }
+  /**
    * Adds an Ambience Media at the end of the Scene's Ambiences, switched off at full volume, so
    * adding one never makes a sound. A Media is listed once: adding one already listed is refused.
    */
@@ -134,11 +144,15 @@ export type OverlayTransform = Extract<SceneEdit, { kind: 'transform-overlay' }>
 /** A Background's zoom or focal point being chosen with a slider: shown and sent like a drag. */
 export type BackgroundFraming = Extract<SceneEdit, { kind: 'frame-background' }>;
 
+/** A Scene's Music level being dragged: heard on the Active Scene, never saved. */
+export type MusicLevel = Extract<SceneEdit, { kind: 'set-music-level' }>;
+
 /**
- * A transient update of a live drag (an Overlay moved or resized, a framing slider dragged):
- * shown on air on the Active Scene, never saved.
+ * A transient update of a live drag (an Overlay moved or resized, a framing or level slider
+ * dragged): shown or heard on the Active Scene, never saved nor undoable. The drag's end is
+ * sent as the same edit through `scenes:edit`, one undo step.
  */
-export type TransientEdit = OverlayTransform | BackgroundFraming;
+export type TransientEdit = OverlayTransform | BackgroundFraming | MusicLevel;
 
 /**
  * What can be undone and redone on a Scene: the French label of the next undo and of the next
@@ -206,8 +220,8 @@ export interface InvokeChannels {
     result: Scene;
   };
   /**
-   * Show a transient update of a live drag: on the Active Scene, the broadcast shows the Scene
-   * with `edit` applied, without saving it (nor adding an undo step); on any other Scene it does
+   * Show a transient update of a live drag: on the Active Scene, the broadcast shows (or the
+   * mix plays) the Scene with `edit` applied, without saving it (nor adding an undo step); on any other Scene it does
    * nothing. The window sends at most one per animation frame, then commits the drag's end
    * with `scenes:edit`.
    */
@@ -325,6 +339,16 @@ export interface InvokeChannels {
   'soundboard:press': { payload: { campaignId: CampaignId; padId: string }; result: void };
   /** What is sounding, for the "En cours" strip. */
   'audio:get-sounding': { payload: void; result: AudioSounding };
+  /**
+   * Crossfade to a Music of the Active Scene's list, playing. Live playback: not saved into the
+   * Scene, not undoable. Fails with no Active Scene or a Music not in its list.
+   */
+  'audio:pick-music': { payload: { mediaId: MediaId }; result: void };
+  /**
+   * Play, pause (keeping its position) or stop the current Music of the Active Scene; playing
+   * with no current Music starts its first. Live playback, like `audio:pick-music`.
+   */
+  'audio:set-music-playback': { payload: { playback: MusicPlayback }; result: void };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -434,4 +458,6 @@ export interface ControlBridge extends BroadcastBridge {
   editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   pressPad(campaignId: CampaignId, padId: string): Promise<void>;
   onSoundingChanged(listener: (sounding: AudioSounding) => void): Unsubscribe;
+  pickMusic(mediaId: MediaId): Promise<void>;
+  setMusicPlayback(playback: MusicPlayback): Promise<void>;
 }

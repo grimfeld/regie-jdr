@@ -5,8 +5,8 @@
  * actually sounds.
  *
  * Where later slices plug in (spec #33):
- * - #36 Music controls: new AudioOnAirState changes (pick, pause, stop) and their AudioChange;
- *   `mixOf` already plays, pauses and drops the current Music.
+ * - #36 Music controls (done): `pickedMusic` and `musicWithPlayback` change the current Music;
+ *   `mixOf` plays, pauses and drops it.
  * - #37 Ambiences: `mixOf` already plays switched-on Ambiences; new SceneEdits get their
  *   AudioChange in `audioChangeOf`.
  * - #38 Activate continuity: voices are known by Media, so a Media in both mixes keeps playing.
@@ -24,12 +24,14 @@ import type {
   AudioVoice,
   Media,
   MediaId,
+  MusicPlayback,
   Scene,
   VoiceState,
 } from '../shared/domain.js';
 import { AUDIO_FADE_MS, type AudioChange } from './fades.js';
 import { isRecord } from './guards.js';
 import { mediaAddress } from './mediaAddress.js';
+import { SceneError } from './sceneEdits.js';
 
 /** The Master volume setting: its default and its bounds. */
 export const MASTER_VOLUME = { default: 1, min: 0, max: 1 } as const;
@@ -100,11 +102,48 @@ export function musicAfterEdit(
   return music && scene.music.includes(music.mediaId) ? music : null;
 }
 
+/**
+ * The current Music once the Game Master picks `mediaId` in the Active Scene's Music list: it
+ * plays (crossfading from the one before). Live playback, never saved into the Scene. Throws a
+ * SceneError with no Active Scene or a Music not in its list.
+ */
+export function pickedMusic(scene: Scene | null, mediaId: MediaId): AudioOnAirState['music'] {
+  if (!scene) throw new SceneError('Activez une scène pour choisir sa musique.');
+  if (!scene.music.includes(mediaId)) {
+    throw new SceneError('Cette musique n’est pas dans la scène active.');
+  }
+  return { mediaId, playback: 'playing' };
+}
+
+/**
+ * The current Music once played, paused or stopped. Pausing keeps its position (the engine
+ * holds it); stopping drops it from the mix, so playing it again starts it over. Playing with
+ * no current Music starts the Scene's first; pausing or stopping it changes nothing.
+ */
+export function musicWithPlayback(
+  scene: Scene | null,
+  music: AudioOnAirState['music'],
+  playback: MusicPlayback,
+): AudioOnAirState['music'] {
+  if (!scene) throw new SceneError('Activez une scène pour lancer sa musique.');
+  if (music) return { ...music, playback };
+  if (playback !== 'playing') return null;
+  const first = activatedMusic(scene);
+  if (!first) throw new SceneError('La scène active n’a pas de musique.');
+  return first;
+}
+
 /** How a Scene edit on the Active Scene changes what is heard (its fade, AUDIO_FADE_MS). */
 export function audioChangeOf(edit: SceneEdit): AudioChange {
   switch (edit.kind) {
-    // Adding Music does not start it: the mix changes only if it was the current Music.
+    // Adding or moving Music does not start it: the current Music plays on as it was.
     case 'add-music':
+    case 'move-music':
+      return 'volume';
+    // Removing the current Music stops it, as the stop button would.
+    case 'remove-music':
+      return 'pause';
+    case 'set-music-level':
       return 'volume';
     // A new Ambience starts off: nothing heard changes.
     case 'add-ambience':

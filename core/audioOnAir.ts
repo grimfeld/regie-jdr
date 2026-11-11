@@ -7,8 +7,16 @@
  * volume comes from Settings. Every change to what should sound gives a new mix with a higher
  * version; a change that alters nothing heard (a picture edit) gives none.
  */
-import type { AudioMix, Media, Scene } from '../shared/domain.js';
-import { activatedMusic, MASTER_VOLUME, mixOf, musicAfterEdit, type MixInput } from './audioMix.js';
+import type { AudioMix, Media, MediaId, MusicPlayback, Scene } from '../shared/domain.js';
+import {
+  activatedMusic,
+  MASTER_VOLUME,
+  mixOf,
+  musicAfterEdit,
+  musicWithPlayback,
+  pickedMusic,
+  type MixInput,
+} from './audioMix.js';
 import type { AudioChange } from './fades.js';
 
 export interface AudioOnAir {
@@ -21,6 +29,14 @@ export interface AudioOnAir {
    * the current Music stays while still in its Music list. `change` sets the fade.
    */
   showActiveScene(scene: Scene, library: readonly Media[], change: AudioChange): AudioMix;
+  /**
+   * The Game Master picks a Music of the Active Scene's list: it crossfades in, playing. Never
+   * saved into the Scene: the next Activate starts from its first Music again. Throws a
+   * SceneError with no Active Scene or a Music not in its list.
+   */
+  pickMusic(mediaId: MediaId): AudioMix;
+  /** Plays, pauses (keeping its position) or stops the current Music (see musicWithPlayback). */
+  setMusicPlayback(playback: MusicPlayback): AudioMix;
   /** Nothing plays: a Campaign opened, switched or closed, or the Active Scene deleted. */
   clear(): AudioMix;
   /** The Master volume (Settings, already checked). */
@@ -58,6 +74,16 @@ export function createAudioOnAir(): AudioOnAir {
       change(
         { ...input, scene, library, audio: { music: musicAfterEdit(scene, input.audio.music) } },
         kind,
+      ),
+    pickMusic: (mediaId) => {
+      const music = pickedMusic(input.scene, mediaId);
+      const same = input.audio.music?.mediaId === mediaId;
+      return change({ ...input, audio: { music } }, same ? 'pause' : 'crossfade');
+    },
+    setMusicPlayback: (playback) =>
+      change(
+        { ...input, audio: { music: musicWithPlayback(input.scene, input.audio.music, playback) } },
+        'pause',
       ),
     clear: () => change({ ...input, scene: null, library: [], audio: { music: null } }, 'stop'),
     setMasterVolume: (masterVolume) => change({ ...input, masterVolume }, 'volume'),

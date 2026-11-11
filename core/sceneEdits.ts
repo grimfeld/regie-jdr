@@ -348,6 +348,15 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         throw new SceneError('Cette musique est déjà dans la scène.');
       }
       return { ...scene, music: [...scene.music, edit.mediaId] };
+    case 'move-music': {
+      const music = withoutMusic(scene, edit.mediaId);
+      music.splice(Math.min(edit.toIndex, music.length), 0, edit.mediaId);
+      return { ...scene, music };
+    }
+    case 'remove-music':
+      return { ...scene, music: withoutMusic(scene, edit.mediaId) };
+    case 'set-music-level':
+      return { ...scene, volumes: { ...scene.volumes, music: edit.level } };
     case 'add-ambience':
       if (scene.ambiences.some((item) => item.mediaId === edit.mediaId)) {
         throw new SceneError('Cette ambiance est déjà dans la scène.');
@@ -391,6 +400,14 @@ function withAmbience(
   };
 }
 
+/** The Scene's Music list without `mediaId`; a SceneError when it is not listed. */
+function withoutMusic(scene: Scene, mediaId: MediaId): MediaId[] {
+  if (!scene.music.includes(mediaId)) {
+    throw new SceneError('Cette musique n’est plus dans la scène.');
+  }
+  return scene.music.filter((item) => item !== mediaId);
+}
+
 function isId(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
 }
@@ -415,12 +432,16 @@ function isOverlayHeight(value: unknown): value is number {
 }
 
 /**
- * A transient update of a live drag from untrusted data: a transform of an Overlay or a
- * framing of a Background, keeping only its fields; or undefined.
+ * A transient update of a live drag from untrusted data: a transform of an Overlay, a framing
+ * of a Background or a Scene's Music level, keeping only its fields; or undefined.
  */
 export function parseTransientEdit(value: unknown): TransientEdit | undefined {
   const edit = parseSceneEdit(value);
-  return edit?.kind === 'transform-overlay' || edit?.kind === 'frame-background' ? edit : undefined;
+  const transient =
+    edit?.kind === 'transform-overlay' ||
+    edit?.kind === 'frame-background' ||
+    edit?.kind === 'set-music-level';
+  return transient ? edit : undefined;
 }
 
 /** A SceneEdit from untrusted data (a window message), keeping only its fields; or undefined. */
@@ -519,6 +540,16 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
       return { kind: 'set-ambience-volume', mediaId: value.mediaId, volume: value.volume };
     case 'set-ambience-level':
       return isUnit(value.level) ? { kind: 'set-ambience-level', level: value.level } : undefined;
+    case 'move-music': {
+      const { mediaId, toIndex } = value;
+      if (!isId(mediaId) || typeof toIndex !== 'number') return undefined;
+      if (!Number.isSafeInteger(toIndex) || toIndex < 0) return undefined;
+      return { kind: 'move-music', mediaId, toIndex };
+    }
+    case 'remove-music':
+      return isId(value.mediaId) ? { kind: 'remove-music', mediaId: value.mediaId } : undefined;
+    case 'set-music-level':
+      return isUnit(value.level) ? { kind: 'set-music-level', level: value.level } : undefined;
     default:
       return undefined;
   }
