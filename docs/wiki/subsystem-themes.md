@@ -29,3 +29,9 @@
 - Crimson, gold, parchment; crimson banner and gold lozenge diaper on the window frame only; gold double rule under the title bar; crimson-and-gold panel top rules; shield brand mark; square corners; dark-gold native controls. CSS only. No animation. Body text Arial. Theme file also styles `.topbar`, `.brand-mark`, `.panel`, headings, scoped to `[data-theme='imperium']`.
 - Font: Cinzel (The Cinzel Project Authors), SIL OFL 1.1, no Reserved Font Name; variable woff2 400–900 Latin from `@fontsource-variable/cinzel` 5.3.0 (`src/themes/fonts/cinzel-latin-wght.woff2`).
 - Test `tests/app/imperium-theme.spec.ts`. All three finished themes now merged.
+## Theme picker (#65, 2026-11-12, `ddf905b`)
+
+- Supersedes the #65 hook above. `src/ThemePicker.tsx` replaces the home select and the Campaign swatches: cards with a sample window carrying `data-theme`; click applies at once. `--swatch-dark/light` deleted. Home picker in a "Thème de l’accueil" panel under the Campaign list (cards don't fit the top bar).
+- New Campaigns take the home theme: `createCampaignInHomeTheme` (`core/campaigns.ts`); `DEFAULT_CAMPAIGN_THEME` gone.
+- Guardrail `tests/unit/tokenNames.test.ts`: every `var(--x)` must be a defined token (or one set inline by script: `--canvas-scale`, `--fade-duration`, `--transition-duration`). It caught `--accent2`; badge now `--accent-strong`. In CODING_STANDARDS.md "Themes".
+- #66–#68 style `.theme-sample` through their own tokens.
