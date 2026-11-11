@@ -39,6 +39,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [M1 review 2026-11-11](review-m1-2026-11-11.md): 3 should-fix, 7 notes.
 - [M2 review 2026-11-12](review-m2-2026-11-12.md): 6 should-fix, 7 notes.
 - [M3 review 2026-11-12](review-m3-2026-11-12.md): 2 should-fix, 7 notes.
+- [M4 review 2026-11-12](review-m4-2026-11-12.md): 6 should-fix, 7 notes.
 
 ## Milestone logs
 
