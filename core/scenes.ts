@@ -142,14 +142,19 @@ export function parseScene(value: unknown, campaignId: CampaignId): Scene | unde
 
 // Media placements -----------------------------------------------------------
 
+/** Every Media a Scene places (Backgrounds, Overlays, music, Ambiences). */
+export function mediaOfScene(scene: Scene): MediaId[] {
+  return [
+    ...scene.backgrounds.map((item) => item.mediaId),
+    ...scene.overlays.map((item) => item.mediaId),
+    ...scene.music,
+    ...scene.ambiences.map((item) => item.mediaId),
+  ];
+}
+
 /** Whether a Scene places a Media anywhere (Background, Overlay, music, Ambience). */
 export function sceneUsesMedia(scene: Scene, mediaId: MediaId): boolean {
-  return (
-    scene.backgrounds.some((item) => item.mediaId === mediaId) ||
-    scene.overlays.some((item) => item.mediaId === mediaId) ||
-    scene.music.includes(mediaId) ||
-    scene.ambiences.some((item) => item.mediaId === mediaId)
-  );
+  return mediaOfScene(scene).includes(mediaId);
 }
 
 function withoutMedia(scene: Scene, mediaId: MediaId): Scene {

@@ -14,7 +14,7 @@ import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
 import { applySceneEdit, placedMedia, type SceneEdit } from './sceneEdits.js';
-import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
+import { mediaOfScene, SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import { createSerialQueue } from './serialQueue.js';
 import {
   createUndoHistories,
@@ -113,7 +113,8 @@ export function createOnAirCommands(deps: {
   /**
    * Undoes or redoes (`move`) on a Scene, applied literally: the Scene saved before the step
    * comes back. A Scene changed outside its history since (its placements of a deleted Media)
-   * cannot be: its history is cleared.
+   * cannot be, nor can a step that would bring back a deleted Media (removed from the Scene
+   * before it was deleted): its history is cleared.
    */
   async function travel(
     campaignId: CampaignId,
@@ -127,6 +128,13 @@ export function createOnAirCommands(deps: {
     if (!isSameValue(scene, move.expected)) {
       histories.clear(campaignId, sceneId);
       throw new SceneError('La scène a changé entre-temps : son historique est effacé.');
+    }
+    const known = new Set((await library.list(campaignId)).map((media) => media.id));
+    if (!mediaOfScene(move.restore).every((mediaId) => known.has(mediaId))) {
+      histories.clear(campaignId, sceneId);
+      throw new SceneError(
+        'Une image de cette étape a été supprimée de la bibliothèque : l’historique de la scène est effacé.',
+      );
     }
     return saveScene(move.restore);
   }

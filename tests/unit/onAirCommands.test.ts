@@ -694,6 +694,20 @@ describe('on-air commands', () => {
       await expect(undo()).rejects.toThrow('Rien à annuler.');
     });
 
+    it('refuses to bring back a placement whose Media was deleted after it was removed', async () => {
+      const ctx = await setup();
+      const { scene, edit, undo, redo, state } = await editing(ctx);
+      const removed = await edit({ kind: 'remove-placement', placementId: 'p1' });
+      // The Scene no longer uses the image: it goes at once, and the history stays.
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false);
+
+      await expect(undo()).rejects.toThrow('Une image de cette étape a été supprimée');
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(removed);
+      expect(onAirOverlays(ctx)).toEqual([]);
+      await expect(redo()).rejects.toThrow('Rien à rétablir.');
+    });
+
     it('refuses an undo once the Scene changed outside its history, and clears it', async () => {
       const ctx = await setup();
       const { scene, placed, undo, state } = await editing(ctx);
