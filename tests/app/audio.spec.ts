@@ -60,11 +60,18 @@ async function createScene(page: Page, name: string) {
   await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
-/** Drags a library sound onto the open Scene's Music list. */
+/**
+ * Drags a library sound onto the open Scene's Music list; done once its row is listed. The new row
+ * pushes the library below it down: Playwright pressing the next sound within milliseconds, before
+ * the row shows, has the sound move from under the pressed pointer, and Chromium starts no drag.
+ */
 async function dropOnMusicList(page: Page, name: string) {
+  const rows = musicList(page).getByRole('listitem');
+  const listed = await rows.count();
   await soundInLibrary(page, name)
     .locator('.media-audio-icon')
     .dragTo(musicList(page).locator('xpath=..'));
+  await expect(rows).toHaveCount(listed + 1);
 }
 
 /** A Campaign with a Scene "Taverne" whose Music list is Auberge then Bagarre. */
@@ -74,7 +81,6 @@ async function sceneWithMusic(regie: RunningApp) {
   await importMusic(regie, 'Auberge', 'Bagarre');
   await createScene(controlWindow, 'Taverne');
   await dropOnMusicList(controlWindow, 'Auberge');
-  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/]);
   await dropOnMusicList(controlWindow, 'Bagarre');
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/, /Bagarre/]);
 }
