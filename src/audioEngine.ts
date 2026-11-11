@@ -1,8 +1,10 @@
 /**
  * The audio engine: plays the mix the main process computes (core/audioMix.ts) and reports
  * what actually sounds. It runs in the Control window (ADR-0002), outside React, so neither a
- * re-render nor the Broadcast window can disturb playback; it talks to the main process only
- * through its own bridge, which can receive the mix and report, nothing else.
+ * re-render nor the Broadcast window can disturb playback. It calls only the engine bridge
+ * (`window.regieAudio`), which can receive the mix and pad commands and report, nothing else.
+ * That bridge sits in the same page as the Control bridge: it narrows what the engine code
+ * uses, it does not keep the rest of the page from either bridge.
  *
  * Thin by design: every decision (what sounds, at what level, how long a fade takes) is in the
  * mix. Here, each voice plays through a gain node; a voice is known by its Media and take, so

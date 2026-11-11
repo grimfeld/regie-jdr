@@ -1,6 +1,7 @@
-// Control window bridges: the full API (contract: ControlBridge) and, apart, the audio engine's
-// (contract: AudioEngineBridge), which can only receive the mix and pad commands and report
-// what sounds.
+// Control window bridges: the full API (contract: ControlBridge) and, beside it in the same page,
+// the audio engine's (contract: AudioEngineBridge), which can only receive the mix and pad
+// commands and report what sounds. Any code of the page can reach both: the engine's bridge is
+// a narrow API, not a boundary (ADR-0002 put the engine in the Control window).
 // Sandboxed preload: it can only require('electron'), so contract imports are type-only and
 // the small helpers below are repeated in preload-broadcast.ts.
 import { contextBridge, ipcRenderer, webUtils } from 'electron';

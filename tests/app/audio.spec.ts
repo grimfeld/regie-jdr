@@ -83,7 +83,7 @@ interface EngineWindow {
   regieAudio: { getMix(): Promise<{ voices: { gain: number }[] }> };
 }
 
-/** The mix the audio engine reads, through its own bridge. */
+/** The mix the audio engine reads, through its bridge (`window.regieAudio`, in the Control window). */
 function currentMix(page: Page) {
   return page.evaluate(() => (window as unknown as EngineWindow).regieAudio.getMix());
 }
@@ -355,7 +355,7 @@ test('the Master volume is kept across restarts', async ({ regie }) => {
   }
 });
 
-test('the audio engine’s bridge can only read the mix and report; the Broadcast window cannot reach audio', async ({
+test('the audio engine’s bridge, beside the Control bridge, only reads the mix and pad commands and reports; the Broadcast window cannot reach audio', async ({
   regie,
 }) => {
   const { app, controlWindow } = regie;

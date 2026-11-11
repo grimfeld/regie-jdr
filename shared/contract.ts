@@ -436,9 +436,11 @@ export interface BroadcastBridge {
 }
 
 /**
- * Bridge of the audio engine, which runs in the Control window (ADR-0002), exposed apart from
- * the Control bridge (`window.regieAudio`): it can only receive the mix and report what sounds,
- * never change Scenes or the on-air state.
+ * Bridge of the audio engine, which runs in the Control window (ADR-0002), exposed beside the
+ * Control bridge (`window.regieAudio`): it can only receive the mix and pad commands and report
+ * what sounds, never change Scenes or the on-air state. Both bridges are in the same page, so
+ * this is the engine's narrow API, not a boundary: spec #33's "engine window with its own
+ * bridge" became, with ADR-0002, a bridge of its own in the Control window.
  */
 export interface AudioEngineBridge {
   getMix(): Promise<AudioMix>;
