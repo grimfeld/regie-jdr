@@ -71,3 +71,7 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - 60 s threshold: ~23 MB per decoded stereo minute at 48 kHz; Web Audio spec and MDN advise streaming beyond about a minute.
 - Test: 2 s Music and Ambience play 7 s and the strip shows only "playing" (`tests/app/ambiences.spec.ts`).
 - Open: audible seam on long streamed loops (manual check); no automated test of resume position for short sounds.
+
+## Cut on Activate (#49, 2026-11-12)
+
+- A Cut (Scene Transition or Shift+click) switches the mix over `AUDIO_FADE_MS.cut` (100 ms) instead of the Activate duration. Continuity of shared voices unchanged. See [Scene rendering](subsystem-scene-rendering-and-edits.md#cut-and-forced-cut-49-2026-11-12).

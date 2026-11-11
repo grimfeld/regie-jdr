@@ -8,3 +8,4 @@ Source: #41 report, 2026-11-12. True as of `m2-audio-mvp@2879653`.
 - Keys shown as `kbd` with `aria-keyshortcuts` on pads and the Silence button.
 - Broadcast window key presses never reach the Control window.
 - Test quirk: Playwright's Numpad press into a text field types nothing; typing test uses Digit1.
+- #49 (2026-11-12): Activate with or without a forced Cut is `activateScene` + `activateOptionsOf(event)` in `src/activate.ts`. #56's Ctrl+Enter / Ctrl+↓ / Ctrl+↑ call them; Shift on the key press gives the Cut.
