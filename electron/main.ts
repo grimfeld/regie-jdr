@@ -288,16 +288,15 @@ function focusControlWindow() {
 function startApp() {
   // Messages for the Game Master (e.g. a corrupt file recovered), shown by the Control window.
   const notices: string[] = [];
-  const storage = openStorage(app.getPath('userData'), {
-    notify: (message) => {
-      notices.push(message);
-      log.warn(message);
-    },
-  });
+  const notify = (message: string) => {
+    notices.push(message);
+    log.warn(message);
+  };
+  const storage = openStorage(app.getPath('userData'), { notify });
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
-  const scenes = createSceneLibrary(storage);
+  const scenes = createSceneLibrary(storage, { notify });
   const soundboards = createSoundboardStore({ storage, library });
   registerMediaProtocol(library);
   const commands = createOnAirCommands({
@@ -397,6 +396,11 @@ function startApp() {
         const state = await commands.openCampaign(campaignId);
         stopPads();
         preloadPads();
+        // Read its Scenes now, so a Scene whose Notes cannot be read is reported as it opens
+        // (the window collects the notices then). A failure shows when the Scenes are listed.
+        await scenes.list(campaignId).catch((error: unknown) => {
+          log.warn('Reading the Scenes of the opened Campaign failed', error);
+        });
         return state;
       },
       'onAir:close-campaign': async () => {

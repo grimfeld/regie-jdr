@@ -305,6 +305,59 @@ describe('scene library', () => {
     expect(migrated.map((scene) => scene.transition)).toEqual(['crossfade', 'crossfade']);
   });
 
+  describe('a Scene whose stored Notes cannot be read', () => {
+    /** Scenes Cantina (its Notes unreadable: a link) and Hangar, saved, then read afresh. */
+    async function damaged() {
+      const { storage, campaign } = await setup();
+      const notices: string[] = [];
+      const scenes = createSceneLibrary(storage, { notify: (text) => notices.push(text) });
+      const cantina = await scenes.save({
+        ...(await scenes.create(campaign.id, 'Cantina')),
+        title: 'La cantina',
+      });
+      const hangar = await scenes.save({
+        ...(await scenes.create(campaign.id, 'Hangar')),
+        notes: notesFromPlainText('Garde à droite'),
+      });
+      const folder = storage.campaignFolder(campaign.id);
+      const file = path.join(folder, 'scenes.json');
+      const badNotes = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'link', text: 'Secret' }] }],
+      };
+      const stored = JSON.parse(await fs.readFile(file, 'utf8')) as {
+        scenes: Record<string, unknown>[];
+      };
+      stored.scenes[0].notes = badNotes;
+      await fs.writeFile(file, JSON.stringify(stored));
+      return { campaign, scenes, notices, folder, cantina, hangar, badNotes };
+    }
+
+    it('keeps its other fields with empty Notes, and the other Scenes as they are', async () => {
+      const { campaign, scenes, cantina, hangar } = await damaged();
+
+      expect(await scenes.list(campaign.id)).toEqual([{ ...cantina, notes: emptyNotes() }, hangar]);
+    });
+
+    it('keeps the unreadable Notes in a file of the Campaign folder, and says where, once', async () => {
+      const { campaign, scenes, notices, folder, badNotes, cantina } = await damaged();
+
+      await scenes.list(campaign.id);
+      await scenes.list(campaign.id);
+
+      const kept = (await fs.readdir(folder)).filter((name) => name.startsWith('notes-illisibles'));
+      expect(kept).toHaveLength(1);
+      expect(JSON.parse(await fs.readFile(path.join(folder, kept[0]), 'utf8'))).toEqual({
+        sceneId: cantina.id,
+        sceneName: 'Cantina',
+        notes: badNotes,
+      });
+      expect(notices).toEqual([
+        `Les notes de la scène « Cantina » étaient illisibles : elles sont vides. Leur contenu d’origine est gardé dans ${path.join(folder, kept[0])}.`,
+      ]);
+    });
+  });
+
   it('rejects a stored Scene with an unknown Transition', async () => {
     const { campaign, scenes } = await setup();
     const scene = await scenes.create(campaign.id, 'La cantina');

@@ -165,3 +165,48 @@ test('after a restart nothing is on air, and the last Active Scene is highlighte
     await restarted.app.close();
   }
 });
+
+test('a Scene whose stored Notes cannot be read opens with empty Notes, its content kept aside and the Game Master told', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  const scenes = controlWindow.getByRole('region', { name: 'Scènes' });
+  for (const name of ['Cantina', 'Hangar']) {
+    await scenes.getByLabel('Nom de la scène').fill(name);
+    await scenes.getByRole('button', { name: 'Créer la scène' }).click();
+    await expect(
+      controlWindow.getByRole('region', { name: 'Scène ouverte' }).getByRole('heading', { name }),
+    ).toBeVisible();
+  }
+  await regie.app.close();
+  // Cantina's Notes hold a link, which Notes may not.
+  const campaigns = path.join(regie.dataDir, 'campaigns');
+  const [campaignId] = await fs.readdir(campaigns);
+  const folder = path.join(campaigns, campaignId);
+  const file = path.join(folder, 'scenes.json');
+  const stored = JSON.parse(await fs.readFile(file, 'utf8')) as {
+    scenes: { name: string; notes: unknown }[];
+  };
+  const badNotes = { type: 'doc', content: [{ type: 'link', text: 'Secret' }] };
+  stored.scenes[0].notes = badNotes;
+  await fs.writeFile(file, JSON.stringify(stored));
+
+  const restarted = await launchApp(regie.dataDir);
+  try {
+    const page = restarted.controlWindow;
+    const list = page.getByRole('list', { name: 'Scènes de la campagne' });
+    await expect(list.getByRole('listitem')).toHaveText([/Cantina/, /Hangar/]);
+    await expect(
+      page.getByText(/Les notes de la scène « Cantina » étaient illisibles/),
+    ).toBeVisible();
+    const kept = (await fs.readdir(folder)).filter((name) => name.startsWith('notes-illisibles'));
+    expect(kept).toHaveLength(1);
+    expect(JSON.parse(await fs.readFile(path.join(folder, kept[0]), 'utf8'))).toMatchObject({
+      sceneName: 'Cantina',
+      notes: badNotes,
+    });
+  } finally {
+    await restarted.app.close();
+  }
+});

@@ -63,6 +63,8 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         if (id) {
           await control.openCampaign(id);
           setOpenId(id);
+          // Opening reads the Campaign's documents: e.g. Scene Notes that could not be read.
+          void collectNotices();
         } else {
           setOpenId(null);
           await control.closeCampaign();
@@ -71,7 +73,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         showNotice(errorMessage(error));
       }
     },
-    [control],
+    [control, collectNotices],
   );
 
   useEffect(() => {
