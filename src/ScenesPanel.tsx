@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Clapperboard, History, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
 import type {
   AudioMedia,
@@ -21,6 +22,7 @@ import { SceneCanvas } from './SceneCanvas';
 import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
+import { SceneNotes } from './SceneNotes';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
 import { useBackgroundFraming } from './useBackgroundFraming';
@@ -33,6 +35,11 @@ interface Props {
   mediaRevision: number;
   /** Image files dropped on the editor were imported: the library reads its Media again. */
   onMediaImported: () => void;
+  /**
+   * Where the Selected Scene's Notes are shown: in the control column, beside the editor, rather
+   * than below its placement and audio lists. null until it is laid out.
+   */
+  notesSlot: HTMLElement | null;
 }
 
 /**
@@ -43,7 +50,13 @@ interface Props {
  * Opening a Campaign selects its last Active Scene (or its first Scene) without putting it on
  * air.
  */
-export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImported }: Props) {
+export function ScenesPanel({
+  campaignId,
+  control,
+  mediaRevision,
+  onMediaImported,
+  notesSlot,
+}: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
   /** The Scene the Game Master opened; undefined until they open one (see `selected`). */
   const [selectedId, setSelectedId] = useState<SceneId | undefined>(undefined);
@@ -314,6 +327,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
           sounds={sounds}
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
+          notesSlot={notesSlot}
           undoState={undoState}
           onTravel={(shortcut) => void travel(selected, shortcut)}
           onRefreshImages={refreshImages}
@@ -356,6 +370,8 @@ interface EditorProps {
   active: boolean;
   /** The fade duration setting (OnAirState.fadeDurationMs), undefined until known. */
   fadeDurationMs: number | undefined;
+  /** Where the Scene's Notes are shown (see Props). */
+  notesSlot: HTMLElement | null;
   /** What can be undone and redone on the Scene. */
   undoState: UndoState;
   /** Undoes or redoes the last edit of the Scene. */
@@ -576,6 +592,16 @@ function SceneEditor(props: EditorProps) {
           onEdit={onEditShowingFailure}
         />
       </div>
+
+      {props.notesSlot &&
+        createPortal(
+          <SceneNotes
+            sceneName={scene.name}
+            notes={scene.notes}
+            onSave={(notes) => onEditShowingFailure({ kind: 'set-notes', notes })}
+          />,
+          props.notesSlot,
+        )}
     </section>
   );
 }

@@ -269,6 +269,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   const [mediaRevision, setMediaRevision] = useState(0);
   /** Bumped when Media were dropped on the Scene editor and imported: the library reloads. */
   const [importRevision, setImportRevision] = useState(0);
+  // Where the Scenes panel shows the Selected Scene's Notes.
+  const [notesSlot, setNotesSlot] = useState<HTMLElement | null>(null);
 
   const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
   // Per Campaign, whichever Scene is active. Read again when a Media is deleted (its pads go).
@@ -295,6 +297,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             control={control}
             mediaRevision={mediaRevision}
             onMediaImported={() => setImportRevision((revision) => revision + 1)}
+            notesSlot={notesSlot}
           />
 
           <MediaLibrary
@@ -315,6 +318,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             soundboard={soundboard}
             libraryRevision={mediaRevision + importRevision}
           />
+          <div className="scene-notes-slot" ref={setNotesSlot} />
           <FadeSetting control={control} />
           <div className="panel">
             <div className="panel-heading">
