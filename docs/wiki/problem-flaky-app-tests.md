@@ -4,3 +4,4 @@
 - 2026-11-11 (#34): `tests/app/placing.spec.ts:153` (Overlay drag-to-list) fails ~2 in 10 on `3172de1`. Closeout's 20/20 suggests it shows under CPU load (several agents run `test:app` at once). Sent to the M1 review-fix agent.
 - 2026-11-11 (closeout): 2 Playwright workers → Electron "failed to install correctly". Config uses 1 worker.
 - Pattern: placement tests act on lists whose order or contents change asynchronously. Waits must target the expected end state (row with that name), never an index.
+- 2026-11-11 (M1 review fixes, `7fefec6`): `placing.spec.ts:153` cause: each dropped row pushes the library (where the dragged thumbnail sits) down mid-drag, so the next drag drops nothing. Failed 5/30 at 6 workers; with a wait for each row before the next drag, 150/150. #35's "second sound drop lost" may be the same layout shift: check that first.

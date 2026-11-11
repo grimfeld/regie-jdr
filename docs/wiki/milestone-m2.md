@@ -18,6 +18,6 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 
 ## Follow-ups to clear before the M2 PR
 
-- Two sounds dropped back to back: the second was lost; #35's app test waits between drops instead. Likely a real bug (role dialog or drop handler). Fix the cause, then remove the wait. Source: #35 report.
+- Two sounds dropped back to back: the second was lost; (2026-11-11: maybe the layout shift found in [flaky tests](problem-flaky-app-tests.md)); #35's app test waits between drops instead. Likely a real bug (role dialog or drop handler). Fix the cause, then remove the wait. Source: #35 report.
 - `GLOSSARY.md` lacks "mix" and "voice". Source: #35 report.
 - Manual check: no clicks on volume ramps. Source: #35 report.

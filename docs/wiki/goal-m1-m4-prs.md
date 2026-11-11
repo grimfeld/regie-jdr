@@ -10,3 +10,4 @@ On 2026-11-10 the user asked to implement specs #21 (M1 Visual MVP), #33 (M2 Aud
 ## Progress
 
 - 2026-11-10: branch `m1-visual-mvp` created from `5b2f613`. Wiki seeded.
+- 2026-11-11: M1 complete at `m1-visual-mvp@7fefec6`. M2 started early from `3172de1`.
