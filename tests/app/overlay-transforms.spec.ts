@@ -69,8 +69,12 @@ async function boxOn(canvas: Locator, overlay: Locator) {
   };
 }
 
-/** Presses the mouse on `overlay`'s centre and moves it by fractions `dx`, `dy` of the canvas. */
+/**
+ * Presses the mouse on `overlay`'s centre and moves it by fractions `dx`, `dy` of the canvas,
+ * reading both from the screen once the canvas is scrolled into view, wherever the layout put it.
+ */
 async function pressAndMove(page: Page, overlay: Locator, dx: number, dy: number) {
+  await editorCanvas(page).scrollIntoViewIfNeeded();
   const stage = await editorCanvas(page).locator('.scene-canvas-stage').boundingBox();
   const box = await overlay.boundingBox();
   if (!stage || !box) throw new Error('The canvas or the Overlay is not shown.');
