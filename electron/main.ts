@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, protocol, screen, type WebContents } from 'electron';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isAppPage } from './navigation.js';
@@ -10,9 +9,9 @@ import { createCampaign, updateCampaign } from '../core/campaigns.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
+import { mediaFileResponse } from '../core/mediaResponse.js';
 import { soundingOf } from '../core/audioMix.js';
 import { createAudioOnAir } from '../core/audioOnAir.js';
-import { parseByteRange } from '../core/byteRange.js';
 import { createOnAir } from '../core/onAir.js';
 import { createOnAirCommands } from '../core/onAirCommands.js';
 import { createPadVoices } from '../core/padVoices.js';
@@ -94,8 +93,9 @@ app.on('web-contents-created', (_event, contents) => {
 /**
  * Serves Media files from the open Campaign's media folder only, with an explicit content type.
  * Anything else (another Campaign, malformed address, missing file, disallowed type, outside
- * the folder) is a 404. Byte ranges are served, so audio streams, seeks and loops. Any app page
- * may read the files (CORS), so the audio engine can route them through Web Audio.
+ * the folder) is a 404. Byte ranges are served, so audio streams, seeks and loops; bodies stream
+ * from disk (core/mediaResponse.ts). Any app page may read the files (CORS), so the audio engine
+ * can route them through Web Audio.
  */
 function registerMediaProtocol(library: MediaLibrary) {
   protocol.handle(MEDIA_SCHEME, async (request) => {
@@ -103,37 +103,15 @@ function registerMediaProtocol(library: MediaLibrary) {
     try {
       const resolved = await library.resolveAddress(request.url, onAir.current().campaignId);
       if (!resolved) return notFound();
-      const headers = {
-        'content-type': resolved.mimeType,
-        'cache-control': 'no-cache',
-        'accept-ranges': 'bytes',
-        'access-control-allow-origin': '*',
-      };
-      const { size } = await fs.stat(resolved.file);
-      const range = parseByteRange(request.headers.get('range'), size);
-      if (range === 'unsatisfiable') {
-        return new Response(null, {
-          status: 416,
-          headers: { ...headers, 'content-range': `bytes */${size}` },
-        });
-      }
-      if (!range) return new Response(await fs.readFile(resolved.file), { headers });
-      const length = range.end - range.start + 1;
-      const content = Buffer.alloc(length);
-      const file = await fs.open(resolved.file, 'r');
-      try {
-        await file.read(content, 0, length, range.start);
-      } finally {
-        await file.close();
-      }
-      return new Response(content, {
-        status: 206,
-        headers: {
-          ...headers,
-          'content-length': String(length),
-          'content-range': `bytes ${range.start}-${range.end}/${size}`,
+      return await mediaFileResponse(
+        resolved.file,
+        {
+          'content-type': resolved.mimeType,
+          'cache-control': 'no-cache',
+          'access-control-allow-origin': '*',
         },
-      });
+        request.headers.get('range'),
+      );
     } catch (error) {
       log.warn(`Media request failed: ${request.url}`, error);
       return notFound();

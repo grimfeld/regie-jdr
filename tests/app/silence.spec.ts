@@ -67,11 +67,14 @@ async function importSounds(
   for (const name of names) await expect(soundInLibrary(controlWindow, name)).toBeVisible();
 }
 
-/** A Campaign "Star Wars" with a Scene "Taverne" playing Music "Auberge", Activated. */
-async function taverneOnAir(regie: RunningApp) {
+/**
+ * A Campaign "Star Wars" with a Scene "Taverne" playing Music "Auberge" (`seconds` long),
+ * Activated.
+ */
+async function taverneOnAir(regie: RunningApp, seconds = 2) {
   const page = regie.controlWindow;
   await createCampaign(page, 'Star Wars');
-  await importSounds(regie, 'Musique', 2, 'Auberge');
+  await importSounds(regie, 'Musique', seconds, 'Auberge');
   const panel = page.getByRole('region', { name: 'Scènes' });
   await panel.getByLabel('Nom de la scène').fill('Taverne');
   await panel.getByRole('button', { name: 'Créer la scène' }).click();
@@ -227,4 +230,16 @@ test('the Silence key pressed twice quickly starts Silence and lifts it', async 
     .poll(() => page.evaluate(() => (window as unknown as { silences: boolean[] }).silences))
     .toEqual([true, false]);
   await expect(silenceButton(page)).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a Music longer than a minute streams through Silence and back', async ({ regie }) => {
+  const page = regie.controlWindow;
+  // Over a minute, it streams from a media element, by byte ranges, instead of being decoded.
+  await taverneOnAir(regie, 90);
+
+  await silenceButton(page).click();
+  await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'paused');
+  await silenceButton(page).click();
+
+  await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'playing');
 });
