@@ -82,8 +82,10 @@ async function sizeOf(folder: string): Promise<number> {
 
 export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDeletion {
   const { storage, settings, trash } = deps;
-  /** Campaigns the Recycle Bin refused last time: the only ones that may be deleted for good. */
-  /** Keyed by lowercase id, like the queue: `ABC` and `abc` are one folder on Windows. */
+  /**
+   * Campaigns the Recycle Bin refused last time: the only ones that may be deleted for good.
+   * Keyed by lowercase id, like the queue: `ABC` and `abc` are one folder on Windows.
+   */
   const refusedByTrash = new Set<string>();
   const queue = createKeyedSerialQueue<string>();
   const serialized = <T>(id: CampaignId, task: () => Promise<T>) => queue(id.toLowerCase(), task);
