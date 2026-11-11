@@ -43,6 +43,7 @@ function RoleIcon({ role }: { role: SoundingVoice['role'] }) {
  */
 export function NowPlaying({ control }: { control: ControlBridge | undefined }) {
   const sounding = useSounding(control);
+  useUnplayableNotices(sounding);
   const voices = sounding?.voices ?? [];
   const pads = sounding?.pads ?? [];
   return (
@@ -122,35 +123,39 @@ function MusicPlayback({
   );
 }
 
-/**
- * What is sounding, kept up to date; null until first known. A sound that turns out missing or
- * unreadable raises a notice, once.
- */
+/** What is sounding, kept up to date; null until first known. */
 export function useSounding(control: ControlBridge | undefined): AudioSounding | null {
   const [sounding, setSounding] = useState<AudioSounding | null>(null);
-  const shown = useRef<AudioSounding | null>(null);
   useEffect(() => {
     if (!control) return;
-    const show = (next: AudioSounding) => {
-      newlyUnplayable(shown.current, next).forEach((voice) => showNotice(unplayableNotice(voice)));
-      shown.current = next;
-      setSounding(next);
-    };
     // Subscribe first, then read: a reply older than an event already received is ignored.
     let changed = false;
     const unsubscribe = control.onSoundingChanged((next) => {
       changed = true;
-      show(next);
+      setSounding(next);
     });
     control
       .getSounding()
       .then((current) => {
-        if (!changed) show(current);
+        if (!changed) setSounding(current);
       })
       .catch((error: unknown) => showNotice(errorMessage(error)));
     return unsubscribe;
   }, [control]);
   return sounding;
+}
+
+/**
+ * Raises a notice, once, for each sound of `sounding` that turns out missing or unreadable. Only
+ * the "En cours" strip calls it, so other users of `useSounding` never repeat a notice.
+ */
+function useUnplayableNotices(sounding: AudioSounding | null) {
+  const told = useRef<AudioSounding | null>(null);
+  useEffect(() => {
+    if (!sounding) return;
+    newlyUnplayable(told.current, sounding).forEach((voice) => showNotice(unplayableNotice(voice)));
+    told.current = sounding;
+  }, [sounding]);
 }
 
 /**

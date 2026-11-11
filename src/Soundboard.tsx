@@ -6,6 +6,7 @@ import { errorMessage } from './CampaignList';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
 import { useSounding } from './NowPlaying';
 import { showNotice } from './notices';
+import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { useDropTarget } from './PlacementLists';
 import { createTransientSender } from './transientUpdates';
 
@@ -135,6 +136,11 @@ export function SoundboardPanel(props: {
   const nameOf = (pad: SoundboardPad) =>
     pad.label ?? sounds.find((sound) => sound.id === pad.mediaId)?.name ?? 'Média inconnu';
   const lit = new Set(sounding?.pads.map((pad) => pad.padId));
+  const padSounds = useMemo(
+    () => sounds.filter((sound) => soundboard?.pads.some((pad) => pad.mediaId === sound.id)),
+    [sounds, soundboard],
+  );
+  const missing = useMissingMedia(padSounds);
   const setLevel = useCallback((volume: number) => edit({ kind: 'set-level', volume }), [edit]);
 
   return (
@@ -166,6 +172,7 @@ export function SoundboardPanel(props: {
               >
                 {index < 9 && <kbd>{index + 1}</kbd>}
                 <span className="placement-name">{name}</span>
+                {missing.has(pad.mediaId) && <MissingMediaBadge name={name} />}
               </button>
               <PadControls pad={pad} name={name} index={index} count={pads.length} edit={edit} />
             </li>

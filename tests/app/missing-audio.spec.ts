@@ -123,6 +123,8 @@ test('a sound whose file was deleted is badged, left out on Activate with a noti
   await expect(sounding(controlWindow, 'Pluie')).toHaveAttribute('data-state', 'playing');
   await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'missing');
   await expect(sounding(controlWindow, 'Auberge')).toContainText('média manquant');
+  // Told once, though several panels follow what is sounding.
+  await expect(controlWindow.getByRole('alert').filter({ hasText: 'Auberge' })).toHaveCount(1);
 });
 
 test('a sound the audio engine cannot read is skipped with a notice; the others play', async ({
@@ -157,4 +159,24 @@ test('an Ambience whose file was deleted is badged in the Scene’s Ambience lis
     ambienceList(controlWindow).getByRole('img', { name: 'Média manquant : Pluie' }),
   ).toBeVisible();
   await expect(musicList(controlWindow)).not.toContainText('Média manquant');
+});
+
+test('a Soundboard pad whose file was deleted is badged', async ({ regie }) => {
+  const { controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  const folder = path.join(dataDir, 'sons-a-importer');
+  await fs.mkdir(folder, { recursive: true });
+  await importSounds(regie, [await writeToneWav(folder, 'Épée', 660)], 'Bruitage');
+  const soundboard = controlWindow.getByRole('region', { name: 'Table de bruitages' });
+  await soundInLibrary(controlWindow, 'Épée')
+    .locator('.media-audio-icon')
+    .dragTo(soundboard, { targetPosition: { x: 40, y: 20 } });
+  const pad = soundboard.getByRole('button', { name: 'Jouer Épée' });
+  await expect(pad).toBeVisible();
+  await expect(pad).not.toContainText('Média manquant');
+
+  await deleteFileOf(regie, 'Épée');
+  await controlWindow.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+  await expect(pad.getByRole('img', { name: 'Média manquant : Épée' })).toBeVisible();
 });
