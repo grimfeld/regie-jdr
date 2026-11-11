@@ -1,5 +1,5 @@
 /**
- * What a drop target in the Scene editor or the library takes. A library image dragged inside
+ * What a drop target in the Scene editor, the Notes or the library takes. A library image dragged inside
  * the Control window carries only its Media id, under a type of its own, so a drop target can
  * tell it from anything else dragged over it (text, links). Files dragged in from Windows
  * Explorer are the other thing a drop target takes: they are imported first.
@@ -30,7 +30,15 @@ export function carriesFiles(event: DragEvent): boolean {
 
 /** The dragged library image's Media id, on `drop`; undefined when the drag carries none. */
 export function droppedMediaId(event: DragEvent): MediaId | undefined {
-  return event.dataTransfer.getData(MEDIA_DRAG_TYPE) || undefined;
+  return libraryImageOf(event.dataTransfer);
+}
+
+/**
+ * The library image's Media id a drop's data carries, or undefined: for drop targets that get the
+ * browser's own drop event (the Notes editor).
+ */
+export function libraryImageOf(data: DataTransfer): MediaId | undefined {
+  return data.getData(MEDIA_DRAG_TYPE) || undefined;
 }
 
 /**

@@ -1408,6 +1408,28 @@ button {
 .scene-notes-editor ul[data-type='taskList'] p {
   margin: 0;
 }
+/* An image in the Notes: a block on its own line, left-aligned, at most the panel's width. */
+.scene-notes-editor .notes-image {
+  margin: 8px 0;
+  line-height: 0;
+}
+.scene-notes-editor .notes-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+.scene-notes-editor .notes-image .media-missing {
+  width: 160px;
+  height: 90px;
+  line-height: normal;
+  border: 1px dashed var(--accent2);
+  border-radius: 3px;
+}
+.scene-notes-editor .notes-image.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* The Notes editor's base styles, copied from @tiptap/core 3.32.2 (src/style.ts): injecting
    them would break the window's Content Security Policy (SceneNotes.tsx, injectCSS). */

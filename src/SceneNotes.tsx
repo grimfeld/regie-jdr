@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { EditorContent, useEditor, useEditorState, type JSONContent } from '@tiptap/react';
+import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import {
@@ -16,17 +17,30 @@ import {
   Undo2,
   type LucideIcon,
 } from 'lucide-react';
-import type { NotesDocument } from '../shared/domain';
+import type { ImageMedia, MediaId, NotesDocument } from '../shared/domain';
 import { MAX_NOTES_SIZE, parseNotes } from '../core/notes';
+import { errorMessage } from './CampaignList';
+import { libraryImageOf } from './mediaDrag';
+import { NotesImage, NotesImagesContext } from './NotesImage';
 import { showNotice } from './notices';
 
 /** How long after the last change the Notes are saved. Leaving the editor saves at once. */
 export const NOTES_SAVE_DELAY_MS = 500;
 
 /**
+ * Where images put into the Notes come from: a library image dragged in, image files dropped from
+ * Windows Explorer, or images pasted from the clipboard (a screenshot). The last two are imported
+ * into the library as Reference first.
+ */
+export type NotesImageSource =
+  | { kind: 'library'; mediaId: MediaId }
+  | { kind: 'dropped'; files: File[] }
+  | { kind: 'pasted'; files: File[] };
+
+/**
  * The Notes editor's content: exactly what core/notes.ts allows, nothing else. ProseMirror
- * keeps only content its schema knows, so a paste of links, tables, colours or images keeps
- * just their text in allowed blocks. Images in Notes (#52) add a node here and in core/notes.ts.
+ * keeps only content its schema knows, so a paste of links, tables or colours keeps just their
+ * text in allowed blocks; an image is a Media of the library (src/NotesImage.tsx).
  *
  * StarterKit v3 options: https://tiptap.dev/docs/editor/extensions/functionality/starterkit
  * Task lists: https://tiptap.dev/docs/editor/extensions/nodes/task-list
@@ -49,7 +63,18 @@ const EXTENSIONS = [
       checkboxLabel: (node) => `Case à cocher : ${node.textContent || 'vide'}`,
     },
   }),
+  NotesImage,
 ];
+
+/**
+ * The images a paste carries, as files: a screenshot, an image copied in a browser. A paste that
+ * also carries plain text (copied from a word processor, which adds a picture of the text) is
+ * text, pasted as usual.
+ */
+function pastedImages(data: DataTransfer | null): File[] {
+  if (data?.getData('text/plain') !== '') return [];
+  return [...data.files].filter((file) => file.type.startsWith('image/'));
+}
 
 /**
  * The Selected Scene's Notes, shown in the control column beside the editor: rich text private to
@@ -68,10 +93,19 @@ export function SceneNotes(props: {
   notes: NotesDocument;
   /** Saves the Notes (a `set-notes` Scene edit); a failure is shown as a notice. */
   onSave: (notes: NotesDocument) => void;
+  /** The library's images, to draw the Notes' images; undefined until read. */
+  images: readonly ImageMedia[] | undefined;
+  /**
+   * The images to insert for something pasted or dropped: imported as Reference first when they
+   * are files. Refusals and failures are shown as notices; what is left is inserted.
+   */
+  onAddImages: (source: NotesImageSource) => Promise<ImageMedia[]>;
 }) {
   const onSave = useRef(props.onSave);
+  const onAddImages = useRef(props.onAddImages);
   useEffect(() => {
     onSave.current = props.onSave;
+    onAddImages.current = props.onAddImages;
   });
   /** The editor's content not saved yet, read at the change (the editor may be gone at flush). */
   const pending = useRef<{ json: JSONContent; timer: number } | undefined>(undefined);
@@ -94,6 +128,11 @@ export function SceneNotes(props: {
     latestFlush.current = flush;
   });
 
+  /** Inserts pasted or dropped images (`insertImages` below, set once the editor exists). */
+  const latestInsertImages = useRef<(source: NotesImageSource) => Promise<void>>(() =>
+    Promise.resolve(),
+  );
+
   const editor = useEditor({
     extensions: EXTENSIONS,
     content: props.notes,
@@ -102,6 +141,33 @@ export function SceneNotes(props: {
     injectCSS: false,
     editorProps: {
       attributes: { role: 'textbox', 'aria-label': 'Notes de la scène', 'aria-multiline': 'true' },
+      // https://prosemirror.net/docs/ref/#view.EditorProps.handlePaste
+      handlePaste: (_view, event) => {
+        const files = pastedImages(event.clipboardData);
+        if (files.length === 0) return false;
+        void latestInsertImages.current({ kind: 'pasted', files });
+        return true;
+      },
+      // https://prosemirror.net/docs/ref/#view.EditorProps.handleDrop: an image moved inside the
+      // Notes is the editor's own drop.
+      handleDrop: (view, event, _slice, moved) => {
+        const data = event.dataTransfer;
+        if (moved || !data) return false;
+        const mediaId = libraryImageOf(data);
+        // Read before awaiting anything: the drop's data is gone once its handler returns.
+        const files = [...data.files];
+        if (mediaId === undefined && files.length === 0) return false;
+        const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (at) {
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(at.pos))),
+          );
+        }
+        void latestInsertImages.current(
+          mediaId === undefined ? { kind: 'dropped', files } : { kind: 'library', mediaId },
+        );
+        return true;
+      },
     },
     onUpdate: ({ editor: changed }) => {
       if (pending.current) window.clearTimeout(pending.current.timer);
@@ -114,6 +180,29 @@ export function SceneNotes(props: {
   });
   // Closing the editor (another Scene opened) saves what is still waiting.
   useEffect(() => () => latestFlush.current(), []);
+
+  /**
+   * Inserts the images of `source` at the cursor, each a block on its own line, once they are
+   * known (imported). A drop has put the cursor at the drop point first.
+   */
+  async function insertImages(source: NotesImageSource) {
+    let images: ImageMedia[];
+    try {
+      images = await onAddImages.current(source);
+    } catch (error) {
+      showNotice(errorMessage(error));
+      return;
+    }
+    if (images.length === 0 || editor.isDestroyed) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent(images.map((image) => ({ type: 'image', attrs: { mediaId: image.id } })))
+      .run();
+  }
+  useEffect(() => {
+    latestInsertImages.current = insertImages;
+  });
 
   // Toolbar state: https://tiptap.dev/docs/guides/performance (useEditorState)
   const state = useEditorState({
@@ -212,7 +301,9 @@ export function SceneNotes(props: {
           <Redo2 size={14} aria-hidden />
         </button>
       </div>
-      <EditorContent editor={editor} className="scene-notes-editor" />
+      <NotesImagesContext.Provider value={props.images}>
+        <EditorContent editor={editor} className="scene-notes-editor" />
+      </NotesImagesContext.Provider>
     </section>
   );
 }

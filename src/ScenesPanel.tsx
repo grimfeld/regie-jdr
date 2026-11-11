@@ -10,8 +10,15 @@ import type {
   Scene,
   SceneId,
 } from '../shared/domain';
-import type { ControlBridge, SceneEdit, TransientEdit, UndoState } from '../shared/contract';
+import type {
+  ControlBridge,
+  MediaImportResult,
+  SceneEdit,
+  TransientEdit,
+  UndoState,
+} from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
+import { MAX_PASTED_IMAGE_BYTES } from '../core/mediaAddress';
 import { editorPictureOf } from '../core/onAir';
 import { moveInRunningOrder } from '../core/runningOrder';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
@@ -24,7 +31,7 @@ import { SceneList } from './SceneList';
 import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
-import { SceneNotes } from './SceneNotes';
+import { SceneNotes, type NotesImageSource } from './SceneNotes';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
 import { useBackgroundFraming } from './useBackgroundFraming';
@@ -35,7 +42,10 @@ interface Props {
   control: ControlBridge | undefined;
   /** Changes when a Media was deleted: Scenes and images are read again. */
   mediaRevision: number;
-  /** Image files dropped on the editor were imported: the library reads its Media again. */
+  /**
+   * Image files dropped on the editor, or pasted or dropped into the Notes, were imported: the
+   * library reads its Media again.
+   */
   onMediaImported: () => void;
   /**
    * Where the Selected Scene's Notes are shown: in the control column, beside the editor, rather
@@ -66,6 +76,8 @@ export function ScenesPanel({
   // Which Scene is on air.
   const onAir = useOnAir(control);
   const [images, setImages] = useState<ImageMedia[]>([]);
+  /** Whether `images` has been read from the library once: the Notes draw their images then. */
+  const [imagesRead, setImagesRead] = useState(false);
   const [sounds, setSounds] = useState<AudioMedia[]>([]);
   const [newName, setNewName] = useState('');
   const nameField = useRef<HTMLInputElement>(null);
@@ -95,6 +107,7 @@ export function ScenesPanel({
       .listMedia(campaignId)
       .then((media) => {
         setImages(media.filter((m): m is ImageMedia => m.kind === 'image'));
+        setImagesRead(true);
         setSounds(media.filter((m): m is AudioMedia => m.kind === 'audio'));
       })
       .catch((error: unknown) => showNotice(errorMessage(error)));
@@ -229,6 +242,60 @@ export function ScenesPanel({
     }
   }
 
+  /**
+   * The images to insert into the Notes for something pasted or dropped there: a library image
+   * as it is (any category), files imported into the library as Reference (content already there
+   * keeps its Media). Refusals and failures are shown as notices.
+   */
+  async function imagesForNotes(source: NotesImageSource): Promise<ImageMedia[]> {
+    if (!control) return [];
+    /** The images an import gave, now known to the editor and the library. */
+    const added = ({ imported, refused }: MediaImportResult) => {
+      refused.forEach(showNotice);
+      if (imported.length > 0) onMediaImported();
+      const imageMedia = imported.filter((m): m is ImageMedia => m.kind === 'image');
+      setImages((known) => [
+        ...known,
+        ...imageMedia.filter((image) => !known.some((item) => item.id === image.id)),
+      ]);
+      return imageMedia;
+    };
+    try {
+      switch (source.kind) {
+        case 'library': {
+          const library = (await control.listMedia(campaignId)).filter(
+            (m): m is ImageMedia => m.kind === 'image',
+          );
+          setImages(library);
+          const image = library.find((m) => m.id === source.mediaId);
+          if (!image) throw new Error('Cette image n’est plus dans la bibliothèque.');
+          return [image];
+        }
+        case 'dropped':
+          return added(
+            await control.importDroppedMedia(campaignId, source.files, {
+              accept: 'image',
+              category: 'reference',
+            }),
+          );
+        case 'pasted': {
+          const pasted: ImageMedia[] = [];
+          for (const file of source.files) {
+            if (file.size > MAX_PASTED_IMAGE_BYTES) {
+              showNotice(`« ${file.name} » n’a pas été importé : l’image est trop volumineuse.`);
+              continue;
+            }
+            pasted.push(...added(await control.importPastedImage(campaignId, file)));
+          }
+          return pasted;
+        }
+      }
+    } catch (error) {
+      showNotice(errorMessage(error));
+      return [];
+    }
+  }
+
   /** Undoes or redoes the last edit of `scene` and shows the Scene as saved. */
   async function travel(scene: Scene, shortcut: EditShortcut) {
     if (!control) return;
@@ -320,6 +387,7 @@ export function ScenesPanel({
           key={selected.id}
           scene={selected}
           images={images}
+          imagesRead={imagesRead}
           sounds={sounds}
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
@@ -340,6 +408,7 @@ export function ScenesPanel({
           onPickMusic={(mediaId) => {
             control?.pickMusic(mediaId).catch((error: unknown) => showNotice(errorMessage(error)));
           }}
+          onAddNotesImages={imagesForNotes}
           onActivate={() => void activate(selected)}
           onDelete={() => void remove(selected)}
         />
@@ -361,6 +430,8 @@ export function ScenesPanel({
 interface EditorProps {
   scene: Scene;
   images: ImageMedia[];
+  /** Whether `images` has been read from the library yet. */
+  imagesRead: boolean;
   sounds: AudioMedia[];
   /** Whether the Selected Scene is the Active Scene: its edits go on air. */
   active: boolean;
@@ -386,6 +457,8 @@ interface EditorProps {
    * placement list. Read the event's data before awaiting anything.
    */
   onDrop: (event: DragEvent, target: PlacementTarget, dropPoint?: NormalizedPoint) => void;
+  /** The images to insert into the Notes for something pasted or dropped there. */
+  onAddNotesImages: (source: NotesImageSource) => Promise<ImageMedia[]>;
   onActivate: () => void;
   /** Deletes the Scene, once the Game Master has confirmed. */
   onDelete: () => void;
@@ -595,6 +668,8 @@ function SceneEditor(props: EditorProps) {
             sceneName={scene.name}
             notes={scene.notes}
             onSave={(notes) => onEditShowingFailure({ kind: 'set-notes', notes })}
+            images={props.imagesRead ? images : undefined}
+            onAddImages={props.onAddNotesImages}
           />,
           props.notesSlot,
         )}
