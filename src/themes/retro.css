@@ -1,0 +1,42 @@
+/* Rétro SF: sets every token of tokens.css. Its finished version comes with #66. */
+[data-theme='retro'] {
+  --page: #0c1411;
+  --title-bar: #111319;
+  --frame: radial-gradient(
+    ellipse at 80% -20%,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    transparent 45%
+  );
+  --texture: none;
+
+  --surface: #111e19;
+  --surface-raised: #182820;
+  --surface-sunken: #15181e;
+  --border: #29483a;
+  --control-border: #777;
+
+  --text: #dcebdd;
+  --text-secondary: #91aa99;
+  --accent: #73a982;
+  --accent-strong: #b8d7a7;
+  --on-accent: #17130d;
+
+  --status-live: #c62828;
+  --on-status-live: #fff;
+  --status-blackout: var(--accent-strong);
+  --status-warning: var(--accent);
+  --status-error: #e08a7a;
+  --status-missing: var(--accent-strong);
+  --status-missing-fill: #1a1a1f;
+  --status-missing-fill-alt: #22222a;
+  --status-hidden-opacity: 0.6;
+  --status-session: #83a77c;
+
+  --font-body: Arial, Helvetica, sans-serif;
+  --font-display: 'Arial Narrow', Impact, sans-serif;
+  --radius: 7px;
+  --radius-small: 4px;
+
+  --swatch-dark: #101b17;
+  --swatch-light: #78a47b;
+}

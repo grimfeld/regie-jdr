@@ -43,6 +43,15 @@ Rules a diff is reviewed against. Each one is checkable on the diff; `npm run li
 - Windows use `console.error`/`console.warn` only _(lint)_; errors printed in a window's console reach the log (`electron/logging.ts`).
 - Log messages are English, for the developer; pass the error as `detail` so its stack is kept.
 
+## Themes
+
+- A Theme is one stylesheet, `src/themes/<id>.css`, setting every token of the list in `src/themes/tokens.css` under `[data-theme='<id>']`. A new `ThemeId` needs its stylesheet; a token added to the list must be set by every theme. `tests/unit/themeContrast.test.ts` checks both.
+- Components (`src/styles.css`, inline styles) use only tokens, `var(--text)`, `var(--surface)`...: no hex, `rgb()`/`hsl()`/other colour function or named colour outside `src/themes/*.css`. `tests/unit/rawColours.test.ts` lists each one by file and line; `transparent` and `currentColor` are allowed. (A unit test, not lint: ESLint does not read CSS.)
+- Every theme passes WCAG AA (4.5:1) for its text/background token pairs, Hidden names faded by `--status-hidden-opacity` included (`tests/unit/themeContrast.test.ts`). A new text or surface token goes on that test's pair lists.
+- The canvas (Broadcast window, editor canvas, On-air monitor) is never themed: its colours are the tokens in `src/themes/unthemed.css`, which no theme sets. The Broadcast window has no `data-theme` (`tests/app/broadcast.spec.ts`).
+- A status marker (EN DIRECT, Blackout, warning, error, missing Media, Hidden) carries text or an icon besides its colour.
+- `electron/main.ts` keeps its window `backgroundColor` literals: they paint before the page and its tokens load.
+
 ## Language and naming
 
 - UI text, notices and error messages meant for the Game Master are French. Code, comments, log messages, test names and commits are English.

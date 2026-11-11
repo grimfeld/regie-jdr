@@ -4,6 +4,12 @@ import App from './App';
 import { startAudioEngine } from './audioEngine';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Notices } from './notices';
+// Theme tokens first (CODING_STANDARDS.md, "Themes"), then the components that use them.
+import './themes/tokens.css';
+import './themes/unthemed.css';
+import './themes/retro.css';
+import './themes/imperium.css';
+import './themes/fantasy.css';
 import './styles.css';
 
 const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';

@@ -252,9 +252,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
         )
       )}
       <footer className="footer">
-        <span>
-          RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span>
-        </span>
+        <span>RÉGIE JDR · Prototype 0.1</span>
         <span>Fonctionnement local · Aucun compte requis</span>
       </footer>
     </main>
@@ -332,7 +330,10 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
           <h1>{campaign.name}</h1>
         </div>
         <div className="topbar-right">
-          <span className="status-dot" /> SESSION LOCALE <span className="top-separator">|</span>
+          <span className="status-dot" /> SESSION LOCALE{' '}
+          <span className="top-separator" aria-hidden="true">
+            |
+          </span>
           <span className="theme-name">{themeLabel}</span>
         </div>
       </div>
@@ -389,7 +390,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
                   className={`theme-option ${theme === item.id ? 'selected' : ''}`}
                   onClick={() => onThemeChange(item.id)}
                 >
-                  <span className={`theme-swatch ${item.id}`}></span>
+                  <span className="theme-swatch" data-theme={item.id}></span>
                   <span>
                     <strong>{item.label}</strong>
                     <small>{item.subtitle}</small>

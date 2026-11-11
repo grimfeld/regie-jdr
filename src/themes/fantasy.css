@@ -1,0 +1,42 @@
+/* Fantasy: sets every token of tokens.css. Its finished version comes with #68. */
+[data-theme='fantasy'] {
+  --page: #17130f;
+  --title-bar: #111319;
+  --frame: radial-gradient(
+    ellipse at 80% -20%,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    transparent 45%
+  );
+  --texture: none;
+
+  --surface: #241d17;
+  --surface-raised: #30271f;
+  --surface-sunken: #15181e;
+  --border: #504233;
+  --control-border: #777;
+
+  --text: #eee4d2;
+  --text-secondary: #b1a18c;
+  --accent: #987348;
+  --accent-strong: #d0b184;
+  --on-accent: #080604;
+
+  --status-live: #c62828;
+  --on-status-live: #fff;
+  --status-blackout: var(--accent-strong);
+  --status-warning: var(--accent);
+  --status-error: #e08a7a;
+  --status-missing: var(--accent-strong);
+  --status-missing-fill: #1a1a1f;
+  --status-missing-fill-alt: #22222a;
+  --status-hidden-opacity: 0.6;
+  --status-session: #83a77c;
+
+  --font-body: Arial, Helvetica, sans-serif;
+  --font-display: 'Arial Narrow', Impact, sans-serif;
+  --radius: 7px;
+  --radius-small: 4px;
+
+  --swatch-dark: #30251b;
+  --swatch-light: #9a8060;
+}

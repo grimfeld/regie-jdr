@@ -1,0 +1,42 @@
+/* Imperium: sets every token of tokens.css. Its finished version comes with #67. */
+[data-theme='imperium'] {
+  --page: #111013;
+  --title-bar: #111319;
+  --frame: radial-gradient(
+    ellipse at 80% -20%,
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    transparent 45%
+  );
+  --texture: none;
+
+  --surface: #1d191b;
+  --surface-raised: #292124;
+  --surface-sunken: #15181e;
+  --border: #49363a;
+  --control-border: #777;
+
+  --text: #eee5d8;
+  --text-secondary: #b0a29a;
+  --accent: #a43b3f;
+  --accent-strong: #d5b16d;
+  --on-accent: #eee5d8;
+
+  --status-live: #c62828;
+  --on-status-live: #fff;
+  --status-blackout: var(--accent-strong);
+  --status-warning: var(--accent);
+  --status-error: #e08a7a;
+  --status-missing: var(--accent-strong);
+  --status-missing-fill: #1a1a1f;
+  --status-missing-fill-alt: #22222a;
+  --status-hidden-opacity: 0.6;
+  --status-session: #83a77c;
+
+  --font-body: Arial, Helvetica, sans-serif;
+  --font-display: 'Arial Narrow', Impact, sans-serif;
+  --radius: 7px;
+  --radius-small: 4px;
+
+  --swatch-dark: #241719;
+  --swatch-light: #b58a46;
+}
