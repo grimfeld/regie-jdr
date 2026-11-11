@@ -241,6 +241,21 @@ export function newlyUnplayable(
   );
 }
 
+/**
+ * Whether the Game Master may listen to a sound of the library (#43). Discord carries every
+ * sound the app plays (ADR-0002), so the players hear it too: allowed only during Silence, once
+ * nothing else sounds (no voice still fading out, no pad). A voice loading during Silence is
+ * held at nothing, so it does not count. Refused while `sounding` is not yet known (null).
+ */
+export function listeningAllowed(sounding: AudioSounding | null): boolean {
+  return (
+    sounding !== null &&
+    sounding.silence &&
+    sounding.pads.length === 0 &&
+    sounding.voices.every((voice) => voice.state !== 'playing')
+  );
+}
+
 /** More voices than this in one report is a malformed message. */
 const MAX_REPORTED_VOICES = 64;
 /** Media ids longer than this are malformed. */
