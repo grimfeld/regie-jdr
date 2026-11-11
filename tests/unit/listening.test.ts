@@ -5,6 +5,7 @@ import type { AudioSounding, SoundingState } from '../../shared/domain';
 function sounding(silence: boolean, voiceStates: SoundingState[] = [], pads = 0): AudioSounding {
   return {
     silence,
+    masterVolume: 1,
     voices: voiceStates.map((state, index) => ({
       mediaId: `m${index}`,
       role: 'music',

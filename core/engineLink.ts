@@ -16,12 +16,12 @@ export interface EngineLink {
   engineStarted(): void;
   /** The engine's report on the voices of the mix. */
   engineReported(report: AudioEngineReport): void;
-  /** What is sounding: the mix as the engine reports it, the pads sounding, Silence. */
+  /** What is sounding: the mix as the engine reports it, pads, Silence, the Master volume. */
   sounding(): AudioSounding;
 }
 
 export function createEngineLink(
-  audio: Pick<AudioOnAir, 'mix' | 'silence'>,
+  audio: Pick<AudioOnAir, 'mix' | 'silence' | 'masterVolume'>,
   pads: Pick<PadVoices, 'sounding' | 'forget'>,
 ): EngineLink {
   let report: AudioEngineReport = { voices: [] };
@@ -33,6 +33,7 @@ export function createEngineLink(
     engineReported(next) {
       report = next;
     },
-    sounding: () => soundingOf(audio.mix(), report, pads.sounding(), audio.silence()),
+    sounding: () =>
+      soundingOf(audio.mix(), report, pads.sounding(), audio.silence(), audio.masterVolume()),
   };
 }

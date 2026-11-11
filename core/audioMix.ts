@@ -213,7 +213,7 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
 /**
  * What is sounding: each voice of `mix` with the state the engine last reported for it, loading
  * until it does, then the voices left out because their file is missing, the Soundboard `pads`
- * sounding, and whether Silence is on. Voices the engine still holds but the mix dropped
+ * sounding, whether Silence is on and the Master volume. Voices the engine still holds but the mix dropped
  * (fading out) are not shown.
  */
 export function soundingOf(
@@ -221,10 +221,12 @@ export function soundingOf(
   report: AudioEngineReport,
   pads: AudioSounding['pads'] = [],
   silence = false,
+  masterVolume: number = MASTER_VOLUME.default,
 ): AudioSounding {
   return {
     pads,
     silence,
+    masterVolume,
     voices: [
       ...mix.voices.map(({ mediaId, role, name }) => ({
         mediaId,

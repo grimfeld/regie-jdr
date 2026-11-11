@@ -453,6 +453,8 @@ function startApp() {
       'settings:set-master-volume': async ({ masterVolume }) => {
         const saved = await settingsStore.setMasterVolume(masterVolume);
         audio.setMasterVolume(saved.masterVolume);
+        // Listening to a library sound follows it too, through the sounding state.
+        sendSounding();
         await retunePads();
         return saved;
       },

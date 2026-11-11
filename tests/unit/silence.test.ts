@@ -199,6 +199,7 @@ describe('what is sounding during Silence', () => {
       voices: [],
       pads: [],
       silence: true,
+      masterVolume: 1,
     });
   });
 });

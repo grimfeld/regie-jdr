@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import { Headphones, TriangleAlert } from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
 import type { AudioMedia, MediaId } from '../shared/domain';
-import { listeningAllowed } from '../core/audioMix';
+import { listeningAllowed, MASTER_VOLUME } from '../core/audioMix';
 import { mediaAddress } from '../core/mediaAddress';
 import { useSounding } from './NowPlaying';
 import { showNotice } from './notices';
@@ -12,6 +12,8 @@ export interface Listening {
   allowed: boolean;
   /** The sound being listened to; null when none. */
   mediaId: MediaId | null;
+  /** Its name, for the "En cours" strip; null when none. */
+  name: string | null;
   /** Starts listening to `sound`, or stops when it is the one being listened to. */
   toggle: (sound: AudioMedia) => void;
   /** The player, to render once (hidden): it plays apart from the mix. */
@@ -23,14 +25,23 @@ export interface Listening {
  * app plays, so this is never private: it is allowed only during Silence once nothing else
  * sounds (core/audioMix.ts `listeningAllowed`), and stops by itself when that no longer holds
  * (Silence lifted, a pad pressed). It plays through its own element, apart from the audio
- * engine: the Scene, the mix and what the "En cours" strip shows are left as they are.
+ * engine, at the Master volume like everything else; the Scene and the mix are left as they
+ * are, and the "En cours" strip lists it (the players hear it).
  */
 export function useListening(control: ControlBridge | undefined): Listening {
-  const allowed = listeningAllowed(useSounding(control));
+  const sounding = useSounding(control);
+  const allowed = listeningAllowed(sounding);
+  const masterVolume = sounding?.masterVolume ?? MASTER_VOLUME.default;
   const element = useRef<HTMLAudioElement>(null);
-  const [mediaId, setMediaId] = useState<MediaId | null>(null);
+  const [listened, setListened] = useState<{ mediaId: MediaId; name: string } | null>(null);
+  const mediaId = listened?.mediaId ?? null;
   // No longer allowed (Silence lifted, something sounds): stop, before showing it as listening.
-  if (!allowed && mediaId !== null) setMediaId(null);
+  if (!allowed && mediaId !== null) setListened(null);
+
+  // Heard at the Master volume, following it while it plays.
+  useEffect(() => {
+    if (element.current) element.current.volume = Math.min(1, Math.max(0, masterVolume));
+  }, [masterVolume]);
 
   // Stopped, however: the player goes quiet and lets go of the file.
   useEffect(() => {
@@ -41,7 +52,7 @@ export function useListening(control: ControlBridge | undefined): Listening {
     player.load();
   }, [mediaId]);
 
-  const stop = useCallback(() => setMediaId(null), []);
+  const stop = useCallback(() => setListened(null), []);
 
   const toggle = useCallback(
     (sound: AudioMedia) => {
@@ -52,12 +63,13 @@ export function useListening(control: ControlBridge | undefined): Listening {
       }
       if (!allowed) return;
       player.src = mediaAddress(sound);
-      setMediaId(sound.id);
+      player.volume = Math.min(1, Math.max(0, masterVolume));
+      setListened({ mediaId: sound.id, name: sound.name });
       player.play().catch(() => {
         // An unreadable file also raises the element's `error` event, which says so.
       });
     },
-    [allowed, mediaId, stop],
+    [allowed, masterVolume, mediaId, stop],
   );
 
   const player = (
@@ -70,11 +82,11 @@ export function useListening(control: ControlBridge | undefined): Listening {
         if (element.current?.getAttribute('src')) {
           showNotice('Ce son n’a pas pu être écouté : son fichier est illisible ou introuvable.');
         }
-        setMediaId(null);
+        setListened(null);
       }}
     />
   );
-  return { allowed, mediaId, toggle, player };
+  return { allowed, mediaId, name: listened?.name ?? null, toggle, player };
 }
 
 /** Why the listen button is off, or what it does, for its tooltip. */

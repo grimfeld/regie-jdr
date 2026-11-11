@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dragOnScreen,
   expect,
   stubFilePicker,
   test,
@@ -84,6 +85,10 @@ async function playerPlaying(page: Page) {
   });
 }
 
+async function playerVolume(page: Page) {
+  return page.evaluate(() => document.querySelector<HTMLAudioElement>('.listening-player')?.volume);
+}
+
 test('listening is allowed only during Silence and stops when Silence lifts', async ({ regie }) => {
   const page = regie.controlWindow;
   await createCampaign(page, 'Star Wars');
@@ -96,19 +101,25 @@ test('listening is allowed only during Silence and stops when Silence lifts', as
   await silenceButton(page).click();
   await expect(listenButton(page, 'Forêt')).toBeEnabled();
   await expect(warning(page)).toBeVisible();
+  await nowPlaying(page).getByRole('slider', { name: 'Volume général' }).fill('40');
 
   await listenButton(page, 'Forêt').click();
   await expect(listenButton(page, 'Forêt')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => playerPlaying(page)).toBe(true);
-  // Apart from the mix: nothing on air, Silence still on.
+  // Apart from the mix: nothing on air, Silence still on; but the players hear it, so the
+  // "En cours" strip lists it, and it plays at the Master volume, following it.
   expect(await mixOf(page)).toEqual([]);
-  await expect(nowPlaying(page)).toContainText('Aucun son.');
+  await expect(nowPlaying(page).getByRole('listitem')).toHaveText([/Forêt.*écoute/]);
   await expect(silenceButton(page)).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => playerVolume(page)).toBeCloseTo(0.4, 5);
+  await nowPlaying(page).getByRole('slider', { name: 'Volume général' }).fill('20');
+  await expect.poll(() => playerVolume(page)).toBeCloseTo(0.2, 5);
 
   // Pressed again: stops.
   await listenButton(page, 'Forêt').click();
   await expect(listenButton(page, 'Forêt')).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => playerPlaying(page)).toBe(false);
+  await expect(nowPlaying(page)).toContainText('Aucun son.');
 
   // Lifting Silence stops listening and turns the button off.
   await listenButton(page, 'Forêt').click();
@@ -137,9 +148,9 @@ test('listening during Silence leaves the Scene and its Music as they are; a pad
     .locator('.media-audio-icon')
     .dragTo(musicList.locator('xpath=..'));
   await expect(musicList.getByRole('listitem')).toHaveText([/Auberge/]);
-  await soundInLibrary(page, 'Épée')
-    .locator('.media-audio-icon')
-    .dragTo(soundboard(page), { targetPosition: { x: 40, y: 20 } });
+  await dragOnScreen(soundInLibrary(page, 'Épée').locator('.media-audio-icon'), soundboard(page), {
+    targetPosition: { x: 40, y: 20 },
+  });
   const pad = soundboard(page).getByRole('button', { name: 'Jouer Épée' });
   await expect(pad).toBeVisible();
   await editor(page).getByRole('button', { name: 'Activer', exact: true }).click();
@@ -159,7 +170,7 @@ test('listening during Silence leaves the Scene and its Music as they are; a pad
   await expect.poll(() => playerPlaying(page)).toBe(true);
   expect(await mixOf(page)).toEqual(mixBefore);
   await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'paused');
-  await expect(sounding(page, 'Forêt')).toHaveCount(0);
+  await expect(sounding(page, 'Forêt')).toHaveAttribute('data-role', 'listening');
   await expect(screen).toHaveAttribute('data-version', pictureVersion ?? '');
 
   // A pad sounds: listening stops, and is refused until the pad has ended.

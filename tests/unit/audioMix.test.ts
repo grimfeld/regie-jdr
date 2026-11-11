@@ -318,6 +318,7 @@ describe('what is sounding', () => {
       ],
       pads: [],
       silence: false,
+      masterVolume: 1,
     });
   });
 
@@ -327,6 +328,7 @@ describe('what is sounding', () => {
       voices: [],
       pads,
       silence: false,
+      masterVolume: 1,
     });
   });
 
@@ -347,7 +349,7 @@ describe('what is sounding', () => {
   it('ignores voices the engine still holds that left the mix (fading out)', () => {
     expect(
       soundingOf({ ...mix, voices: [] }, { voices: [{ mediaId: 'm1', state: 'playing' }] }),
-    ).toEqual({ voices: [], pads: [], silence: false });
+    ).toEqual({ voices: [], pads: [], silence: false, masterVolume: 1 });
   });
 });
 
@@ -355,6 +357,7 @@ describe('sounds that cannot be played', () => {
   const sounding = (...states: [string, SoundingState][]) => ({
     pads: [],
     silence: false,
+    masterVolume: 1,
     voices: states.map(([mediaId, state]) => ({
       mediaId,
       role: 'ambience' as const,

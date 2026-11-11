@@ -7,6 +7,7 @@ import { CampaignList, errorMessage } from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
 import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboard';
+import { useListening } from './Listening';
 import { NowPlaying, toggleSilence } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
@@ -273,6 +274,8 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   // Per Campaign, whichever Scene is active. Read again when a Media is deleted (its pads go).
   const soundboard = useSoundboard(control, campaign.id, mediaRevision);
   useAudioShortcuts(control, soundboard);
+  // Started from the library, listed in the "En cours" strip: the players hear it (ADR-0002).
+  const listening = useListening(control);
 
   return (
     <>
@@ -302,12 +305,13 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
             onMediaDeleted={() => setMediaRevision((revision) => revision + 1)}
             onMediaRenamed={() => setMediaRevision((revision) => revision + 1)}
             importRevision={importRevision}
+            listening={listening}
           />
         </section>
 
         <aside className="control-column">
           <OnAirMonitor control={control} />
-          <NowPlaying control={control} />
+          <NowPlaying control={control} listening={listening.name} />
           <SoundboardPanel
             control={control}
             campaignId={campaign.id}

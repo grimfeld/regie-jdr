@@ -16,7 +16,7 @@ import { useDropTarget } from './PlacementLists';
 import { showNotice } from './notices';
 import { MediaImage } from './MediaImage';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
-import { ListenButton, ListeningWarning, useListening } from './Listening';
+import { ListenButton, ListeningWarning, type Listening } from './Listening';
 import { gridColumns, gridWindow } from './virtualGrid';
 
 const categoryLabels: Record<ImageCategory, string> = {
@@ -89,6 +89,8 @@ interface Props {
   onMediaRenamed: () => void;
   /** Changes when Media were imported elsewhere (dropped on the Scene editor): read again. */
   importRevision: number;
+  /** Listening to a library sound (shared with the "En cours" strip, which lists it). */
+  listening: Listening;
 }
 
 /**
@@ -103,6 +105,7 @@ export function MediaLibrary({
   onMediaDeleted,
   onMediaRenamed,
   importRevision,
+  listening,
 }: Props) {
   const [media, setMedia] = useState<Media[]>([]);
   const [filter, setFilter] = useState<LibraryFilter>('all');
@@ -125,7 +128,6 @@ export function MediaLibrary({
   const hasImages = media.some((item) => item.kind === 'image');
   const hasSounds = media.some((item) => item.kind === 'audio');
   const missingSounds = useMissingMedia(sounds);
-  const listening = useListening(control);
 
   useEffect(() => {
     if (!control) return;

@@ -49,6 +49,15 @@ describe('the link with the audio engine', () => {
     expect(link.sounding().voices).toMatchObject([{ mediaId: 'm1', state: 'playing' }]);
   });
 
+  it('carries the Master volume, for listening to a library sound at the level of the rest', () => {
+    const { audio, link } = setup();
+    expect(link.sounding().masterVolume).toBe(1);
+
+    audio.setMasterVolume(0.4);
+
+    expect(link.sounding().masterVolume).toBe(0.4);
+  });
+
   it('forgets the last report when the engine starts again (Control window reloaded)', () => {
     const { link } = setup();
     link.engineReported({ voices: [{ mediaId: 'm1', state: 'playing' }] });

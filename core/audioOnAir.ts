@@ -59,6 +59,8 @@ export interface AudioOnAir {
   setSilence(on: boolean): AudioMix;
   /** The Master volume (Settings, already checked). */
   setMasterVolume(masterVolume: number): AudioMix;
+  /** The Master volume the mix is heard at. */
+  masterVolume(): number;
   /** Calls `listener` with each new mix. Returns the unsubscribe function. */
   subscribe(listener: (mix: AudioMix) => void): () => void;
 }
@@ -143,6 +145,7 @@ export function createAudioOnAir(): AudioOnAir {
     silence: () => input.silence === true,
     setSilence: (on) => change({ ...input, silence: on }, 'silence'),
     setMasterVolume: (masterVolume) => change({ ...input, masterVolume }, 'volume'),
+    masterVolume: () => input.masterVolume,
     subscribe: (listener) => {
       const own = (snapshot: AudioMix) => listener(snapshot);
       listeners.add(own);

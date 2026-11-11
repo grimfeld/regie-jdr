@@ -326,7 +326,8 @@ export interface SoundingVoice {
 
 /**
  * What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it,
- * the Soundboard pads the engine reports playing, and whether Silence is on.
+ * the Soundboard pads the engine reports playing, whether Silence is on, and the Master volume
+ * everything is heard at.
  */
 export interface AudioSounding {
   voices: SoundingVoice[];
@@ -336,6 +337,8 @@ export interface AudioSounding {
    * never saved; audio only, apart from Blackout (picture only).
    */
   silence: boolean;
+  /** The Master volume (0..1): a library sound listened to plays at it too. */
+  masterVolume: number;
 }
 
 /**
