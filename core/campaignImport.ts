@@ -130,6 +130,8 @@ export function unpackLimit(archiveBytes: number): number {
 
 const MEDIA_FOLDER = 'media';
 const CAMPAIGN_FILE = 'campaign.json';
+/** Start of a staging folder's name in the imports folder. */
+const STAGING_PREFIX = 'import-';
 
 /** The documents an Export may hold, by path. */
 const DOCUMENT_TYPES = new Map<string, DocumentType<unknown>>([
@@ -506,7 +508,7 @@ export async function importCampaign(input: {
   const newId = input.newId ?? randomUUID;
   signal?.throwIfAborted();
   await fsp.mkdir(importsFolder, { recursive: true });
-  const staging = await fsp.mkdtemp(path.join(importsFolder, 'import-'));
+  const staging = await fsp.mkdtemp(path.join(importsFolder, STAGING_PREFIX));
   try {
     await fsp.mkdir(path.join(staging, MEDIA_FOLDER));
     const archive = await input.openArchive();
@@ -547,7 +549,24 @@ export async function importCampaign(input: {
   }
 }
 
-/** Removes staging folders an Import interrupted by a crash left behind. */
+/**
+ * Removes the staging folders (`import-*`) an Import interrupted by a crash left behind, and
+ * nothing else: not a link, not a file, not a folder the app did not make.
+ */
 export async function clearImportLeftovers(importsFolder: string): Promise<void> {
-  await fsp.rm(importsFolder, { recursive: true, force: true, maxRetries: 5 });
+  let entries;
+  try {
+    entries = await fsp.readdir(importsFolder, { withFileTypes: true });
+  } catch (error) {
+    if (isRecord(error) && error.code === 'ENOENT') return;
+    throw error;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(STAGING_PREFIX)) continue;
+    await fsp.rm(path.join(importsFolder, entry.name), {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+    });
+  }
 }

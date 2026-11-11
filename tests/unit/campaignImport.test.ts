@@ -9,6 +9,7 @@ import {
 } from '../../core/campaignExport';
 import {
   admitDocument,
+  clearImportLeftovers,
   createEntryChecker,
   importCampaign,
   importedCampaignName,
@@ -782,5 +783,29 @@ describe('importCampaign', () => {
         archiveBytes: 1000,
       });
     });
+  });
+});
+
+describe('clearing what an interrupted Import left', () => {
+  const dir = useTempDir();
+
+  it('removes only the staging folders, nothing else in the imports folder', async () => {
+    const imports = path.join(dir.path, 'imports');
+    await fs.mkdir(path.join(imports, 'import-abc123', 'media'), { recursive: true });
+    await fs.writeFile(path.join(imports, 'import-abc123', 'media', 'x.png'), 'x');
+    await fs.mkdir(path.join(imports, 'import-def456'));
+    await fs.mkdir(path.join(imports, 'other'));
+    await fs.writeFile(path.join(imports, 'other', 'keep.txt'), 'keep');
+    await fs.writeFile(path.join(imports, 'notes.txt'), 'keep');
+    await fs.writeFile(path.join(imports, 'import-file.txt'), 'not a folder');
+
+    await clearImportLeftovers(imports);
+
+    expect((await fs.readdir(imports)).sort()).toEqual(['import-file.txt', 'notes.txt', 'other']);
+    expect(await fs.readFile(path.join(imports, 'other', 'keep.txt'), 'utf8')).toBe('keep');
+  });
+
+  it('does nothing when there is no imports folder', async () => {
+    await expect(clearImportLeftovers(path.join(dir.path, 'missing'))).resolves.toBeUndefined();
   });
 });
