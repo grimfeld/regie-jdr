@@ -172,3 +172,36 @@ describe('the renderer’s fades', () => {
     expect(drawn('.canvas-blackout')).toEqual([]);
   });
 });
+
+describe('a missing Media on the canvas', () => {
+  it('shows its placeholder in place of the image in the Control window', () => {
+    act(() =>
+      root.render(
+        <SceneCanvas
+          picture={{ backgrounds: [], overlays: [overlay()] }}
+          window="control"
+          fadeDurationMs={FADE}
+        />,
+      ),
+    );
+    act(() => {
+      container.querySelector('img')?.dispatchEvent(new Event('error'));
+    });
+
+    const placement = container.querySelector<HTMLElement>('.canvas-overlay');
+    expect(placement?.querySelector('.media-missing')).not.toBeNull();
+    expect(placement?.style.visibility).not.toBe('hidden');
+    expect(placement?.getAttribute('data-fade')).toBe('shown');
+  });
+
+  it('draws nothing of it in the Broadcast window', () => {
+    draw({ backgrounds: [], overlays: [overlay('Garde')] });
+    act(() => {
+      container.querySelector('img')?.dispatchEvent(new Event('error'));
+    });
+
+    const placement = container.querySelector<HTMLElement>('.canvas-overlay');
+    expect(placement?.querySelector('.media-missing')).toBeNull();
+    expect(placement?.style.visibility).toBe('hidden');
+  });
+});
