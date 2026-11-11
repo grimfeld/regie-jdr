@@ -1,39 +1,130 @@
-/* Fantasy: sets every token of tokens.css. Its finished version comes with #68. */
+/*
+ * Fantasy: a dungeon crawler's table (spec #58, #68). Sets every token of tokens.css. Dark wood
+ * on the page, stitched leather on the title bar, iron bands round the panels, stone under the
+ * fields, parchment for the accents; never a light page. Its display font is bundled (fonts/,
+ * docs/theme-assets.md); its textures and ornaments are CSS on the window frame only, the
+ * panels keep solid surfaces. No animation, so nothing flickers over a long session.
+ */
+@font-face {
+  font-family: 'IM Fell English SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/im-fell-english-sc-latin-400.woff2') format('woff2');
+}
+
 [data-theme='fantasy'] {
-  --page: #17130f;
-  --title-bar: #111319;
-  --frame: radial-gradient(
-    ellipse at 80% -20%,
-    color-mix(in srgb, var(--accent) 12%, transparent),
-    transparent 45%
-  );
-  --texture: none;
+  --page: #120e0a;
+  --title-bar: #1b130d;
+  /* Candlelight from above the table, darkening towards its edges. */
+  --frame:
+    radial-gradient(
+      ellipse at 50% -10%,
+      color-mix(in srgb, var(--accent) 11%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(ellipse at 50% 35%, transparent 55%, color-mix(in srgb, black 45%, transparent));
+  /* Dark wooden planks: a seam every 88 px, a faint grain between. */
+  --texture:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 86px,
+      color-mix(in srgb, black 60%, transparent) 86px 88px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--accent) 4%, transparent) 0 1px,
+      transparent 1px 5px,
+      color-mix(in srgb, var(--accent) 2%, transparent) 5px 6px,
+      transparent 6px 11px
+    );
 
-  --surface: #241d17;
-  --surface-raised: #30271f;
-  --surface-sunken: #15181e;
-  --border: #504233;
-  --control-border: #777;
+  --surface: #1e1712;
+  --surface-raised: #2a2018;
+  /* Stone: the fields and wells sunk into the panels. */
+  --surface-sunken: #171614;
+  --border: #4d4136;
+  /* Iron. */
+  --control-border: #8a8075;
 
-  --text: #eee4d2;
-  --text-secondary: #b1a18c;
-  --accent: #987348;
-  --accent-strong: #d0b184;
-  --on-accent: #080604;
+  /* Parchment, and ink on parchment. */
+  --text: #eadcc0;
+  --text-secondary: #b8a688;
+  --accent: #c2a36b;
+  --accent-strong: #e6cf9c;
+  --on-accent: #1a1209;
 
   --status-live: #c62828;
   --on-status-live: #fff;
   --status-blackout: var(--accent-strong);
   --status-warning: var(--accent);
-  --status-error: #e08a7a;
+  --status-error: #ef9a85;
   --status-missing: var(--accent-strong);
-  --status-missing-fill: #1a1a1f;
-  --status-missing-fill-alt: #22222a;
+  --status-missing-fill: #1f1813;
+  --status-missing-fill-alt: #2a2019;
   --status-hidden-opacity: 0.6;
-  --status-session: #83a77c;
+  --status-session: #8fb27f;
 
-  --font-body: Arial, Helvetica, sans-serif;
-  --font-display: 'Arial Narrow', Impact, sans-serif;
-  --radius: 7px;
-  --radius-small: 4px;
+  --font-body: Georgia, 'Times New Roman', serif;
+  --font-display: 'IM Fell English SC', Georgia, serif;
+  --radius: 3px;
+  --radius-small: 2px;
+
+  /* Native controls (sliders, fields, scrollbars) in parchment and dark, not system blue. */
+  color-scheme: dark;
+  accent-color: var(--accent);
+  /* The display font has one weight: bold titles keep its drawn strokes, not a smeared copy. */
+  font-synthesis: none;
+}
+
+/* Titles in parchment ink, engraved into the wood. */
+[data-theme='fantasy'] .brand strong,
+[data-theme='fantasy'] h1,
+[data-theme='fantasy'] h2 {
+  color: var(--accent-strong);
+  text-shadow: 0 1px 0 black;
+}
+
+/* The title bar: leather, a stitched seam above an iron edge. */
+[data-theme='fantasy'] .topbar {
+  background-color: var(--title-bar);
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 40%, transparent) 0 7px,
+      transparent 7px 12px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--accent) 8%, var(--title-bar)),
+      var(--title-bar)
+    );
+  background-size:
+    100% 1px,
+    auto;
+  background-position:
+    0 calc(100% - 6px),
+    0 0;
+  background-repeat: no-repeat;
+  border-bottom: 2px solid color-mix(in srgb, var(--control-border) 55%, var(--page));
+  box-shadow: 0 1px 0 black;
+}
+
+/* The mark beside the title: an iron plate with a rivet in each corner. */
+[data-theme='fantasy'] .brand-mark {
+  border-color: var(--control-border);
+  border-radius: 2px;
+  background-image: radial-gradient(circle, var(--control-border) 1.2px, transparent 1.8px);
+  background-size: 26px 26px;
+  background-position: -9px -9px;
+}
+
+/* Panels: bound in iron, a dark seam either side of the band; inside, the solid surface. */
+[data-theme='fantasy'] .panel {
+  border-color: color-mix(in srgb, var(--control-border) 65%, var(--page));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, black 70%, var(--page)),
+    0 4px 10px color-mix(in srgb, black 35%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, black 60%, transparent),
+    inset 0 0 0 2px color-mix(in srgb, var(--control-border) 22%, transparent);
 }
