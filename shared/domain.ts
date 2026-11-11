@@ -347,11 +347,16 @@ export type PadVoiceId = number;
 
 /**
  * What the main process tells the audio engine about pad sounds (core/padVoices.ts): play one
- * at `gain` (Master volume included), or cut some with a short fade.
+ * at `gain` (Master volume included), cut some with a short fade, or preload the pads' sounds.
  */
 export type PadCommand =
   | { kind: 'play'; voiceId: PadVoiceId; src: string; gain: number }
-  | { kind: 'cut'; voiceIds: PadVoiceId[]; fadeMs: number };
+  | { kind: 'cut'; voiceIds: PadVoiceId[]; fadeMs: number }
+  /**
+   * The Sound effects of the open Campaign's pads (Media addresses): the engine decodes them
+   * ahead of a press and frees every other it holds (Campaign switched, pad removed).
+   */
+  | { kind: 'preload'; srcs: string[] };
 
 /**
  * The audio engine's report on pad sounds: the state of each it holds, and the last pad sound

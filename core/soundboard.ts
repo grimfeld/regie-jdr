@@ -159,6 +159,12 @@ export interface SoundboardStore {
   removeMedia(campaignId: CampaignId, mediaId: MediaId): Promise<void>;
   /** What pressing a pad plays, at `masterVolume`. Throws when the pad or its Media is gone. */
   press(campaignId: CampaignId, padId: string, masterVolume: number): Promise<PadPress>;
+  /**
+   * The Media addresses of the Sound effects on the Campaign's pads, each once, in pad order:
+   * what the audio engine keeps decoded (spec #33: preloaded on Campaign open). A pad whose
+   * Media left the library is left out.
+   */
+  sounds(campaignId: CampaignId): Promise<string[]>;
 }
 
 export function createSoundboardStore(deps: {
@@ -231,6 +237,17 @@ export function createSoundboardStore(deps: {
         src: mediaAddress(media),
         gain: padGain(masterVolume, board.volume, pad.volume),
       };
+    },
+
+    async sounds(campaignId) {
+      const board = await read(await fileOf(campaignId), campaignId);
+      const media = await library.list(campaignId);
+      const sounds = new Set<string>();
+      for (const pad of board.pads) {
+        const item = media.find((candidate) => candidate.id === pad.mediaId);
+        if (item?.kind === 'audio' && item.role === 'soundEffect') sounds.add(mediaAddress(item));
+      }
+      return [...sounds];
     },
   };
 }

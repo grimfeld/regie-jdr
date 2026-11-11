@@ -323,6 +323,18 @@ function startApp() {
     sendPadCommands(padVoices.clear());
     sendSounding();
   };
+  /**
+   * Tells the engine which Sound effects to keep decoded: those of the open Campaign's pads,
+   * none when no Campaign is open. Sent on Campaign open and close, pad changes and engine
+   * start; a failure only costs the decode on first press.
+   */
+  const preloadPads = () => {
+    const { campaignId } = onAir.current();
+    const sounds = campaignId === null ? Promise.resolve([]) : soundboards.sounds(campaignId);
+    sounds
+      .then((srcs) => sendPadCommands([{ kind: 'preload', srcs }]))
+      .catch((error: unknown) => log.warn('Listing the Sound effects to preload failed', error));
+  };
   /** Silence was set: when it `started`, the pads sounding fade out too. Returns what sounds. */
   const silenced = (started: boolean) => {
     if (started) {
@@ -347,11 +359,13 @@ function startApp() {
       'onAir:open-campaign': async ({ campaignId }) => {
         const state = await commands.openCampaign(campaignId);
         stopPads();
+        preloadPads();
         return state;
       },
       'onAir:close-campaign': async () => {
         const state = await commands.closeCampaign();
         stopPads();
+        preloadPads();
         return state;
       },
       'onAir:activate-scene': async ({ sceneId }) => {
@@ -394,7 +408,10 @@ function startApp() {
       'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
       'media:delete': async ({ campaignId, mediaId, confirmed }) => {
         const deletion = await commands.deleteMedia(campaignId, mediaId, confirmed);
-        if (deletion.deleted) await soundboards.removeMedia(campaignId, mediaId);
+        if (deletion.deleted) {
+          await soundboards.removeMedia(campaignId, mediaId);
+          preloadPads();
+        }
         return deletion;
       },
       'campaigns:list': () => storage.campaigns.list(),
@@ -418,6 +435,7 @@ function startApp() {
       'audio:get-mix': () => {
         padVoices.forget();
         sendSounding();
+        preloadPads();
         return audio.mix();
       },
       'audio:report': (report) => {
@@ -433,7 +451,11 @@ function startApp() {
         if (padVoices.report(report)) sendSounding();
       },
       'soundboard:get': ({ campaignId }) => soundboards.get(campaignId),
-      'soundboard:edit': ({ campaignId, edit }) => soundboards.edit(campaignId, edit),
+      'soundboard:edit': async ({ campaignId, edit }) => {
+        const saved = await soundboards.edit(campaignId, edit);
+        if (edit.kind === 'add-pad' || edit.kind === 'remove-pad') preloadPads();
+        return saved;
+      },
       'soundboard:press': async ({ campaignId, padId }) => {
         if (onAir.current().campaignId !== campaignId) {
           throw new SoundboardError('Ouvrez cette campagne pour jouer ses bruitages.');

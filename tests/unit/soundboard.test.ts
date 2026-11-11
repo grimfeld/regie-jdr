@@ -215,6 +215,36 @@ describe('Soundboard store', () => {
     expect((await store.press(campaign.id, 'pad1', 1)).name).toBe('Épée');
   });
 
+  it('lists the Sound effects to preload: each pad’s once, in pad order, none once removed', async () => {
+    const { campaign, store } = await setup();
+    expect(await store.sounds(campaign.id)).toEqual([]);
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    const [s2, s1] = [
+      (await store.press(campaign.id, 'pad1', 1)).src,
+      (await store.press(campaign.id, 'pad2', 1)).src,
+    ];
+
+    expect(await store.sounds(campaign.id)).toEqual([s2, s1]);
+
+    await store.edit(campaign.id, { kind: 'remove-pad', padId: 'pad2' });
+    expect(await store.sounds(campaign.id)).toEqual([s2]);
+    await store.removeMedia(campaign.id, 's2');
+    expect(await store.sounds(campaign.id)).toEqual([]);
+  });
+
+  it('leaves out of the preload a pad whose Media left the library', async () => {
+    const media = [sound('s1'), sound('s2')];
+    const { campaign, store } = await setup(media);
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's1' });
+    await store.edit(campaign.id, { kind: 'add-pad', mediaId: 's2' });
+    const s2 = (await store.press(campaign.id, 'pad2', 1)).src;
+    media.shift();
+
+    expect(await store.sounds(campaign.id)).toEqual([s2]);
+  });
+
   it('refuses to press a pad that is gone', async () => {
     const { campaign, store } = await setup();
     await expect(store.press(campaign.id, 'nope', 1)).rejects.toThrow(SoundboardError);
