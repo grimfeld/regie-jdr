@@ -96,3 +96,11 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - `copyOfScene` (`core/scenes.ts`) deep-clones, new Scene/Background/Overlay ids, same Media references (incl. Notes images: no file copied). Name "<name> (copie)", original shortened at the 100-char limit. Placed per the issue; "Dupliquer" sits next to Renommer.
 - Copy starts with an empty undo history (histories are per Scene id).
 - Guard: `sceneFieldInCopy` in `tests/unit/scenes.test.ts` (`satisfies Record<keyof Scene, …>`) plus a no-shared-object walk. A new Scene field fails typecheck there until its copy rule is decided.
+
+## Crossfade on Activate (#48, 2026-11-12, `5258baf`)
+
+- Supersedes #31's "Activating another Scene dissolves over the fade duration".
+- `OnAirState.transition` {id, kind, from, to, startedAt, durationMs} goes on air (Scene ids and timing only; allow-list updated); cleared on Campaign open/switch/close.
+- `ACTIVATE_DURATION_MS` (1.5 s, `core/fades.ts`) drives both the picture Crossfade and `AUDIO_FADE_MS.activate`.
+- Renderer: each on-air picture is a layer on black; the incoming layer waits for image decode, then dissolves. Shared Backgrounds and the Scene title don't flicker; Blackout stays on top. Activate mid-transition freezes the dissolve where it is. Editor fades unchanged.
+- No Transition field on Scene yet. #49: add it (duplicate copies it; it never goes on air) and pass `kind: 'cut'`, `durationMs: 0` from `activateScene` in `core/onAir.ts`; renderer needs no change. #50: replace `ACTIVATE_DURATION_MS` where `core/onAir.ts` and `AUDIO_FADE_MS.activate` read it; carry it like `setFadeDuration`.
