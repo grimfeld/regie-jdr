@@ -485,6 +485,8 @@ describe('copy of a Scene', () => {
           type: 'paragraph',
           content: [{ type: 'text', text: 'Le traître', marks: [{ type: 'bold' }] }],
         },
+        // A Notes image (#52): a reference to a Media, copied as the same reference.
+        { type: 'image', attrs: { mediaId: 'm8' } },
       ],
     },
   };
@@ -545,6 +547,7 @@ describe('copy of a Scene', () => {
     const withoutId = ({ id: _id, ...placement }: { id: string }) => placement;
     expect(copy.backgrounds.map(withoutId)).toEqual(source.backgrounds.map(withoutId));
     expect(copy.overlays.map(withoutId)).toEqual(source.overlays.map(withoutId));
+    expect(copy.notes.content.at(-1)).toEqual({ type: 'image', attrs: { mediaId: 'm8' } });
   });
 
   it('is named "<name> (copie)", shortening a long name to fit the name limit', () => {

@@ -916,7 +916,12 @@ describe('on-air commands', () => {
 
     it('copies the Active Scene without putting the copy on air, and copies no Media file', async () => {
       const ctx = await setup();
-      const active = await sceneShowing(ctx, 'Cantina');
+      const showing = await sceneShowing(ctx, 'Cantina');
+      // The image is in its Notes too (#52): still the same Media, never a copied file.
+      const active = await ctx.scenes.save({
+        ...showing,
+        notes: { type: 'doc', content: [{ type: 'image', attrs: { mediaId: ctx.image.id } }] },
+      });
       await ctx.commands.openCampaign(ctx.campaign.id);
       await ctx.commands.activateScene(active.id);
       const sent = ctx.broadcast.length;
@@ -927,6 +932,7 @@ describe('on-air commands', () => {
 
       expect(copy.name).toBe('Cantina (copie)');
       expect(copy.backgrounds.map((item) => item.mediaId)).toEqual([ctx.image.id]);
+      expect(copy.notes).toEqual(active.notes);
       expect(ctx.broadcast.length).toBe(sent);
       expect(ctx.broadcast.at(-1)?.activeSceneId).toBe(active.id);
       expect(ctx.mixes.length).toBe(mixes);
