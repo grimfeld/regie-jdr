@@ -132,7 +132,7 @@ describe('key map', () => {
   });
 
   it('reads another key map in place of the default one', () => {
-    const remapped: KeyMap = { ...KEY_MAP, silence: [{ code: 'F9', label: 'F9' }] };
+    const remapped: KeyMap = { ...KEY_MAP, keys: { ...KEY_MAP.keys, silence: [{ key: 'f9' }] } };
     expect(shortcutOf(press('F9', 'F9'), remapped)).toBe('silence');
     expect(shortcutOf(press('s', 'KeyS'), remapped)).toBeUndefined();
     expect(keyLabelOf('silence', remapped)).toBe('F9');

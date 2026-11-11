@@ -2,10 +2,17 @@
  * Global Settings (one document, `<root>/settings.json`): the home page theme, the Control and
  * Broadcast window bounds, the last Active Scene of each Campaign (for highlighting only:
  * nothing goes on air after a restart), the fade duration, the Master volume, the Activate
- * duration, the Music crossfade duration and whether the Broadcast window stays on top. No
- * Electron dependency.
+ * duration, the Music crossfade duration, whether the Broadcast window stays on top and the
+ * shortcut keys. No Electron dependency.
  */
-import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
+import type {
+  CampaignId,
+  SceneId,
+  Settings,
+  ShortcutSettings,
+  ThemeId,
+  WindowBounds,
+} from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { MASTER_VOLUME } from './audioMix.js';
@@ -18,6 +25,7 @@ import {
   parseMusicCrossfade,
 } from './fades.js';
 import { isRecord } from './guards.js';
+import { DEFAULT_SHORTCUTS, isConsistent, parseShortcutSettings } from './keyMap.js';
 import { createSerialQueue } from './serialQueue.js';
 
 /** A Settings change refused, with a message the Game Master can read. */
@@ -45,6 +53,8 @@ export interface SettingsStore {
   /** Throws a SettingsError for a duration outside MUSIC_CROSSFADE_MS. */
   setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
   setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
+  /** Throws a SettingsError for keys refused or taken twice (core/keyMap.ts). */
+  setShortcuts(shortcuts: ShortcutSettings): Promise<Settings>;
 }
 
 /** Master volume until the Game Master changes it: full. */
@@ -70,6 +80,7 @@ function defaults(): Settings {
     activateDurationMs: ACTIVATE_DURATION_MS.default,
     musicCrossfadeMs: MUSIC_CROSSFADE_MS.default,
     broadcastAlwaysOnTop: false,
+    shortcuts: DEFAULT_SHORTCUTS,
   };
 }
 
@@ -93,7 +104,7 @@ export function parseWindowBounds(value: unknown): WindowBounds | undefined {
 
 const settingsDocument: DocumentType<Settings> = {
   name: 'settings',
-  version: 5,
+  version: 6,
   migrations: {
     // Version 2 adds the fade duration, at its default.
     1: (fields) => ({ ...fields, fadeDurationMs: FADE_DURATION_MS.default }),
@@ -109,6 +120,8 @@ const settingsDocument: DocumentType<Settings> = {
     // written by an M4 build before the merge with M3 may hold it already: kept. Its missing
     // durations are filled with their defaults by parse.
     4: (fields) => ({ broadcastAlwaysOnTop: false, ...fields }),
+    // Version 6 (Milestone 4) adds the shortcut keys, nothing remapped.
+    5: (fields) => ({ ...fields, shortcuts: DEFAULT_SHORTCUTS }),
   },
   parse({
     theme,
@@ -119,6 +132,7 @@ const settingsDocument: DocumentType<Settings> = {
     activateDurationMs,
     musicCrossfadeMs,
     broadcastAlwaysOnTop,
+    shortcuts,
   }) {
     if (!isThemeId(theme) || !isRecord(windowBounds) || !isRecord(lastActiveSceneByCampaign)) {
       return undefined;
@@ -141,6 +155,7 @@ const settingsDocument: DocumentType<Settings> = {
       activateDurationMs: parseActivateDuration(activateDurationMs) ?? ACTIVATE_DURATION_MS.default,
       musicCrossfadeMs: parseMusicCrossfade(musicCrossfadeMs) ?? MUSIC_CROSSFADE_MS.default,
       broadcastAlwaysOnTop: broadcastAlwaysOnTop === true,
+      shortcuts: parseShortcutSettings(shortcuts),
     };
   },
 };
@@ -219,5 +234,15 @@ export function createSettingsStore(storage: Storage): SettingsStore {
     },
     setBroadcastAlwaysOnTop: (on) =>
       change((settings) => ({ ...settings, broadcastAlwaysOnTop: on })),
+    setShortcuts: (shortcuts) => {
+      if (!isConsistent(shortcuts)) {
+        return Promise.reject(
+          new SettingsError(
+            'Ces raccourcis ne peuvent pas être enregistrés : une touche est réservée ou sert deux fois.',
+          ),
+        );
+      }
+      return change((settings) => ({ ...settings, shortcuts }));
+    },
   };
 }

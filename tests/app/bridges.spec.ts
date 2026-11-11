@@ -68,6 +68,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'setMediaFavourite',
     'setMusicCrossfade',
     'setMusicPlayback',
+    'setShortcuts',
     'setSilence',
     'showSoundboardTransient',
     'showTransientEdit',

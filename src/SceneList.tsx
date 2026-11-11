@@ -11,7 +11,7 @@ import {
 import type { RunningOrderEdit } from '../shared/contract';
 import type { Chapter, ChapterId, Scene, SceneId } from '../shared/domain';
 import { inRunningOrder, looseOf, sceneStep, type ScenesInOrder } from '../core/runningOrder';
-import { keyLabelOf, shortcutOf } from './keyboard';
+import { keyLabelOf, shortcutOf, useKeyMap, type KeyMap } from './keyboard';
 
 /** A Scene dragged within the list carries only its id, under a type of its own. */
 const SCENE_DRAG_TYPE = 'application/x-regie-scene';
@@ -23,8 +23,8 @@ function carries(event: DragEvent, type: string): boolean {
 }
 
 /** The running order shortcut (Alt+Up, Alt+Down) a key press on a row means, if any. */
-function stepOf(event: KeyboardEvent): 'up' | 'down' | undefined {
-  const shortcut = shortcutOf(event.nativeEvent);
+function stepOf(event: KeyboardEvent, keyMap: KeyMap): 'up' | 'down' | undefined {
+  const shortcut = shortcutOf(event.nativeEvent, keyMap);
   if (shortcut === 'move-scene-up') return 'up';
   if (shortcut === 'move-scene-down') return 'down';
   return undefined;
@@ -74,7 +74,10 @@ export function SceneList({ order, openedId, isActive, isLastActive, onOpen, onE
     const button = focusables.current.get(id);
     if (button && document.activeElement !== button) button.focus();
   });
-  const keys = `${keyLabelOf('move-scene-up') ?? ''} et ${keyLabelOf('move-scene-down') ?? ''}`;
+  const keyMap = useKeyMap();
+  const upKey = keyLabelOf('move-scene-up', keyMap);
+  const downKey = keyLabelOf('move-scene-down', keyMap);
+  const keys = upKey && downKey ? `, ou ${upKey} et ${downKey},` : '';
   const focusable = (id: string) => (button: HTMLButtonElement | null) => {
     if (button) focusables.current.set(id, button);
     else focusables.current.delete(id);
@@ -116,9 +119,9 @@ export function SceneList({ order, openedId, isActive, isLastActive, onOpen, onE
       <li
         key={scene.id}
         draggable
-        title={`Glisser, ou ${keys}, pour changer l’ordre des scènes`}
+        title={`Glisser${keys} pour changer l’ordre des scènes`}
         onKeyDown={(event) => {
-          const direction = stepOf(event);
+          const direction = stepOf(event, keyMap);
           if (!direction) return;
           event.preventDefault();
           event.stopPropagation();
@@ -194,9 +197,9 @@ export function SceneList({ order, openedId, isActive, isLastActive, onOpen, onE
           role="group"
           aria-label={`Chapitre ${name}`}
           draggable={renaming?.chapterId !== id}
-          title={`Glisser, ou ${keys}, pour changer l’ordre des chapitres. Déposer une scène ici la range dans ce chapitre`}
+          title={`Glisser${keys} pour changer l’ordre des chapitres. Déposer une scène ici la range dans ce chapitre`}
           onKeyDown={(event) => {
-            const direction = stepOf(event);
+            const direction = stepOf(event, keyMap);
             if (!direction) return;
             event.preventDefault();
             const toIndex = direction === 'up' ? index - 1 : index + 1;

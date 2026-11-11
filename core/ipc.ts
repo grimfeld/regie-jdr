@@ -34,6 +34,7 @@ import type {
   MusicPlayback,
   PadReport,
   SceneId,
+  ShortcutSettings,
   ThemeId,
 } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
@@ -45,6 +46,7 @@ import { isCampaignId } from './storage/index.js';
 import { parseActivateDuration, parseFadeDuration, parseMusicCrossfade } from './fades.js';
 import { parseAudioEngineReport } from './audioMix.js';
 import { parsePadReport } from './padVoices.js';
+import { shortcutSettingsOf } from './keyMap.js';
 import { parseSoundboardEdit } from './soundboard.js';
 import { parseVolume } from './settings.js';
 import { isRecord } from './guards.js';
@@ -340,6 +342,13 @@ function mediaDelete(
   return { ...campaign, mediaId, confirmed };
 }
 
+/** The shortcut keys to save, every part readable. */
+function shortcutsOf(value: unknown): Parsed<{ shortcuts: ShortcutSettings }> {
+  if (!isRecord(value)) return INVALID;
+  const shortcuts = shortcutSettingsOf(value.shortcuts);
+  return shortcuts ? { shortcuts } : INVALID;
+}
+
 /** A flag turning an on-air state on or off: Blackout, Silence. */
 function onOffOf(value: unknown): Parsed<{ on: boolean }> {
   if (!isRecord(value) || typeof value.on !== 'boolean') return INVALID;
@@ -443,6 +452,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'settings:set-activate-duration': { from: controlOnly, parse: onePayload(activateDurationOf) },
   'settings:set-music-crossfade': { from: controlOnly, parse: onePayload(musicCrossfadeOf) },
   'settings:set-broadcast-always-on-top': { from: controlOnly, parse: onePayload(onOffOf) },
+  'settings:set-shortcuts': { from: controlOnly, parse: onePayload(shortcutsOf) },
   // The audio engine runs in the Control window (ADR-0002): the Broadcast window gets no audio.
   'audio:get-mix': { from: controlOnly, parse: noPayload },
   'audio:report': { from: controlOnly, parse: onePayload(engineReport) },

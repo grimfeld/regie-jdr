@@ -673,6 +673,7 @@ function startApp() {
         setBroadcastAlwaysOnTop(saved.broadcastAlwaysOnTop);
         return saved;
       },
+      'settings:set-shortcuts': ({ shortcuts }) => settingsStore.setShortcuts(shortcuts),
       // The engine reads the mix as it starts (or restarts, with the Control window): it is
       // told which Sound effects to keep decoded (its last report is forgotten on did-navigate).
       'audio:get-mix': () => {

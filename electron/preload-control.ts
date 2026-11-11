@@ -118,6 +118,7 @@ const bridge: ControlBridge = {
   setMusicCrossfade: (musicCrossfadeMs) =>
     invoke('settings:set-music-crossfade', { musicCrossfadeMs }),
   setBroadcastAlwaysOnTop: (on) => invoke('settings:set-broadcast-always-on-top', { on }),
+  setShortcuts: (shortcuts) => invoke('settings:set-shortcuts', { shortcuts }),
   getSounding: () => invoke('audio:get-sounding'),
   setSilence: (on) => invoke('audio:set-silence', { on }),
   toggleSilence: () => invoke('audio:toggle-silence'),

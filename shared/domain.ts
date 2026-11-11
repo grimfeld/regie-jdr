@@ -211,6 +211,46 @@ export interface Soundboard {
   volume: number;
 }
 
+/** The Soundboard pads a number key plays: the first nine, 1 is the first. */
+export type PadKeyPosition = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/** Everything a key can do in the Control window (the key map: core/keyMap.ts). */
+export type Shortcut =
+  | 'undo'
+  | 'redo'
+  | 'activate'
+  | 'activate-next'
+  | 'activate-previous'
+  | 'move-scene-up'
+  | 'move-scene-down'
+  | 'blackout'
+  | 'silence'
+  | `pad-${PadKeyPosition}`;
+
+/**
+ * One key with its modifiers. `code` names a physical key whatever the layout, for the number
+ * row and the numpad (Digit1 is "&" on a French keyboard); `key` names the character typed,
+ * lower case, for every other key (a letter as printed on the key: Ctrl+Z on AZERTY). Ctrl also
+ * stands for Cmd. A missing modifier is not held.
+ */
+export interface KeyChord {
+  code?: string;
+  key?: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}
+
+/** The modifier held with an Activate shortcut to force a Cut. */
+export type CutModifier = 'shift' | 'alt' | 'ctrl';
+
+/** The Game Master's shortcut keys: only what differs from the defaults is kept. */
+export interface ShortcutSettings {
+  /** The keys of each remapped shortcut, in place of its defaults; an empty list unbinds it. */
+  keys: Partial<Record<Shortcut, KeyChord[]>>;
+  cutModifier: CutModifier;
+}
+
 export interface WindowBounds {
   x: number;
   y: number;
@@ -250,6 +290,8 @@ export interface Settings {
    * what Discord streams (ADR-0002: covered by another application, it goes silent and black).
    */
   broadcastAlwaysOnTop: boolean;
+  /** The Control window's shortcut keys, remapped by the Game Master. */
+  shortcuts: ShortcutSettings;
 }
 
 /** A visible Background as the Broadcast window draws it. */

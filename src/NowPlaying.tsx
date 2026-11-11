@@ -21,7 +21,7 @@ import type {
 import { MASTER_VOLUME, newlyUnplayable } from '../core/audioMix';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
-import { keyLabelOf } from './keyboard';
+import { ariaKeyShortcutsOf, keyLabelOf, useKeyMap } from './keyboard';
 import { createTransientSender } from './transientUpdates';
 
 const stateLabels: Record<SoundingState, string> = {
@@ -77,7 +77,8 @@ export function NowPlaying({
   const voices = sounding?.voices ?? [];
   const pads = sounding?.pads ?? [];
   const silence = sounding?.silence ?? false;
-  const silenceKey = keyLabelOf('silence');
+  const keyMap = useKeyMap();
+  const silenceKey = keyLabelOf('silence', keyMap);
   return (
     <section className="panel now-playing" aria-label="En cours" data-silence={silence}>
       <div className="panel-heading">
@@ -90,8 +91,8 @@ export function NowPlaying({
         <button
           className={silence ? 'primary-button' : 'secondary-button'}
           aria-pressed={silence}
-          title={`Couper tout le son en fondu, ou le rétablir tel qu’il était (touche ${silenceKey})`}
-          aria-keyshortcuts={silenceKey}
+          title={`Couper tout le son en fondu, ou le rétablir tel qu’il était (touche ${silenceKey ?? 'aucune'})`}
+          aria-keyshortcuts={ariaKeyShortcutsOf('silence', keyMap)}
           onClick={() => void toggleSilence(control)}
         >
           <VolumeX size={14} /> Silence {silenceKey && <kbd aria-hidden>{silenceKey}</kbd>}

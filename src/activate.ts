@@ -1,14 +1,19 @@
 import type { ActivateOptions, ControlBridge, SceneDirection } from '../shared/contract';
 import type { SceneId } from '../shared/domain';
+import { holds, type CutModifier } from '../core/keyMap';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
 
 /**
- * How a press Activates: Shift held forces a Cut, this once (the Scene's own Transition stays
- * as it is). Takes the click on Activate or, later, an Activate shortcut's key press (#56).
+ * How a press Activates: the Cut modifier (Shift unless remapped) held forces a Cut, this once
+ * (the Scene's own Transition stays as it is). Takes the click on Activate or an Activate
+ * shortcut's key press (#56).
  */
-export function activateOptionsOf(press: { shiftKey: boolean }): ActivateOptions {
-  return { forceCut: press.shiftKey };
+export function activateOptionsOf(
+  press: Parameters<typeof holds>[0],
+  cutModifier: CutModifier,
+): ActivateOptions {
+  return { forceCut: holds(press, cutModifier) };
 }
 
 /**

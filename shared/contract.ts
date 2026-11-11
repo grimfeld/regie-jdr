@@ -27,6 +27,7 @@ import type {
   Scene,
   SceneId,
   Settings,
+  ShortcutSettings,
   Soundboard,
   ThemeId,
   TransitionKind,
@@ -548,6 +549,11 @@ export interface InvokeChannels {
    */
   'settings:set-broadcast-always-on-top': { payload: { on: boolean }; result: Settings };
   /**
+   * Save the Game Master's shortcut keys (core/keyMap.ts), all of them at once. Refused if a
+   * key is reserved or does two things.
+   */
+  'settings:set-shortcuts': { payload: { shortcuts: ShortcutSettings }; result: Settings };
+  /**
    * The current mix, for the audio engine (on start and on every reload of the Control window,
    * when the main process forgets what the old engine reported).
    */
@@ -731,6 +737,7 @@ export interface ControlBridge extends BroadcastBridge {
   setActivateDuration(activateDurationMs: number): Promise<Settings>;
   setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
   setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
+  setShortcuts(shortcuts: ShortcutSettings): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
   toggleSilence(): Promise<AudioSounding>;
