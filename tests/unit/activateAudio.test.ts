@@ -117,9 +117,9 @@ describe('Activating a Scene changes the mix', () => {
     expect(voices(mix)).toEqual([{ mediaId: 'm1', gain: 1, playing: true }]);
   });
 
-  it('resumes a paused Music that is the new Scene’s first, and switches an Ambience back on', () => {
+  it('starts a paused Music over when it is the new Scene’s first, and switches an Ambience back on', () => {
     const audioOnAir = createAudioOnAir();
-    audioOnAir.activateScene(
+    const before = audioOnAir.activateScene(
       scene('jour', { music: ['m1'], ambiences: [{ mediaId: 'a1', on: false, volume: 1 }] }),
       library,
       none,
@@ -136,6 +136,18 @@ describe('Activating a Scene changes the mix', () => {
       { mediaId: 'm1', gain: 1, playing: true },
       { mediaId: 'a1', gain: 1, playing: true },
     ]);
+    // Only a Music still playing carries on (#38): a paused one is a new take, from its start.
+    expect(mix.voices[0].take).not.toBe(before.voices[0].take);
+  });
+
+  it('keeps the take of a shared Music playing through Silence', () => {
+    const audioOnAir = createAudioOnAir();
+    const before = audioOnAir.activateScene(scene('jour', { music: ['m1'] }), library, none);
+    audioOnAir.setSilence(true);
+
+    const after = audioOnAir.activateScene(scene('nuit', { music: ['m1'] }), library, none);
+
+    expect(after.voices).toEqual([before.voices[0]]);
   });
 
   it('plays a Scene with audio and no pictures', () => {

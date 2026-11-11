@@ -5,8 +5,8 @@
  * through its own bridge, which can receive the mix and report, nothing else.
  *
  * Thin by design: every decision (what sounds, at what level, how long a fade takes) is in the
- * mix. Here, each voice plays through a gain node; a voice is known by its Media, so one in both
- * the old and the new mix keeps playing and only ramps. A new voice fades in from its first
+ * mix. Here, each voice plays through a gain node; a voice is known by its Media and take, so
+ * one in both the old and the new mix keeps playing and only ramps. A new voice fades in from its first
  * sound, not from the request, so loading never eats the fade. Voices that leave the mix fade
  * out, then are dropped. On start (and after a reload of the Control window) it reads the
  * current mix, so the current Music starts from its beginning.
@@ -56,6 +56,8 @@ interface PlaybackEvents {
 }
 
 interface Voice {
+  /** Which start of its sound (AudioVoice `take`): a new take is a new voice. */
+  take: number;
   gain: GainNode;
   /** Absent while the sound's length is still being read. */
   playback?: Playback;
@@ -107,7 +109,7 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     gain.linearRampToValueAtTime(Math.min(1, Math.max(0, target)), now + fadeMs / 1000);
   }
 
-  function create({ src, gain: target }: AudioVoice, fadeMs: number): Voice {
+  function create({ src, gain: target, take }: AudioVoice, fadeMs: number): Voice {
     const gain = context.createGain();
     gain.gain.value = 0;
     gain.connect(context.destination);
@@ -117,6 +119,7 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     element.crossOrigin = 'anonymous';
     element.preload = 'metadata';
     const voice: Voice = {
+      take,
       gain,
       wanted: false,
       state: 'loading',
@@ -281,6 +284,11 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     const { fadeMs } = mix;
     for (const wanted of mix.voices) {
       let voice = voices.get(wanted.mediaId);
+      // A new take starts the sound over: the old one fades out beside it.
+      if (voice && voice.take !== wanted.take) {
+        fadeOut(wanted.mediaId, voice, fadeMs);
+        voice = undefined;
+      }
       if (!voice) {
         voice = create(wanted, fadeMs);
         voices.set(wanted.mediaId, voice);
@@ -300,12 +308,17 @@ export function startAudioEngine(bridge: AudioEngineBridge): () => void {
     }
     for (const [mediaId, voice] of voices) {
       if (mix.voices.some((wanted) => wanted.mediaId === mediaId)) continue;
-      voice.inMix = false;
-      voice.fadeIn = undefined;
-      ramp(voice, 0, fadeMs);
-      after(voice, fadeMs, () => drop(mediaId, voice));
+      fadeOut(mediaId, voice, fadeMs);
     }
     report();
+  }
+
+  /** Takes a voice out of the mix: it fades out, then is dropped. */
+  function fadeOut(mediaId: MediaId, voice: Voice, fadeMs: number) {
+    voice.inMix = false;
+    voice.fadeIn = undefined;
+    ramp(voice, 0, fadeMs);
+    after(voice, fadeMs, () => drop(mediaId, voice));
   }
 
   function drop(mediaId: MediaId, voice: Voice) {

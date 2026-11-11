@@ -102,7 +102,7 @@ export function createAudioOnAir(): AudioOnAir {
           scene,
           library,
           missing,
-          audio: { music: activatedMusic(scene) },
+          audio: { music: activatedMusic(scene, input.audio.music) },
           silence: false,
         },
         'activate',
@@ -119,7 +119,7 @@ export function createAudioOnAir(): AudioOnAir {
         kind,
       ),
     pickMusic: (mediaId) => {
-      const music = pickedMusic(input.scene, mediaId);
+      const music = pickedMusic(input.scene, mediaId, input.audio.music);
       const same = input.audio.music?.mediaId === mediaId;
       return change({ ...input, audio: { music } }, same ? 'pause' : 'crossfade');
     },

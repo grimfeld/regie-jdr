@@ -52,7 +52,7 @@ function scene(changes: Partial<Scene> = {}): Scene {
   };
 }
 
-const playingM1 = { music: { mediaId: 'm1', playback: 'playing' as const } };
+const playingM1 = { music: { mediaId: 'm1', playback: 'playing' as const, take: 0 } };
 
 describe('the mix', () => {
   it('plays the current Music at Master × the Scene Music level, looping, by its Media', () => {
@@ -77,6 +77,7 @@ describe('the mix', () => {
           src: expect.stringContaining('regie-media://media/c1/m1'),
           gain: 0.4,
           playing: true,
+          take: 0,
         },
       ],
     });
@@ -109,11 +110,11 @@ describe('the mix', () => {
   it('keeps a paused Music as a voice that is not playing, and drops a stopped one', () => {
     const input = { scene: scene(), library, masterVolume: 1 };
     const paused = mixOf(
-      { ...input, audio: { music: { mediaId: 'm1', playback: 'paused' } } },
+      { ...input, audio: { music: { mediaId: 'm1', playback: 'paused', take: 0 } } },
       'pause',
     );
     const stopped = mixOf(
-      { ...input, audio: { music: { mediaId: 'm1', playback: 'stopped' } } },
+      { ...input, audio: { music: { mediaId: 'm1', playback: 'stopped', take: 0 } } },
       'stop',
     );
 
@@ -200,7 +201,7 @@ describe('the mix', () => {
 
 describe('the current Music', () => {
   it('Activate starts the Scene’s first Music, playing', () => {
-    expect(activatedMusic(scene())).toEqual({ mediaId: 'm1', playback: 'playing' });
+    expect(activatedMusic(scene())).toEqual({ mediaId: 'm1', playback: 'playing', take: 0 });
   });
 
   it('Activate starts no Music on a Scene without Music', () => {
@@ -208,7 +209,7 @@ describe('the current Music', () => {
   });
 
   it('stays the same after an edit while it is still in the Scene’s Music list', () => {
-    const current = { mediaId: 'm2', playback: 'paused' as const };
+    const current = { mediaId: 'm2', playback: 'paused' as const, take: 0 };
 
     expect(musicAfterEdit(scene({ music: ['m2'] }), current)).toEqual(current);
     expect(musicAfterEdit(scene({ music: ['m1'] }), current)).toBeNull();
@@ -216,7 +217,7 @@ describe('the current Music', () => {
   });
 
   it('picking a track of the Active Scene plays it, whatever played before', () => {
-    expect(pickedMusic(scene(), 'm2')).toEqual({ mediaId: 'm2', playback: 'playing' });
+    expect(pickedMusic(scene(), 'm2')).toEqual({ mediaId: 'm2', playback: 'playing', take: 0 });
   });
 
   it('refuses a pick with no Active Scene or of a Music not in its list, in French', () => {
@@ -227,9 +228,13 @@ describe('the current Music', () => {
   });
 
   it('pauses, resumes and stops the current Music, keeping which one it is', () => {
-    const current = { mediaId: 'm2', playback: 'playing' as const };
+    const current = { mediaId: 'm2', playback: 'playing' as const, take: 0 };
     for (const playback of ['paused', 'playing', 'stopped'] as const) {
-      expect(musicWithPlayback(scene(), current, playback)).toEqual({ mediaId: 'm2', playback });
+      expect(musicWithPlayback(scene(), current, playback)).toEqual({
+        mediaId: 'm2',
+        playback,
+        take: 0,
+      });
     }
   });
 
@@ -237,6 +242,7 @@ describe('the current Music', () => {
     expect(musicWithPlayback(scene(), null, 'playing')).toEqual({
       mediaId: 'm1',
       playback: 'playing',
+      take: 0,
     });
     expect(musicWithPlayback(scene(), null, 'paused')).toBeNull();
     expect(musicWithPlayback(scene(), null, 'stopped')).toBeNull();
@@ -257,7 +263,7 @@ describe('a crossfade between two tracks', () => {
   };
   const before = mixOf({ ...input, audio: playingM1 }, 'activate');
   const after = mixOf(
-    { ...input, audio: { music: { mediaId: 'm2', playback: 'playing' } } },
+    { ...input, audio: { music: { mediaId: 'm2', playback: 'playing', take: 0 } } },
     'crossfade',
   );
 
@@ -291,8 +297,16 @@ describe('what is sounding', () => {
     fadeMs: 0,
     missing: [],
     voices: [
-      { mediaId: 'm1', role: 'music', name: 'Nom m1', src: 'x', gain: 1, playing: true },
-      { mediaId: 'a1', role: 'ambience', name: 'Nom a1', src: 'y', gain: 1, playing: true },
+      { mediaId: 'm1', role: 'music', name: 'Nom m1', src: 'x', gain: 1, playing: true, take: 0 },
+      {
+        mediaId: 'a1',
+        role: 'ambience',
+        name: 'Nom a1',
+        src: 'y',
+        gain: 1,
+        playing: true,
+        take: 0,
+      },
     ],
   };
 

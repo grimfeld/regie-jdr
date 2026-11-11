@@ -253,8 +253,11 @@ export type MusicPlayback = 'playing' | 'paused' | 'stopped';
  * closed, and after a restart. Ambience on/off comes from the Active Scene itself.
  */
 export interface AudioOnAirState {
-  /** The current Music: an entry of the Active Scene's Music list, or null for none. */
-  music: { mediaId: MediaId; playback: MusicPlayback } | null;
+  /**
+   * The current Music: an entry of the Active Scene's Music list, or null for none. `take`
+   * counts its starts over (AudioVoice `take`).
+   */
+  music: { mediaId: MediaId; playback: MusicPlayback; take: number } | null;
 }
 
 /**
@@ -273,6 +276,12 @@ export interface AudioVoice {
   gain: number;
   /** False: paused, keeping its position, so it resumes where it was. */
   playing: boolean;
+  /**
+   * Which start of the sound this is. The engine keeps a voice while both its Media and its
+   * take stay the same; a new take starts the sound over from its beginning (a paused Music
+   * Activated again, #38).
+   */
+  take: number;
 }
 
 /**

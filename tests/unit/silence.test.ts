@@ -50,7 +50,7 @@ const heard: MixInput = {
   scene: taverne,
   library,
   masterVolume: 1,
-  audio: { music: { mediaId: 'm1', playback: 'playing' } },
+  audio: { music: { mediaId: 'm1', playback: 'playing', take: 0 } },
   silence: false,
 };
 
