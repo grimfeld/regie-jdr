@@ -1,9 +1,9 @@
 /**
  * Scenes of a Campaign: storage and validation. No Electron dependency.
  *
- * On disk, in the Campaign's folder: `scenes.json` ({ scenes: Scene[] }, versioned document),
- * Scenes stored without their Campaign id (the folder gives it), in running order
- * (core/runningOrder.ts).
+ * On disk, in the Campaign's folder: `scenes.json` ({ scenes: Scene[], chapters: Chapter[] },
+ * versioned document), Scenes stored without their Campaign id (the folder gives it), in running
+ * order, beside the Chapters grouping them (core/runningOrder.ts).
  * Errors meant for the Game Master are SceneError with a French message.
  *
  * A Scene whose stored Notes cannot be read keeps its other fields with empty Notes; the rest of
@@ -13,10 +13,12 @@
 import { randomUUID } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import type { RunningOrder, RunningOrderEdit } from '../shared/contract.js';
 import type {
   Background,
   BackgroundFit,
   CampaignId,
+  Chapter,
   Label,
   MediaId,
   NormalizedPoint,
@@ -36,7 +38,15 @@ import {
   notesKeepingImages,
   parseNotes,
 } from './notes.js';
-import { moveInRunningOrder } from './runningOrder.js';
+import {
+  applyRunningOrderEdit,
+  inRunningOrder,
+  parseChapter,
+  runningOrderOf,
+  withCopy,
+  withNewScene,
+  type ScenesInOrder,
+} from './runningOrder.js';
 import {
   cleanSceneName,
   isTransitionKind,
@@ -58,21 +68,25 @@ export interface SceneLibrary {
    * as saved.
    */
   removeMediaUses(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
-  /** A new, empty Scene, last in the running order. */
-  create(campaignId: CampaignId, name: string): Promise<Scene>;
+  /**
+   * A new, empty Scene: last in the Chapter of the Selected Scene `selectedSceneId`, or last in
+   * no Chapter when it has none (core/runningOrder.ts `withNewScene`).
+   */
+  create(campaignId: CampaignId, name: string, selectedSceneId?: SceneId): Promise<Scene>;
   /** Deletes a Scene; throws a SceneError when it does not exist. */
   delete(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /** Replaces a stored Scene (found by Campaign and id) and returns what was saved. */
   save(scene: Scene): Promise<Scene>;
+  /** The Campaign's running order: its Scene ids in order and its Chapters. */
+  runningOrder(campaignId: CampaignId): Promise<RunningOrder>;
   /**
-   * Moves a Scene to `toIndex` in the running order (past the end means last) and returns the
-   * Campaign's Scenes in their new order. Changes no Scene. Throws a SceneError when the Scene
-   * does not exist.
+   * Applies one running order command (Chapters, a Scene's place) and returns the running order
+   * as saved. Changes no Scene. Throws a SceneError for an unknown Scene or Chapter.
    */
-  move(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
+  editRunningOrder(campaignId: CampaignId, edit: RunningOrderEdit): Promise<RunningOrder>;
   /**
-   * Saves a copy of a Scene (`copyOfScene`) right after it in the running order and returns
-   * the copy. Throws a SceneError when the Scene does not exist.
+   * Saves a copy of a Scene (`copyOfScene`) right after it in the running order, in its
+   * Chapter, and returns the copy. Throws a SceneError when the Scene does not exist.
    */
   duplicate(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
 }
@@ -247,6 +261,7 @@ interface UnreadableNotes {
  */
 interface ScenesFields {
   scenes: StoredScene[];
+  chapters: Chapter[];
   unreadableNotes?: UnreadableNotes[];
 }
 
@@ -312,15 +327,20 @@ function migrateScenesV3(fields: Record<string, unknown>): Record<string, unknow
   return { ...fields, scenes };
 }
 
+/** Version 4 to 5 (Milestone 4): the running order gains Chapters, none to start with. */
+function migrateScenesV4(fields: Record<string, unknown>): Record<string, unknown> {
+  return { ...fields, chapters: [] };
+}
+
 function zIndexOf(item: unknown): number {
   return isRecord(item) && typeof item.zIndex === 'number' ? item.zIndex : 0;
 }
 
 export const scenesDocument: DocumentType<ScenesFields> = {
   name: 'scenes',
-  version: 4,
-  migrations: { 1: migrateScenesV1, 2: migrateScenesV2, 3: migrateScenesV3 },
-  parse({ scenes }) {
+  version: 5,
+  migrations: { 1: migrateScenesV1, 2: migrateScenesV2, 3: migrateScenesV3, 4: migrateScenesV4 },
+  parse({ scenes, chapters }) {
     const unreadableNotes: UnreadableNotes[] = [];
     const parsed = parseList(scenes, (item) => {
       const scene = parseScene(item, '');
@@ -330,10 +350,10 @@ export const scenesDocument: DocumentType<ScenesFields> = {
       if (kept) unreadableNotes.push({ sceneId: kept.id, sceneName: kept.name, notes: item.notes });
       return kept;
     });
-    if (!parsed) return undefined;
-    return unreadableNotes.length > 0
-      ? { scenes: parsed.map(stored), unreadableNotes }
-      : { scenes: parsed.map(stored) };
+    const parsedChapters = parseList(chapters, parseChapter);
+    if (!parsed || !parsedChapters) return undefined;
+    const order = inRunningOrder(parsed.map(stored), parsedChapters);
+    return unreadableNotes.length > 0 ? { ...order, unreadableNotes } : order;
   },
 };
 
@@ -359,17 +379,26 @@ export function createSceneLibrary(
     return path.join(storage.campaignFolder(campaignId), SCENES_FILE);
   }
 
-  /** The Campaign's Scenes. Run in the Campaign's queue: it may save them (unreadable Notes). */
-  async function read(file: string, campaignId: CampaignId): Promise<Scene[]> {
+  /**
+   * The Campaign's Scenes in running order, and its Chapters. Run in the Campaign's queue: it
+   * may save them (unreadable Notes).
+   */
+  async function readOrder(file: string, campaignId: CampaignId): Promise<ScenesInOrder<Scene>> {
     const document = await storage.documents.read(file, scenesDocument);
     const scenes = (document?.scenes ?? []).map((scene) => ({ ...scene, campaignId }));
+    const order = { scenes, chapters: document?.chapters ?? [] };
     if (document?.unreadableNotes) {
       await keepUnreadable(path.dirname(file), document.unreadableNotes);
       // Saved with empty Notes, so they are reported once; the document as it was is now the
       // `.bak` too.
-      await write(file, scenes);
+      await write(file, order);
     }
-    return scenes;
+    return order;
+  }
+
+  /** The Campaign's Scenes in running order (see `readOrder`). */
+  async function read(file: string, campaignId: CampaignId): Promise<Scene[]> {
+    return (await readOrder(file, campaignId)).scenes;
   }
 
   /** Keeps each Scene's unreadable Notes in a file of its own, and tells the Game Master. */
@@ -389,8 +418,10 @@ export function createSceneLibrary(
     }
   }
 
-  async function write(file: string, scenes: Scene[]): Promise<void> {
-    await storage.documents.write(file, scenesDocument, { scenes: scenes.map(stored) });
+  /** Saves the Scenes and Chapters, made consistent (a deleted Scene leaves its Chapter). */
+  async function write(file: string, order: ScenesInOrder<Scene>): Promise<void> {
+    const { scenes, chapters } = inRunningOrder(order.scenes, order.chapters);
+    await storage.documents.write(file, scenesDocument, { scenes: scenes.map(stored), chapters });
   }
 
   return {
@@ -402,10 +433,10 @@ export function createSceneLibrary(
       return (await this.list(campaignId)).find((scene) => scene.id === sceneId);
     },
 
-    create(campaignId, name) {
+    create(campaignId, name, selectedSceneId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
+        const order = await readOrder(file, campaignId);
         const scene: Scene = {
           id: randomUUID(),
           campaignId,
@@ -419,7 +450,7 @@ export function createSceneLibrary(
           notes: emptyNotes(),
           transition: 'crossfade',
         };
-        await write(file, [...scenes, scene]);
+        await write(file, withNewScene(order, scene, selectedSceneId));
         return scene;
       });
     },
@@ -427,15 +458,15 @@ export function createSceneLibrary(
     removeMediaUses(campaignId, mediaId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
+        const order = await readOrder(file, campaignId);
         const affected: Scene[] = [];
-        const updated = scenes.map((scene) => {
+        const updated = order.scenes.map((scene) => {
           if (!sceneUsesMedia(scene, mediaId) && !notesUseMedia(scene, mediaId)) return scene;
           const cleaned = withoutMedia(scene, mediaId);
           affected.push(cleaned);
           return cleaned;
         });
-        if (affected.length > 0) await write(file, updated);
+        if (affected.length > 0) await write(file, { ...order, scenes: updated });
         return affected;
       });
     },
@@ -443,47 +474,51 @@ export function createSceneLibrary(
     delete(campaignId, sceneId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
-        const kept = scenes.filter((scene) => scene.id !== sceneId);
-        if (kept.length === scenes.length) throw new SceneError('Cette scène n’existe plus.');
-        await write(file, kept);
+        const order = await readOrder(file, campaignId);
+        const kept = order.scenes.filter((scene) => scene.id !== sceneId);
+        if (kept.length === order.scenes.length) {
+          throw new SceneError('Cette scène n’existe plus.');
+        }
+        await write(file, { ...order, scenes: kept });
       });
     },
 
     save(scene) {
       return serialized(scene.campaignId, async () => {
         const file = await fileOf(scene.campaignId);
-        const scenes = await read(file, scene.campaignId);
-        const index = scenes.findIndex((existing) => existing.id === scene.id);
+        const order = await readOrder(file, scene.campaignId);
+        const index = order.scenes.findIndex((existing) => existing.id === scene.id);
         if (index < 0) throw new SceneError('Cette scène n’existe plus.');
         const saved: Scene = { ...scene, name: cleanSceneName(scene.name) };
-        scenes[index] = saved;
-        await write(file, scenes);
+        order.scenes[index] = saved;
+        await write(file, order);
         return saved;
       });
     },
 
-    move(campaignId, sceneId, toIndex) {
+    runningOrder(campaignId) {
+      return serialized(campaignId, async () =>
+        runningOrderOf(await readOrder(await fileOf(campaignId), campaignId)),
+      );
+    },
+
+    editRunningOrder(campaignId, edit) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
-        if (!scenes.some((scene) => scene.id === sceneId)) {
-          throw new SceneError('Cette scène n’existe plus.');
-        }
-        const moved = moveInRunningOrder(scenes, sceneId, toIndex);
-        await write(file, moved);
-        return moved;
+        const order = applyRunningOrderEdit(await readOrder(file, campaignId), edit, randomUUID);
+        await write(file, order);
+        return runningOrderOf(order);
       });
     },
 
     duplicate(campaignId, sceneId) {
       return serialized(campaignId, async () => {
         const file = await fileOf(campaignId);
-        const scenes = await read(file, campaignId);
-        const index = scenes.findIndex((scene) => scene.id === sceneId);
-        if (index < 0) throw new SceneError('Cette scène n’existe plus.');
-        const copy = copyOfScene(scenes[index], randomUUID);
-        await write(file, [...scenes.slice(0, index + 1), copy, ...scenes.slice(index + 1)]);
+        const order = await readOrder(file, campaignId);
+        const source = order.scenes.find((scene) => scene.id === sceneId);
+        if (!source) throw new SceneError('Cette scène n’existe plus.');
+        const copy = copyOfScene(source, randomUUID);
+        await write(file, withCopy(order, copy, sceneId));
         return copy;
       });
     },

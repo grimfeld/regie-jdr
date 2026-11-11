@@ -58,7 +58,8 @@ const bridge: ControlBridge = {
   setBlackout: (on) => invoke('onAir:set-blackout', { on }),
   toggleBlackout: () => invoke('onAir:toggle-blackout'),
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
-  createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
+  createScene: (campaignId, name, selectedSceneId) =>
+    invoke('scenes:create', { campaignId, name, ...(selectedSceneId && { selectedSceneId }) }),
   editScene: (campaignId, sceneId, edit) => invoke('scenes:edit', { campaignId, sceneId, edit }),
   showTransientEdit: (campaignId, sceneId, edit) =>
     invoke('scenes:show-transient', { campaignId, sceneId, edit }),
@@ -66,8 +67,8 @@ const bridge: ControlBridge = {
   undoSceneEdit: (campaignId, sceneId) => invoke('scenes:undo', { campaignId, sceneId }),
   redoSceneEdit: (campaignId, sceneId) => invoke('scenes:redo', { campaignId, sceneId }),
   deleteScene: (campaignId, sceneId) => invoke('scenes:delete', { campaignId, sceneId }),
-  moveScene: (campaignId, sceneId, toIndex) =>
-    invoke('scenes:move', { campaignId, sceneId, toIndex }),
+  getRunningOrder: (campaignId) => invoke('scenes:running-order', { campaignId }),
+  editRunningOrder: (campaignId, edit) => invoke('scenes:edit-running-order', { campaignId, edit }),
   duplicateScene: (campaignId, sceneId) => invoke('scenes:duplicate', { campaignId, sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
   toggleBroadcastFullscreen: () => invoke('broadcast:toggle-fullscreen'),

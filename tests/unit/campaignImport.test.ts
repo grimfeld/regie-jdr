@@ -383,10 +383,14 @@ describe('admitDocument', () => {
     expect(() => admitDocument(media, text)).toThrow(DAMAGED);
   });
 
+  /** A Chapter holding the Scene of `scenesText`, as an Export with Chapters holds it. */
+  const chapter = { id: 'c1', name: 'Prologue', collapsed: true, sceneIds: ['s1'] };
+
   /** A Scenes document at `schemaVersion`, one Scene, as an Export of that version holds it. */
   const scenesText = (schemaVersion: number, notes: unknown = emptyNotes()) =>
     JSON.stringify({
       schemaVersion,
+      ...(schemaVersion >= 5 && { chapters: [chapter] }),
       scenes: [
         {
           id: 's1',
@@ -408,15 +412,27 @@ describe('admitDocument', () => {
       admitDocument({ path: 'scenes.json', schemaVersion: 3 }, scenesText(3)),
     );
     expect(stored).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       scenes: [{ id: 's1', transition: 'crossfade' }],
+      chapters: [],
     });
   });
 
-  it('keeps the Scenes of an Export made with Transitions (Milestone 3 documents)', () => {
+  it('keeps the Scenes of an Export made with Transitions, and gives them no Chapter (Milestone 3 documents)', () => {
     expect(
       JSON.parse(admitDocument({ path: 'scenes.json', schemaVersion: 4 }, scenesText(4))),
-    ).toEqual(JSON.parse(scenesText(4)));
+    ).toEqual({ ...(JSON.parse(scenesText(4)) as object), schemaVersion: 5, chapters: [] });
+  });
+
+  it('keeps the Chapters of an Export made with Chapters, collapsed state included', () => {
+    expect(
+      JSON.parse(admitDocument({ path: 'scenes.json', schemaVersion: 5 }, scenesText(5))),
+    ).toEqual(JSON.parse(scenesText(5)));
+  });
+
+  it('refuses Scenes whose Chapters cannot be read', () => {
+    const text = scenesText(5).replace('"collapsed":true', '"collapsed":"oui"');
+    expect(() => admitDocument({ path: 'scenes.json', schemaVersion: 5 }, text)).toThrow(DAMAGED);
   });
 
   it('refuses Scenes whose Notes cannot be read, rather than empty them unseen', () => {

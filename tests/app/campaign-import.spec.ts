@@ -65,8 +65,8 @@ async function backToCampaignList(page: Page) {
 }
 
 /**
- * A Campaign named `name` with the Scenes "Cantina" and "Hangar" and one imported image, starred
- * as a favourite, left closed on the Campaign list.
+ * A Campaign named `name` with the Scenes "Cantina" and "Hangar" (in the Chapter "Prologue") and
+ * one imported image, starred as a favourite, left closed on the Campaign list.
  */
 async function campaignWithScenesAndAnImage(
   { app, controlWindow: page }: RunningApp,
@@ -82,7 +82,19 @@ async function campaignWithScenesAndAnImage(
   await expect(page.getByRole('button', { name: `Retirer ${IMAGE} des favoris` })).toBeVisible();
   const [campaign] = await call<{ id: string }[]>(page, 'listCampaigns');
   await call(page, 'createScene', campaign.id, 'Cantina');
-  await call(page, 'createScene', campaign.id, 'Hangar');
+  const hangar = await call<{ id: string }>(page, 'createScene', campaign.id, 'Hangar');
+  const { chapters } = await call<{ chapters: { id: string }[] }>(
+    page,
+    'editRunningOrder',
+    campaign.id,
+    { kind: 'create-chapter', name: 'Prologue' },
+  );
+  await call(page, 'editRunningOrder', campaign.id, {
+    kind: 'move-scene',
+    sceneId: hangar.id,
+    chapterId: chapters[0].id,
+    toIndex: 0,
+  });
   await backToCampaignList(page);
 }
 
@@ -99,10 +111,12 @@ async function importFrom({ app, controlWindow: page }: RunningApp, file: string
   await page.getByRole('button', { name: 'Importer une campagne' }).click();
 }
 
-/** The Scenes and the starred image of `campaignWithScenesAndAnImage`. */
+/** The Scenes, Chapter and starred image of `campaignWithScenesAndAnImage`. */
 async function expectScenesAndImage(page: Page) {
   await expect(page.getByRole('list', { name: 'Scènes de la campagne' })).toContainText('Cantina');
-  await expect(page.getByRole('list', { name: 'Scènes de la campagne' })).toContainText('Hangar');
+  await expect(page.getByRole('list', { name: 'Scènes du chapitre Prologue' })).toHaveText(
+    'Hangar',
+  );
   await expect(
     page.getByRole('list', { name: 'Images' }).getByRole('img', { name: IMAGE }),
   ).toBeVisible();

@@ -18,6 +18,7 @@ import type {
   InvokeChannels,
   MediaImportKind,
   Payload,
+  RunningOrderEdit,
   SceneDirection,
   SceneEdit,
   SoundboardEdit,
@@ -38,6 +39,7 @@ import type {
 import { isAudioRole, isImageCategory } from './media.js';
 import { MAX_PASTED_IMAGE_BYTES } from './mediaAddress.js';
 import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
+import { parseRunningOrderEdit } from './runningOrder.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
 import { parseActivateDuration, parseFadeDuration, parseMusicCrossfade } from './fades.js';
@@ -344,10 +346,15 @@ function onOffOf(value: unknown): Parsed<{ on: boolean }> {
   return { on: value.on };
 }
 
-function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string }> {
+function newScene(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; name: string; selectedSceneId?: SceneId }> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value) || !isName(value.name)) return INVALID;
-  return { ...campaign, name: value.name };
+  const { selectedSceneId } = value;
+  if (selectedSceneId === undefined) return { ...campaign, name: value.name };
+  if (typeof selectedSceneId !== 'string' || selectedSceneId === '') return INVALID;
+  return { ...campaign, name: value.name, selectedSceneId };
 }
 
 function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: SceneId }> {
@@ -358,14 +365,13 @@ function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: Scen
   return { ...campaign, sceneId };
 }
 
-function sceneMove(
+function runningOrderEdit(
   value: unknown,
-): Parsed<{ campaignId: CampaignId; sceneId: SceneId; toIndex: number }> {
-  const scene = sceneOf(value);
-  if (scene === INVALID || !isRecord(value)) return INVALID;
-  const { toIndex } = value;
-  if (typeof toIndex !== 'number' || !Number.isSafeInteger(toIndex) || toIndex < 0) return INVALID;
-  return { ...scene, toIndex };
+): Parsed<{ campaignId: CampaignId; edit: RunningOrderEdit }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const edit = parseRunningOrderEdit(value.edit);
+  return edit ? { ...campaign, edit } : INVALID;
 }
 
 function sceneEdit(
@@ -406,7 +412,8 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'scenes:undo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:redo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
-  'scenes:move': { from: controlOnly, parse: onePayload(sceneMove) },
+  'scenes:running-order': { from: controlOnly, parse: onePayload(campaignOf) },
+  'scenes:edit-running-order': { from: controlOnly, parse: onePayload(runningOrderEdit) },
   'scenes:duplicate': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },

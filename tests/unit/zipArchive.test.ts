@@ -193,8 +193,9 @@ describe('openZipArchive', () => {
     expect(await fs.readFile(path.join(folder, 'media', `${HASH}.png`))).toEqual(PIXELS);
     // Written at version 3, before Transitions: Import brings it to the current version.
     expect(JSON.parse(await fs.readFile(path.join(folder, 'scenes.json'), 'utf8'))).toEqual({
-      schemaVersion: 4,
+      schemaVersion: 5,
       scenes: [],
+      chapters: [],
     });
   });
 

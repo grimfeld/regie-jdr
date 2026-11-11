@@ -6,6 +6,7 @@
 export type CampaignId = string;
 export type MediaId = string;
 export type SceneId = string;
+export type ChapterId = string;
 
 /** Interface theme, chosen globally (home page) and per Campaign. */
 export type ThemeId = 'retro' | 'imperium' | 'fantasy';
@@ -129,6 +130,19 @@ export interface SceneVolumes {
 }
 
 /** A reusable, saved audiovisual setup in a Campaign. */
+/**
+ * A named, collapsible group of Scenes in a Campaign's running order (one level only). Its
+ * Scenes, in running order, are `sceneIds`; a Scene belongs to at most one Chapter, and Scenes in
+ * none come after every Chapter. `collapsed` is saved with the Campaign. Not a Scene field: its
+ * changes are Campaign-level commands, outside every Scene's undo history.
+ */
+export interface Chapter {
+  id: ChapterId;
+  name: string;
+  collapsed: boolean;
+  sceneIds: SceneId[];
+}
+
 export interface Scene {
   id: SceneId;
   campaignId: CampaignId;

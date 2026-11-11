@@ -540,7 +540,8 @@ function startApp() {
       'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
       'onAir:toggle-blackout': () => commands.toggleBlackout(),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
-      'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
+      'scenes:create': ({ campaignId, name, selectedSceneId }) =>
+        scenes.create(campaignId, name, selectedSceneId),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>
         commands.editScene(campaignId, sceneId, edit),
       'scenes:show-transient': ({ campaignId, sceneId, edit }) =>
@@ -552,8 +553,9 @@ function startApp() {
         await commands.deleteScene(campaignId, sceneId);
         saveSetting((store) => store.forgetScene(campaignId, sceneId));
       },
-      'scenes:move': ({ campaignId, sceneId, toIndex }) =>
-        scenes.move(campaignId, sceneId, toIndex),
+      'scenes:running-order': ({ campaignId }) => scenes.runningOrder(campaignId),
+      'scenes:edit-running-order': ({ campaignId, edit }) =>
+        scenes.editRunningOrder(campaignId, edit),
       'scenes:duplicate': ({ campaignId, sceneId }) => commands.duplicateScene(campaignId, sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),

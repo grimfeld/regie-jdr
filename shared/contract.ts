@@ -13,6 +13,8 @@ import type {
   BackgroundFit,
   Campaign,
   CampaignId,
+  Chapter,
+  ChapterId,
   ImageCategory,
   Media,
   MediaId,
@@ -37,6 +39,34 @@ import type {
 export interface ActivateOptions {
   forceCut?: boolean;
 }
+
+/**
+ * A Campaign's running order: every Scene id in order (the Scenes of each Chapter, Chapter by
+ * Chapter, then the Scenes in no Chapter), and its Chapters.
+ */
+export interface RunningOrder {
+  sceneIds: SceneId[];
+  chapters: Chapter[];
+}
+
+/**
+ * One Campaign-level command on the running order (core/runningOrder.ts). Never in any Scene's
+ * undo history: it changes no Scene.
+ */
+export type RunningOrderEdit =
+  /** Adds an empty, expanded Chapter after the others. */
+  | { kind: 'create-chapter'; name: string }
+  | { kind: 'rename-chapter'; chapterId: ChapterId; name: string }
+  /** Moves a Chapter to `toIndex` among the Chapters (past the end means last). */
+  | { kind: 'move-chapter'; chapterId: ChapterId; toIndex: number }
+  /** Deletes a Chapter; its Scenes, in their order, become the first Scenes in no Chapter. */
+  | { kind: 'delete-chapter'; chapterId: ChapterId }
+  | { kind: 'set-chapter-collapsed'; chapterId: ChapterId; collapsed: boolean }
+  /**
+   * Moves a Scene into the Chapter `chapterId` (null: into no Chapter), at `toIndex` among that
+   * group's Scenes: it takes the place of the Scene there (past the end means last).
+   */
+  | { kind: 'move-scene'; sceneId: SceneId; chapterId: ChapterId | null; toIndex: number };
 
 /** A way through the running order: towards its end (`next`) or its start (`previous`). */
 export type SceneDirection = 'next' | 'previous';
@@ -317,8 +347,14 @@ export interface InvokeChannels {
   'onAir:toggle-blackout': { payload: void; result: OnAirState };
   /** The Scenes of a Campaign, in running order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
-  /** Create an empty Scene, last in the running order; fails with a French message for an empty name. */
-  'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
+  /**
+   * Create an empty Scene, last in the Chapter of `selectedSceneId` (the Selected Scene), or last
+   * in no Chapter when it has none; fails with a French message for an empty name.
+   */
+  'scenes:create': {
+    payload: { campaignId: CampaignId; name: string; selectedSceneId?: SceneId };
+    result: Scene;
+  };
   /**
    * Apply one edit command to a Scene (core/sceneEdits.ts) and get the Scene as saved. On the
    * Active Scene the edit goes on air at once; any other Scene stays private.
@@ -351,18 +387,20 @@ export interface InvokeChannels {
    * stays on air. The window asks the Game Master to confirm first.
    */
   'scenes:delete': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: void };
+  /** The Campaign's running order: its Scene ids in order and its Chapters. */
+  'scenes:running-order': { payload: { campaignId: CampaignId }; result: RunningOrder };
   /**
-   * Move a Scene to `toIndex` in the Campaign's running order (past the end means last) and get
-   * the Scenes in their new order. A Campaign-level command: it changes no Scene and is not in
-   * any Scene's undo history.
+   * Apply one command to the Campaign's running order (Chapters, a Scene's place) and get the
+   * running order as saved. A Campaign-level command: it changes no Scene and is not in any
+   * Scene's undo history.
    */
-  'scenes:move': {
-    payload: { campaignId: CampaignId; sceneId: SceneId; toIndex: number };
-    result: Scene[];
+  'scenes:edit-running-order': {
+    payload: { campaignId: CampaignId; edit: RunningOrderEdit };
+    result: RunningOrder;
   };
   /**
    * Save an independent copy of a Scene, named "<name> (copie)", right after it in the running
-   * order, and get the copy. It reuses the same Media, never goes on air by itself, and is not
+   * order (in its Chapter), and get the copy. It reuses the same Media, never goes on air by itself, and is not
    * an undo step (the copy starts with an empty undo history).
    */
   'scenes:duplicate': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
@@ -636,14 +674,15 @@ export interface ControlBridge extends BroadcastBridge {
   setBlackout(on: boolean): Promise<OnAirState>;
   toggleBlackout(): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
-  createScene(campaignId: CampaignId, name: string): Promise<Scene>;
+  createScene(campaignId: CampaignId, name: string, selectedSceneId?: SceneId): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
   getUndoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
-  moveScene(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
+  getRunningOrder(campaignId: CampaignId): Promise<RunningOrder>;
+  editRunningOrder(campaignId: CampaignId, edit: RunningOrderEdit): Promise<RunningOrder>;
   duplicateScene(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;

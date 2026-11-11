@@ -510,13 +510,16 @@ describe('Scene channels', () => {
     edit: { kind: 'transform-overlay', placementId: 'o1', position: { x: 0.2, y: 0.3 } },
   };
 
+  const moveEdit = { kind: 'move-scene', sceneId: 'cantina', chapterId: null, toIndex: 0 };
+
   it('are for the Control window only', () => {
     for (const [channel, args] of [
       ['scenes:list', [{ campaignId }]],
       ['scenes:create', [{ campaignId, name: 'X' }]],
       ['scenes:edit', [edit]],
       ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
-      ['scenes:move', [{ campaignId, sceneId: 'cantina', toIndex: 0 }]],
+      ['scenes:running-order', [{ campaignId }]],
+      ['scenes:edit-running-order', [{ campaignId, edit: moveEdit }]],
       ['scenes:duplicate', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:show-transient', [transient]],
       ['scenes:undo-state', [{ campaignId, sceneId: 'cantina' }]],
@@ -572,6 +575,11 @@ describe('Scene channels', () => {
       ok: true,
       payload: { campaignId, name: 'X' },
     });
+    const beside = { campaignId, name: 'X', selectedSceneId: 'cantina' };
+    expect(checkInvoke('scenes:create', 'control', [beside])).toEqual({
+      ok: true,
+      payload: beside,
+    });
   });
 
   it('accept a Scene to delete, keeping only contract fields', () => {
@@ -582,9 +590,10 @@ describe('Scene channels', () => {
     });
   });
 
-  it('accept a Scene to move in the running order, keeping only contract fields', () => {
-    const move = { campaignId, sceneId: 'cantina', toIndex: 2 };
-    expect(checkInvoke('scenes:move', 'control', [{ ...move, order: [] }])).toEqual({
+  it('accept a running order command, keeping only contract fields', () => {
+    const move = { campaignId, edit: { ...moveEdit, chapterId: 'prologue', toIndex: 2 } };
+    const padded = { ...move, order: [], edit: { ...move.edit, scenes: [] } };
+    expect(checkInvoke('scenes:edit-running-order', 'control', [padded])).toEqual({
       ok: true,
       payload: move,
     });
@@ -613,18 +622,19 @@ describe('Scene channels', () => {
     ['a delete with no Scene', 'scenes:delete', [{ campaignId }]],
     ['a delete with no Campaign', 'scenes:delete', [{ sceneId: 'cantina' }]],
     ['no name', 'scenes:create', [{ campaignId }]],
-    ['a move with no place', 'scenes:move', [{ campaignId, sceneId: 'cantina' }]],
+    [
+      'a create beside an empty Scene id',
+      'scenes:create',
+      [{ campaignId, name: 'X', selectedSceneId: '' }],
+    ],
     [
       'a move to a negative place',
-      'scenes:move',
-      [{ campaignId, sceneId: 'cantina', toIndex: -1 }],
+      'scenes:edit-running-order',
+      [{ campaignId, edit: { ...moveEdit, toIndex: -1 } }],
     ],
-    [
-      'a move to a fractional place',
-      'scenes:move',
-      [{ campaignId, sceneId: 'cantina', toIndex: 0.5 }],
-    ],
-    ['a move with no Scene', 'scenes:move', [{ campaignId, toIndex: 0 }]],
+    ['an unknown running order command', 'scenes:edit-running-order', [{ campaignId, edit: {} }]],
+    ['a running order command with no Campaign', 'scenes:edit-running-order', [{ edit: moveEdit }]],
+    ['a running order with no Campaign', 'scenes:running-order', [{}]],
     ['a duplicate with no Scene', 'scenes:duplicate', [{ campaignId }]],
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],

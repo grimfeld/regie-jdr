@@ -12,7 +12,7 @@ import { notesFromPlainText } from '../../core/notes';
 import { createSceneLibrary, SceneError } from '../../core/scenes';
 import { createSoundboardStore } from '../../core/soundboard';
 import { openStorage } from '../../core/storage';
-import type { SceneEdit } from '../../shared/contract';
+import type { RunningOrderEdit, SceneEdit } from '../../shared/contract';
 import type { AudioMix, Media, OnAirState } from '../../shared/domain';
 import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
@@ -173,7 +173,12 @@ describe('on-air commands', () => {
     it('follows the running order as saved, and forces a Cut when asked', async () => {
       const ctx = await setup();
       const [a, b, c] = await threeScenes(ctx);
-      await ctx.scenes.move(ctx.campaign.id, c, 0);
+      await ctx.scenes.editRunningOrder(ctx.campaign.id, {
+        kind: 'move-scene',
+        sceneId: c,
+        chapterId: null,
+        toIndex: 0,
+      });
       await ctx.commands.activateScene(c);
 
       const state = await ctx.commands.activateNextTo('next', { forceCut: true });
@@ -181,6 +186,23 @@ describe('on-air commands', () => {
       expect(state.activeSceneId).toBe(a);
       expect(state.transition).toMatchObject({ kind: 'cut', durationMs: 0 });
       expect((await ctx.commands.activateNextTo('next')).activeSceneId).toBe(b);
+    });
+
+    it('crosses Chapters, collapsed ones included', async () => {
+      const ctx = await setup();
+      const [a, b, c] = await threeScenes(ctx);
+      const edit = (command: RunningOrderEdit) =>
+        ctx.scenes.editRunningOrder(ctx.campaign.id, command);
+      const { chapters } = await edit({ kind: 'create-chapter', name: 'Prologue' });
+      const chapterId = chapters[0].id;
+      await edit({ kind: 'move-scene', sceneId: b, chapterId, toIndex: 0 });
+      await edit({ kind: 'set-chapter-collapsed', chapterId, collapsed: true });
+      await ctx.commands.activateScene(a);
+
+      // b, alone in the collapsed Chapter, comes first; then a and c, in no Chapter.
+      expect((await ctx.commands.activateNextTo('previous')).activeSceneId).toBe(b);
+      expect((await ctx.commands.activateNextTo('next')).activeSceneId).toBe(a);
+      expect((await ctx.commands.activateNextTo('next')).activeSceneId).toBe(c);
     });
 
     it('is refused when no Campaign is open', async () => {
