@@ -15,6 +15,7 @@ const RENDERER_SAFE_CORE = [
   'fades',
   'audioMix',
   'notes',
+  'runningOrder',
 ];
 
 /**
@@ -196,6 +197,7 @@ export default tseslint.config(
                 '!./fades*',
                 '!./audioMix*',
                 '!./notes*',
+                '!./runningOrder*',
               ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',

@@ -389,6 +389,8 @@ function startApp() {
         await commands.deleteScene(campaignId, sceneId);
         saveSetting((store) => store.forgetScene(campaignId, sceneId));
       },
+      'scenes:move': ({ campaignId, sceneId, toIndex }) =>
+        scenes.move(campaignId, sceneId, toIndex),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
       'media:list': ({ campaignId }) => library.list(campaignId),

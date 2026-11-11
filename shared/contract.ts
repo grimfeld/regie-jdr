@@ -216,9 +216,9 @@ export interface InvokeChannels {
    * Fails if no Campaign is open.
    */
   'onAir:set-blackout': { payload: { on: boolean }; result: OnAirState };
-  /** The Scenes of a Campaign, in creation order. */
+  /** The Scenes of a Campaign, in running order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
-  /** Create an empty Scene; fails with a French message for an empty name. */
+  /** Create an empty Scene, last in the running order; fails with a French message for an empty name. */
   'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
   /**
    * Apply one edit command to a Scene (core/sceneEdits.ts) and get the Scene as saved. On the
@@ -252,6 +252,15 @@ export interface InvokeChannels {
    * stays on air. The window asks the Game Master to confirm first.
    */
   'scenes:delete': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: void };
+  /**
+   * Move a Scene to `toIndex` in the Campaign's running order (past the end means last) and get
+   * the Scenes in their new order. A Campaign-level command: it changes no Scene and is not in
+   * any Scene's undo history.
+   */
+  'scenes:move': {
+    payload: { campaignId: CampaignId; sceneId: SceneId; toIndex: number };
+    result: Scene[];
+  };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
   /**
@@ -439,6 +448,7 @@ export interface ControlBridge extends BroadcastBridge {
   undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
+  moveScene(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;

@@ -2,7 +2,8 @@
  * Scenes of a Campaign: storage and validation. No Electron dependency.
  *
  * On disk, in the Campaign's folder: `scenes.json` ({ scenes: Scene[] }, versioned document),
- * Scenes stored without their Campaign id (the folder gives it), in creation order.
+ * Scenes stored without their Campaign id (the folder gives it), in running order
+ * (core/runningOrder.ts).
  * Errors meant for the Game Master are SceneError with a French message.
  */
 import { randomUUID } from 'node:crypto';
@@ -24,13 +25,14 @@ import { createKeyedSerialQueue } from './serialQueue.js';
 import type { DocumentType, Storage } from './storage/index.js';
 import { isRecord } from './guards.js';
 import { emptyNotes, notesFromPlainText, parseNotes } from './notes.js';
+import { moveInRunningOrder } from './runningOrder.js';
 import { cleanSceneName, SceneError } from './sceneEdits.js';
 
 // Defined with the Scene edit commands, which the windows may run (no Node there).
 export { SceneError };
 
 export interface SceneLibrary {
-  /** The Campaign's Scenes, in creation order. */
+  /** The Campaign's Scenes, in running order. */
   list(campaignId: CampaignId): Promise<Scene[]>;
   /** The Scene, or undefined if it does not exist. */
   get(campaignId: CampaignId, sceneId: SceneId): Promise<Scene | undefined>;
@@ -39,12 +41,18 @@ export interface SceneLibrary {
    * Campaign's Scenes and returns the Scenes that changed, as saved.
    */
   removeMediaPlacements(campaignId: CampaignId, mediaId: MediaId): Promise<Scene[]>;
-  /** A new, empty Scene. */
+  /** A new, empty Scene, last in the running order. */
   create(campaignId: CampaignId, name: string): Promise<Scene>;
   /** Deletes a Scene; throws a SceneError when it does not exist. */
   delete(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /** Replaces a stored Scene (found by Campaign and id) and returns what was saved. */
   save(scene: Scene): Promise<Scene>;
+  /**
+   * Moves a Scene to `toIndex` in the running order (past the end means last) and returns the
+   * Campaign's Scenes in their new order. Changes no Scene. Throws a SceneError when the Scene
+   * does not exist.
+   */
+  move(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
 }
 
 const SCENES_FILE = 'scenes.json';
@@ -326,6 +334,19 @@ export function createSceneLibrary(storage: Storage): SceneLibrary {
         scenes[index] = saved;
         await write(file, scenes);
         return saved;
+      });
+    },
+
+    move(campaignId, sceneId, toIndex) {
+      return serialized(campaignId, async () => {
+        const file = await fileOf(campaignId);
+        const scenes = await read(file, campaignId);
+        if (!scenes.some((scene) => scene.id === sceneId)) {
+          throw new SceneError('Cette scène n’existe plus.');
+        }
+        const moved = moveInRunningOrder(scenes, sceneId, toIndex);
+        await write(file, moved);
+        return moved;
       });
     },
   };

@@ -336,6 +336,7 @@ describe('Scene channels', () => {
       ['scenes:create', [{ campaignId, name: 'X' }]],
       ['scenes:edit', [edit]],
       ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
+      ['scenes:move', [{ campaignId, sceneId: 'cantina', toIndex: 0 }]],
       ['scenes:show-transient', [transient]],
       ['scenes:undo-state', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:undo', [{ campaignId, sceneId: 'cantina' }]],
@@ -387,6 +388,14 @@ describe('Scene channels', () => {
     });
   });
 
+  it('accept a Scene to move in the running order, keeping only contract fields', () => {
+    const move = { campaignId, sceneId: 'cantina', toIndex: 2 };
+    expect(checkInvoke('scenes:move', 'control', [{ ...move, order: [] }])).toEqual({
+      ok: true,
+      payload: move,
+    });
+  });
+
   it('accept a Scene to undo or redo on, keeping only contract fields', () => {
     const target = { campaignId, sceneId: 'cantina' };
     for (const channel of ['scenes:undo-state', 'scenes:undo', 'scenes:redo'] as const) {
@@ -405,6 +414,18 @@ describe('Scene channels', () => {
     ['a delete with no Scene', 'scenes:delete', [{ campaignId }]],
     ['a delete with no Campaign', 'scenes:delete', [{ sceneId: 'cantina' }]],
     ['no name', 'scenes:create', [{ campaignId }]],
+    ['a move with no place', 'scenes:move', [{ campaignId, sceneId: 'cantina' }]],
+    [
+      'a move to a negative place',
+      'scenes:move',
+      [{ campaignId, sceneId: 'cantina', toIndex: -1 }],
+    ],
+    [
+      'a move to a fractional place',
+      'scenes:move',
+      [{ campaignId, sceneId: 'cantina', toIndex: 0.5 }],
+    ],
+    ['a move with no Scene', 'scenes:move', [{ campaignId, toIndex: 0 }]],
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],
     ['an unknown edit', 'scenes:edit', [{ ...edit, edit: { kind: 'replace-scene' } }]],

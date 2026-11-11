@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dragOnScreen,
   expect,
   fixture,
   launchApp,
@@ -291,6 +292,48 @@ test('Scenes are created, renamed and deleted, and the changes survive a restart
       .getByRole('list', { name: 'Scènes de la campagne' })
       .getByRole('button');
     await expect(names).toHaveText(['Cantina de Mos Eisley', 'Hangar']);
+  } finally {
+    await restarted.app.close();
+  }
+});
+
+test('Scenes are dragged into their running order, new ones go last, and the order survives a restart', async ({
+  regie,
+}) => {
+  const { app, controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow, 'Star Wars');
+  await createScene(controlWindow, 'Cantina');
+  await createScene(controlWindow, 'Hangar');
+  await createScene(controlWindow, 'Désert');
+  await renameSelectedScene(controlWindow, 'Dune');
+  const row = (name: string) => sceneEntry(controlWindow, name).locator('xpath=..');
+  const names = (page: Page) =>
+    scenesPanel(page).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
+
+  await dragOnScreen(row('Dune'), row('Cantina'));
+  await expect(names(controlWindow)).toHaveText(['Dune', 'Cantina', 'Hangar']);
+  await dragOnScreen(row('Cantina'), row('Hangar'));
+  await expect(names(controlWindow)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+
+  // Reordering is not a Scene edit: undo still undoes the rename, and the order stays.
+  await editor(controlWindow)
+    .getByRole('toolbar', { name: 'Historique de la scène' })
+    .getByRole('button', { name: /^Annuler : / })
+    .click();
+  await expect(names(controlWindow)).toHaveText(['Désert', 'Hangar', 'Cantina']);
+
+  await createScene(controlWindow, 'Épilogue');
+  await expect(names(controlWindow)).toHaveText(['Désert', 'Hangar', 'Cantina', 'Épilogue']);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    await expect(names(restarted.controlWindow)).toHaveText([
+      'Désert',
+      'Hangar',
+      'Cantina',
+      'Épilogue',
+    ]);
   } finally {
     await restarted.app.close();
   }

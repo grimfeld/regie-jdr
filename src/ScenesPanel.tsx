@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Clapperboard, History, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { Clapperboard, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
 import type {
   AudioMedia,
   CampaignId,
@@ -13,12 +13,14 @@ import type {
 import type { ControlBridge, SceneEdit, TransientEdit, UndoState } from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
+import { moveInRunningOrder } from '../core/runningOrder';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
 import { useShortcuts, type EditShortcut } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
+import { SceneList } from './SceneList';
 import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
@@ -43,8 +45,9 @@ interface Props {
 }
 
 /**
- * The open Campaign's Scenes: create a Scene, open one as the Selected Scene, and the editor of
- * the Selected Scene (rename, delete, Activate, its canvas, its Backgrounds). Each change is a
+ * The open Campaign's Scenes: create a Scene (last in the running order), drag them into their
+ * running order, open one as the Selected Scene, and the editor of the Selected Scene (rename,
+ * delete, Activate, its canvas, its Backgrounds). Each change is a
  * command the main process applies and saves; it goes on air only on the Active Scene.
  *
  * Opening a Campaign selects its last Active Scene (or its first Scene) without putting it on
@@ -250,6 +253,21 @@ export function ScenesPanel({
     }
   }
 
+  /**
+   * Moves a Scene in the running order: shown at once, then saved. A Campaign-level command, not
+   * a Scene edit: no Scene's undo history records it.
+   */
+  async function reorder(sceneId: SceneId, toIndex: number) {
+    setScenes((current) => moveInRunningOrder(current, sceneId, toIndex));
+    if (!control) return;
+    try {
+      await control.moveScene(campaignId, sceneId, toIndex);
+    } catch (error) {
+      showNotice(errorMessage(error));
+      setScenes(await control.listScenes(campaignId));
+    }
+  }
+
   async function remove(scene: Scene) {
     if (!control) return;
     try {
@@ -288,36 +306,14 @@ export function ScenesPanel({
         </button>
       </form>
 
-      <ul className="scene-list" aria-label="Scènes de la campagne">
-        {scenes.map((scene) => (
-          <li
-            key={scene.id}
-            className={
-              [scene.id === openedId && 'selected', isLastActive(scene) && 'last-active']
-                .filter(Boolean)
-                .join(' ') || undefined
-            }
-          >
-            <button
-              className="scene-open"
-              aria-pressed={scene.id === openedId}
-              onClick={() => setSelectedId(scene.id)}
-            >
-              {scene.name}
-            </button>
-            {isActive(scene) && (
-              <span className="scene-active-badge">
-                <Radio size={12} /> Active
-              </span>
-            )}
-            {isLastActive(scene) && (
-              <span className="scene-last-badge">
-                <History size={12} /> Dernière active
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+      <SceneList
+        scenes={scenes}
+        openedId={openedId}
+        isActive={isActive}
+        isLastActive={isLastActive}
+        onOpen={(scene) => setSelectedId(scene.id)}
+        onMove={(sceneId, toIndex) => void reorder(sceneId, toIndex)}
+      />
 
       {selected ? (
         <SceneEditor

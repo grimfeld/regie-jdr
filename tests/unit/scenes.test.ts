@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { emptyNotes, notesFromPlainText } from '../../core/notes';
-import { createSceneLibrary, parseScene } from '../../core/scenes';
+import { createSceneLibrary, parseScene, SceneError } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { Scene } from '../../shared/domain';
 import { useTempDir } from './tempDir';
@@ -248,6 +248,72 @@ describe('scene library', () => {
       ],
     });
     expect(empty.notes).toEqual(emptyNotes());
+  });
+
+  describe('running order', () => {
+    const names = (list: Scene[]) => list.map((scene) => scene.name);
+
+    it('adds a new Scene at the end', async () => {
+      const { campaign, scenes } = await setup();
+      const first = await scenes.create(campaign.id, 'A');
+      await scenes.create(campaign.id, 'B');
+      await scenes.move(campaign.id, first.id, 1);
+
+      await scenes.create(campaign.id, 'C');
+
+      expect(names(await scenes.list(campaign.id))).toEqual(['B', 'A', 'C']);
+    });
+
+    it('moves a Scene and keeps the order after the storage is reopened (restart)', async () => {
+      const { campaign, scenes } = await setup();
+      const [a, , c] = [
+        await scenes.create(campaign.id, 'A'),
+        await scenes.create(campaign.id, 'B'),
+        await scenes.create(campaign.id, 'C'),
+      ];
+
+      expect(names(await scenes.move(campaign.id, c.id, 0))).toEqual(['C', 'A', 'B']);
+      expect(names(await scenes.move(campaign.id, a.id, 2))).toEqual(['C', 'B', 'A']);
+
+      const reopened = createSceneLibrary(openStorage(root()));
+      expect(names(await reopened.list(campaign.id))).toEqual(['C', 'B', 'A']);
+    });
+
+    it('changes no Scene when moving one, and saving a Scene keeps its place', async () => {
+      const { campaign, scenes } = await setup();
+      const a = await scenes.create(campaign.id, 'A');
+      const b = await scenes.create(campaign.id, 'B');
+      await scenes.move(campaign.id, b.id, 0);
+
+      await scenes.save({ ...a, title: 'Le vieux moulin' });
+
+      expect(await scenes.list(campaign.id)).toEqual([b, { ...a, title: 'Le vieux moulin' }]);
+    });
+
+    it('refuses to move a Scene that no longer exists', async () => {
+      const { campaign, scenes } = await setup();
+      await scenes.create(campaign.id, 'A');
+      await expect(scenes.move(campaign.id, 'inconnue', 0)).rejects.toThrow(SceneError);
+    });
+
+    it('starts as the list order of a Campaign saved before running orders (version 2)', async () => {
+      const { storage, campaign, scenes } = await setup();
+      const { campaignId: _campaignId, ...stored } = await scenes.create(campaign.id, 'x');
+      await fs.writeFile(
+        path.join(storage.campaignFolder(campaign.id), 'scenes.json'),
+        JSON.stringify({
+          schemaVersion: 2,
+          scenes: ['Zéro', 'Alpha', 'Milieu'].map((name, i) => ({
+            ...stored,
+            id: `s${i}`,
+            name,
+            notes: '',
+          })),
+        }),
+      );
+
+      expect(names(await scenes.list(campaign.id))).toEqual(['Zéro', 'Alpha', 'Milieu']);
+    });
   });
 
   it('keeps every Scene when saves run at the same time', async () => {

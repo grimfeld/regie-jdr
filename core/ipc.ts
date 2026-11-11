@@ -271,6 +271,16 @@ function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: Scen
   return { ...campaign, sceneId };
 }
 
+function sceneMove(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; sceneId: SceneId; toIndex: number }> {
+  const scene = sceneOf(value);
+  if (scene === INVALID || !isRecord(value)) return INVALID;
+  const { toIndex } = value;
+  if (typeof toIndex !== 'number' || !Number.isSafeInteger(toIndex) || toIndex < 0) return INVALID;
+  return { ...scene, toIndex };
+}
+
 function sceneEdit(
   value: unknown,
 ): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit }> {
@@ -307,6 +317,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'scenes:undo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:redo': { from: controlOnly, parse: onePayload(sceneOf) },
   'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:move': { from: controlOnly, parse: onePayload(sceneMove) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
   'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
