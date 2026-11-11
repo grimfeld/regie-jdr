@@ -57,6 +57,28 @@ export function appEnv(dataDir: string): Record<string, string> {
 /** Path of the built app, as passed to the Electron executable. */
 export const appPath = repoRoot;
 
+/**
+ * Drags `source` onto `target` (Playwright `dragTo`) after scrolling the page so both are on
+ * screen, half-way between them centred. A drag that must scroll the page on its way loses its
+ * drop, and how far apart two places are changes whenever a panel grows (the Notes, #51): see
+ * docs/wiki/problem-flaky-app-tests.md.
+ */
+export async function dragOnScreen(
+  source: Locator,
+  target: Locator,
+  options?: Parameters<Locator['dragTo']>[1],
+): Promise<void> {
+  const extentOf = (locator: Locator) =>
+    locator.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return { top: box.top + window.scrollY, bottom: box.bottom + window.scrollY };
+    });
+  const [from, to] = [await extentOf(source), await extentOf(target)];
+  const middle = (Math.min(from.top, to.top) + Math.max(from.bottom, to.bottom)) / 2;
+  await source.page().evaluate((y) => window.scrollTo(0, y - window.innerHeight / 2), middle);
+  await source.dragTo(target, options);
+}
+
 /** Replaces the native file picker in the main process: the next pickers return `filePaths`. */
 export async function stubFilePicker(app: ElectronApplication, filePaths: string[]): Promise<void> {
   await app.evaluate(({ dialog }, paths) => {

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import {
   createCampaign,
+  dragOnScreen,
   expect,
   fixture,
   launchApp,
@@ -57,24 +58,13 @@ async function createScene(page: Page, name: string) {
   await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
-/**
- * Drags the library thumbnail onto the editor canvas, at fractions `x`, `y` of the canvas. The
- * drag's events are sent to each element, the drop point read from the canvas once scrolled into
- * view: wherever the layout puts the library and the canvas, even when both do not fit on screen
- * at once (a mouse drag would scroll mid-drag and miss).
- */
+/** Drags the library thumbnail onto the editor canvas, at fractions `x`, `y` of the canvas. */
 async function dropOnCanvas(page: Page, x: number, y: number) {
-  const canvas = editorCanvas(page).locator('.scene-canvas');
-  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await thumbnail(page).dispatchEvent('dragstart', { dataTransfer });
-  await canvas.scrollIntoViewIfNeeded();
-  const box = await canvas.boundingBox();
+  const box = await editorCanvas(page).locator('.scene-canvas').boundingBox();
   if (!box) throw new Error('The editor canvas is not shown.');
-  const init = { dataTransfer, clientX: box.x + box.width * x, clientY: box.y + box.height * y };
-  await canvas.dispatchEvent('dragenter', init);
-  await canvas.dispatchEvent('dragover', init);
-  await canvas.dispatchEvent('drop', init);
-  await thumbnail(page).dispatchEvent('dragend', { dataTransfer });
+  await dragOnScreen(thumbnail(page), editorCanvas(page).locator('.scene-canvas'), {
+    targetPosition: { x: box.width * x, y: box.height * y },
+  });
 }
 
 /** Centre of the editor's only Overlay, as fractions of the canvas. */
