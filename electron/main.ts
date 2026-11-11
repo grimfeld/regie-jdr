@@ -345,6 +345,14 @@ function startApp() {
     sendPadCommands(padVoices.clear());
     sendSounding();
   };
+  /** Silence was set: when it `started`, the pads sounding fade out too. Returns what sounds. */
+  const silenced = (started: boolean) => {
+    if (started) {
+      sendPadCommands(padVoices.clear('silence'));
+      sendSounding();
+    }
+    return currentSounding();
+  };
   audio.subscribe((mix) => {
     sendEvent(controlWindow?.webContents, 'audio:mix-changed', mix);
     sendSounding();
@@ -439,12 +447,10 @@ function startApp() {
         sendSounding();
       },
       'audio:get-sounding': () => currentSounding(),
-      // Silence fades out the pads sounding too; pads pressed during it play as usual.
-      'audio:set-silence': ({ on }) => {
-        if (on && !audio.silence()) sendPadCommands(padVoices.clear('silence'));
-        audio.setSilence(on);
-        return currentSounding();
-      },
+      // Silence fades out the pads sounding too; pads pressed during it play as usual. It
+      // goes through the on-air commands, in turn: an Activate just before cannot lift it.
+      'audio:set-silence': async ({ on }) => silenced(await commands.setSilence(on)),
+      'audio:toggle-silence': async () => silenced(await commands.toggleSilence()),
       'audio:report-pads': (report) => {
         if (padVoices.report(report)) sendSounding();
       },

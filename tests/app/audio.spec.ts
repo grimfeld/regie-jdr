@@ -358,6 +358,7 @@ test('the audio engine’s bridge can only read the mix and report; the Broadcas
       ['audio:get-mix', []],
       ['audio:get-sounding', []],
       ['audio:set-silence', [{ on: true }]],
+      ['audio:toggle-silence', []],
       ['audio:report', [{ voices: [] }]],
       ['settings:set-master-volume', [{ masterVolume: 0 }]],
       ['audio:pick-music', [{ mediaId: 'x' }]],

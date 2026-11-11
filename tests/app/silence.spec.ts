@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
+import type { ControlBridge } from '../../shared/contract';
 import {
   createCampaign,
   expect,
@@ -181,4 +182,49 @@ test('a pad pressed during Silence sounds and Silence stays; switching Campaign 
   } finally {
     await restarted.app.close();
   }
+});
+
+interface ControlWindow {
+  regie: ControlBridge;
+}
+
+test('Silence pressed while an Activate is still running stays on', async ({ regie }) => {
+  const page = regie.controlWindow;
+  await taverneOnAir(regie);
+
+  // Activate, then Silence at once, as fast as the Game Master's hands: Silence comes after.
+  const silence = await page.evaluate(async () => {
+    const bridge = (window as unknown as ControlWindow).regie;
+    const { activeSceneId } = await bridge.getOnAir();
+    if (activeSceneId === null) throw new Error('No Active Scene');
+    const activated = bridge.activateScene(activeSceneId);
+    const silenced = bridge.setSilence(true);
+    await Promise.all([activated, silenced]);
+    return (await bridge.getSounding()).silence;
+  });
+
+  expect(silence).toBe(true);
+  await expect(silenceButton(page)).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('the Silence key pressed twice quickly starts Silence and lifts it', async ({ regie }) => {
+  const page = regie.controlWindow;
+  await taverneOnAir(regie);
+  // Every Silence state the strip learns of, in order.
+  await page.evaluate(() => {
+    const watching = window as unknown as ControlWindow & { silences: boolean[] };
+    watching.silences = [];
+    watching.regie.onSoundingChanged(({ silence }) => {
+      if (watching.silences.at(-1) !== silence) watching.silences.push(silence);
+    });
+  });
+  await page.locator('body').click({ position: { x: 1, y: 1 } });
+
+  await page.keyboard.press('s');
+  await page.keyboard.press('s');
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { silences: boolean[] }).silences))
+    .toEqual([true, false]);
+  await expect(silenceButton(page)).toHaveAttribute('aria-pressed', 'false');
 });

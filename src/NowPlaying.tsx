@@ -83,7 +83,7 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
           aria-pressed={silence}
           title={`Couper tout le son en fondu, ou le rétablir tel qu’il était (touche ${silenceKey})`}
           aria-keyshortcuts={silenceKey}
-          onClick={() => void setSilence(control, !silence)}
+          onClick={() => void toggleSilence(control)}
         >
           <VolumeX size={14} /> Silence {silenceKey && <kbd aria-hidden>{silenceKey}</kbd>}
         </button>
@@ -156,14 +156,15 @@ function MusicPlayback({
 }
 
 /**
- * Starts (`on`) or lifts Silence, telling the Game Master if that fails. For the Silence
- * button, and for its key (`useAudioShortcuts` in App.tsx), which reads the current state from
- * useSounding.
+ * Starts Silence when it is off, lifts it when it is on, telling the Game Master if that fails.
+ * For the Silence button, and for its key (`useAudioShortcuts` in App.tsx). The main process
+ * decides from its own state, not from what this window last heard: pressed twice quickly, it
+ * starts then lifts.
  */
-export async function setSilence(control: ControlBridge | undefined, on: boolean) {
+export async function toggleSilence(control: ControlBridge | undefined) {
   if (!control) return;
   try {
-    await control.setSilence(on);
+    await control.toggleSilence();
   } catch (error) {
     showNotice(errorMessage(error));
   }

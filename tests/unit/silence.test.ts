@@ -268,4 +268,25 @@ describe('Silence and Blackout stay apart', () => {
     await ctx.commands.openCampaign(ctx.campaign.id);
     expect(ctx.audioOnAir.silence()).toBe(false);
   });
+
+  it('Silence given after an Activate waits for it, so the Activate does not lift it', async () => {
+    const ctx = await setup();
+
+    const activated = ctx.commands.activateScene(ctx.scene.id);
+    const started = ctx.commands.setSilence(true);
+    await Promise.all([activated, started]);
+
+    expect(await started).toBe(true);
+    expect(ctx.audioOnAir.silence()).toBe(true);
+  });
+
+  it('toggling Silence twice starts it, then lifts it, each from the state the one before left', async () => {
+    const ctx = await setup();
+
+    const toggles = [ctx.commands.toggleSilence(), ctx.commands.toggleSilence()];
+
+    expect(await Promise.all(toggles)).toEqual([true, false]);
+    expect(ctx.audioOnAir.silence()).toBe(false);
+    expect(await ctx.commands.setSilence(false)).toBe(false);
+  });
 });

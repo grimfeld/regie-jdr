@@ -354,6 +354,12 @@ export interface InvokeChannels {
    * comes back. On air only, never saved; the picture is unchanged (Blackout is picture only).
    */
   'audio:set-silence': { payload: { on: boolean }; result: AudioSounding };
+  /**
+   * Starts Silence when it is off, lifts it when it is on, as `audio:set-silence` would, from
+   * the state the main process holds: the Silence key and button, pressed twice quickly, start
+   * then lift it, whatever the window has heard back yet.
+   */
+  'audio:toggle-silence': { payload: void; result: AudioSounding };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -460,6 +466,7 @@ export interface ControlBridge extends BroadcastBridge {
   setMasterVolume(masterVolume: number): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
+  toggleSilence(): Promise<AudioSounding>;
   getSoundboard(campaignId: CampaignId): Promise<Soundboard>;
   editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   pressPad(campaignId: CampaignId, padId: string): Promise<void>;

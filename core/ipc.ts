@@ -328,6 +328,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'audio:report': { from: controlOnly, parse: onePayload(engineReport) },
   'audio:get-sounding': { from: controlOnly, parse: noPayload },
   'audio:set-silence': { from: controlOnly, parse: onePayload(onOffOf) },
+  'audio:toggle-silence': { from: controlOnly, parse: noPayload },
   'audio:report-pads': { from: controlOnly, parse: onePayload(padReport) },
   'soundboard:get': { from: controlOnly, parse: onePayload(campaignOf) },
   'soundboard:edit': { from: controlOnly, parse: onePayload(soundboardEdit) },

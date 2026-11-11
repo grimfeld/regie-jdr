@@ -73,6 +73,17 @@ export interface OnAirCommands {
   pickMusic(mediaId: MediaId): Promise<void>;
   /** Plays, pauses or stops the Active Scene's current Music; live playback, like `pickMusic`. */
   setMusicPlayback(playback: MusicPlayback): Promise<void>;
+  /**
+   * Starts (`on`) or lifts Silence, in turn with the other commands: an Activate given just
+   * before (which lifts Silence) cannot overtake it. Returns whether Silence started (it was
+   * off), for the caller to cut the pads sounding.
+   */
+  setSilence(on: boolean): Promise<boolean>;
+  /**
+   * Starts Silence when it is off, lifts it when it is on, from the state the commands before
+   * left: pressed twice quickly, it starts then lifts. Returns whether it started.
+   */
+  toggleSilence(): Promise<boolean>;
   /** What can be undone and redone on a Scene: the labels of its next undo and redo. */
   undoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   /**
@@ -200,6 +211,13 @@ export function createOnAirCommands(deps: {
     if (saved) await showActive(saved, 'volume');
   }
 
+  /** Starts (`on`) or lifts Silence; returns whether it started. */
+  function silence(on: boolean) {
+    const started = on && !audio.silence();
+    audio.setSilence(on);
+    return started;
+  }
+
   /**
    * Undoes or redoes (`move`) on a Scene, applied literally: the Scene saved before the step
    * comes back. A Scene changed outside its history since (its placements of a deleted Media)
@@ -310,6 +328,10 @@ export function createOnAirCommands(deps: {
       serialized(() => {
         audio.setMusicPlayback(playback);
       }),
+
+    setSilence: (on) => serialized(() => silence(on)),
+
+    toggleSilence: () => serialized(() => silence(!audio.silence())),
 
     undoState: (campaignId, sceneId) => serialized(() => histories.state(campaignId, sceneId)),
 

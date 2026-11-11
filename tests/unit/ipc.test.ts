@@ -44,6 +44,7 @@ describe('sender policy', () => {
       ['audio:report', [{ voices: [] }]],
       ['audio:get-sounding', []],
       ['audio:set-silence', [{ on: true }]],
+      ['audio:toggle-silence', []],
       ['settings:set-master-volume', [{ masterVolume: 0.5 }]],
       ['audio:pick-music', [{ mediaId: 'm1' }]],
       ['audio:set-music-playback', [{ playback: 'paused' }]],
