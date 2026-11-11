@@ -39,6 +39,7 @@ async function createScene(page: Page, name: string) {
 }
 
 async function createChapter(page: Page, name: string) {
+  await scenesPanel(page).getByRole('button', { name: 'Nouveau chapitre' }).click();
   await scenesPanel(page).getByLabel('Nom du chapitre').fill(name);
   await scenesPanel(page).getByRole('button', { name: 'Créer le chapitre' }).click();
   await expect(chapterToggle(page, name)).toBeVisible();

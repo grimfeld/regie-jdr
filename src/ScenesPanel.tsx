@@ -146,7 +146,8 @@ export function ScenesPanel({
   const [imagesRead, setImagesRead] = useState(false);
   const [sounds, setSounds] = useState<AudioMedia[]>([]);
   const [newName, setNewName] = useState('');
-  const [newChapterName, setNewChapterName] = useState('');
+  /** The name typed for a new Chapter; null while its form is closed. */
+  const [newChapterName, setNewChapterName] = useState<string | null>(null);
   const nameField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -409,10 +410,10 @@ export function ScenesPanel({
     try {
       const saved = await control.editRunningOrder(campaignId, {
         kind: 'create-chapter',
-        name: newChapterName,
+        name: newChapterName ?? '',
       });
       setOrder((current) => withRunningOrder(current.scenes, saved));
-      setNewChapterName('');
+      setNewChapterName(null);
     } catch (error) {
       showNotice(errorMessage(error));
     }
@@ -485,6 +486,13 @@ export function ScenesPanel({
             <Clapperboard size={18} /> Scènes
           </h2>
         </div>
+        <button
+          className="secondary-button"
+          aria-expanded={newChapterName !== null}
+          onClick={() => setNewChapterName((name) => (name === null ? '' : null))}
+        >
+          <FolderPlus size={14} /> Nouveau chapitre
+        </button>
       </div>
 
       <form className="campaign-form" onSubmit={(event) => void create(event)}>
@@ -511,19 +519,32 @@ export function ScenesPanel({
         onEdit={(command) => void editRunningOrder(command)}
       />
 
-      <form className="campaign-form" onSubmit={(event) => void createChapter(event)}>
-        <label>
-          NOM DU CHAPITRE
-          <input
-            aria-label="Nom du chapitre"
-            value={newChapterName}
-            onChange={(e) => setNewChapterName(e.target.value)}
-          />
-        </label>
-        <button className="secondary-button" type="submit">
-          <FolderPlus size={14} /> Créer le chapitre
-        </button>
-      </form>
+      {newChapterName !== null && (
+        <form className="campaign-form" onSubmit={(event) => void createChapter(event)}>
+          <label>
+            NOM DU CHAPITRE
+            <input
+              autoFocus
+              aria-label="Nom du chapitre"
+              value={newChapterName}
+              onChange={(e) => setNewChapterName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setNewChapterName(null);
+              }}
+            />
+          </label>
+          <button className="primary-button" type="submit">
+            <FolderPlus size={14} /> Créer le chapitre
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setNewChapterName(null)}
+          >
+            Annuler
+          </button>
+        </form>
+      )}
 
       {selected ? (
         <SceneEditor
