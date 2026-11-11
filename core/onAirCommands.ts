@@ -54,7 +54,8 @@ export interface OnAirCommands {
    * Shows a transient update of a live drag (a move or resize of an Overlay, a framing slider
    * of a Background): on the Active Scene, the broadcast shows the saved Scene with `edit`
    * applied; nothing is saved and no undo step is recorded. On any other Scene it does
-   * nothing. The drag ends with the same edit through `editScene`, which saves it as one step.
+   * nothing. The drag ends with the same edit through `editScene`, which saves it as one step;
+   * if that fails, the Scene as saved goes back on air.
    */
   showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
   /** What can be undone and redone on a Scene: the labels of its next undo and redo. */
@@ -107,6 +108,33 @@ export function createOnAirCommands(deps: {
       onAir.showActiveScene(saved.id, await picture(saved));
     }
     return saved;
+  }
+
+  /** Applies one edit to a Scene, saves it and records it in the Scene's undo history. */
+  async function applyEdit(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit) {
+    const scene = await scenes.get(campaignId, sceneId);
+    if (!scene) throw new SceneError('Cette scène n’existe plus.');
+    const media = await library.list(campaignId);
+    const mediaId = placedMedia(edit);
+    if (mediaId !== undefined) {
+      const placing = media.find((item) => item.id === mediaId);
+      if (placing?.kind !== 'image') throw new MediaError('Ce média n’existe plus.');
+    }
+    const saved = await saveScene(applySceneEdit(scene, edit, newId));
+    histories.record({
+      before: scene,
+      after: saved,
+      label: undoLabel(scene, edit, (id) => media.find((item) => item.id === id)?.name),
+    });
+    return saved;
+  }
+
+  /** Puts the Active Scene back on air as saved, when it is `sceneId` of `campaignId`. */
+  async function showSavedActiveScene(campaignId: CampaignId, sceneId: SceneId) {
+    const current = onAir.current();
+    if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
+    const saved = await scenes.get(campaignId, sceneId);
+    if (saved) onAir.showActiveScene(saved.id, await picture(saved));
   }
 
   /**
@@ -177,21 +205,15 @@ export function createOnAirCommands(deps: {
 
     editScene: (campaignId, sceneId, edit) =>
       serialized(async () => {
-        const scene = await scenes.get(campaignId, sceneId);
-        if (!scene) throw new SceneError('Cette scène n’existe plus.');
-        const media = await library.list(campaignId);
-        const mediaId = placedMedia(edit);
-        if (mediaId !== undefined) {
-          const placing = media.find((item) => item.id === mediaId);
-          if (placing?.kind !== 'image') throw new MediaError('Ce média n’existe plus.');
+        try {
+          return await applyEdit(campaignId, sceneId, edit);
+        } catch (error) {
+          // A live drag (Overlay or Background framing) may have shown unsaved transient
+          // updates on air: show the Scene as saved again. What the Game Master is told is the
+          // edit's own failure, so a failure here is dropped.
+          await showSavedActiveScene(campaignId, sceneId).catch(() => undefined);
+          throw error;
         }
-        const saved = await saveScene(applySceneEdit(scene, edit, newId));
-        histories.record({
-          before: scene,
-          after: saved,
-          label: undoLabel(scene, edit, (id) => media.find((item) => item.id === id)?.name),
-        });
-        return saved;
       }),
 
     showTransientEdit: (campaignId, sceneId, edit) =>

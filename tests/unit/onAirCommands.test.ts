@@ -27,10 +27,15 @@ describe('on-air commands', () => {
     onAir.subscribe((snapshot) => broadcast.push(snapshot));
     let audioHalts = 0;
     let placements = 0;
+    // When set, the commands' Scene saves fail, as on a full or read-only disk.
+    let saveFailure: Error | undefined;
     const commands = createOnAirCommands({
       campaigns: storage.campaigns,
       library,
-      scenes,
+      scenes: {
+        ...scenes,
+        save: (scene) => (saveFailure ? Promise.reject(saveFailure) : scenes.save(scene)),
+      },
       onAir,
       audio: {
         halt: () => {
@@ -52,6 +57,9 @@ describe('on-air commands', () => {
       image,
       broadcast,
       audioHalts: () => audioHalts,
+      failSaves: (failure: Error | undefined) => {
+        saveFailure = failure;
+      },
     };
   }
 
@@ -296,6 +304,18 @@ describe('on-air commands', () => {
       expect(committed.overlays[0].position).toEqual({ x: 0.4, y: 0.6 });
       expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(committed);
       expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.4, y: 0.6 } });
+    });
+
+    it('puts the saved Scene back on air when the committed edit fails', async () => {
+      const ctx = await setup();
+      const { saved, edit } = await dragging(ctx);
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+      ctx.failSaves(new Error('disk full'));
+
+      await expect(edit(move(0.2, 0.3))).rejects.toThrow('disk full');
+
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.5, y: 0.5 } });
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
     });
 
     it('never touches the broadcast, nor saves, on a Scene that is not active', async () => {
