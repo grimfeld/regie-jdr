@@ -11,6 +11,7 @@ import type {
   SceneId,
 } from '../shared/domain';
 import type {
+  ActivateOptions,
   ControlBridge,
   MediaImportResult,
   SceneEdit,
@@ -31,6 +32,8 @@ import { SceneList } from './SceneList';
 import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
+import { SceneTransitionField } from './SceneTransitionField';
+import { activateOptionsOf, activateScene } from './activate';
 import { SceneNotes, type NotesImageSource } from './SceneNotes';
 import { showNotice } from './notices';
 import { useOnAir } from './useOnAir';
@@ -323,15 +326,6 @@ export function ScenesPanel({
     }
   }
 
-  async function activate(scene: Scene) {
-    if (!control) return;
-    try {
-      await control.activateScene(scene.id);
-    } catch (error) {
-      showNotice(errorMessage(error));
-    }
-  }
-
   /**
    * Moves a Scene in the running order: shown at once, then saved. A Campaign-level command, not
    * a Scene edit: no Scene's undo history records it.
@@ -441,7 +435,9 @@ export function ScenesPanel({
             control?.pickMusic(mediaId).catch((error: unknown) => showNotice(errorMessage(error)));
           }}
           onAddNotesImages={imagesForNotes}
-          onActivate={() => void activate(selected)}
+          onActivate={(options) => {
+            if (control) void activateScene(control, selected.id, options);
+          }}
           onDuplicate={() => void duplicate(selected)}
           onDelete={() => void remove(selected)}
         />
@@ -494,7 +490,8 @@ interface EditorProps {
   onDrop: (event: DragEvent, target: PlacementTarget, dropPoint?: NormalizedPoint) => void;
   /** The images to insert into the Notes for something pasted or dropped there. */
   onAddNotesImages: (source: NotesImageSource) => Promise<ImageMedia[]>;
-  onActivate: () => void;
+  /** Activates the Scene: with its own Transition, or a Cut when `options.forceCut`. */
+  onActivate: (options: ActivateOptions) => void;
   /** Duplicates the Scene; the copy opens in the editor. */
   onDuplicate: () => void;
   /** Deletes the Scene, once the Game Master has confirmed. */
@@ -579,7 +576,11 @@ function SceneEditor(props: EditorProps) {
           <button className="secondary-button" onClick={() => setConfirmingDelete(true)}>
             <Trash2 size={14} /> Supprimer
           </button>
-          <button className="primary-button" onClick={props.onActivate}>
+          <button
+            className="primary-button"
+            title="Maj+clic : activer en Cut"
+            onClick={(event) => props.onActivate(activateOptionsOf(event))}
+          >
             Activer
           </button>
         </div>
@@ -609,6 +610,7 @@ function SceneEditor(props: EditorProps) {
       )}
       <UndoBar state={props.undoState} onTravel={travel} />
       <SceneTitleField title={scene.title} onEdit={onEditShowingFailure} />
+      <SceneTransitionField transition={scene.transition} onEdit={onEditShowingFailure} />
 
       {confirmingDelete && (
         <div
