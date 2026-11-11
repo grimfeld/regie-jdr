@@ -4,6 +4,8 @@ import {
   inRunningOrder,
   MAX_CHAPTER_NAME_LENGTH,
   moveInRunningOrder,
+  parseChapter,
+  parseChapters,
   parseRunningOrderEdit,
   runningOrderOf,
   sceneNextTo,
@@ -265,5 +267,37 @@ describe('Chapters in the running order', () => {
         expect(parseRunningOrderEdit(edit)).toBeUndefined();
       }
     });
+  });
+});
+
+describe('Chapters from stored data', () => {
+  const chapter = (fields: Partial<Chapter> = {}): Chapter => ({
+    id: 'act-1',
+    name: 'Acte I',
+    collapsed: false,
+    sceneIds: ['a', 'b'],
+    ...fields,
+  });
+
+  it('keeps a well-formed Chapter', () => {
+    expect(parseChapter(chapter())).toEqual(chapter());
+  });
+
+  it('refuses a name that is empty or longer than a Chapter name may be', () => {
+    expect(parseChapter(chapter({ name: '   ' }))).toBeUndefined();
+    expect(
+      parseChapter(chapter({ name: 'x'.repeat(MAX_CHAPTER_NAME_LENGTH + 1) })),
+    ).toBeUndefined();
+    expect(parseChapter(chapter({ name: 'x'.repeat(MAX_CHAPTER_NAME_LENGTH) }))).toBeDefined();
+  });
+
+  it('refuses a Scene listed twice in a Chapter', () => {
+    expect(parseChapter(chapter({ sceneIds: ['a', 'b', 'a'] }))).toBeUndefined();
+  });
+
+  it('refuses two Chapters with one id', () => {
+    expect(parseChapters([chapter(), chapter({ sceneIds: ['c'] })])).toBeUndefined();
+    expect(parseChapters([chapter(), chapter({ id: 'act-2', sceneIds: ['c'] })])).toHaveLength(2);
+    expect(parseChapters('not a list')).toBeUndefined();
   });
 });

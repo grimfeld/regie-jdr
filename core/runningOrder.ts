@@ -321,8 +321,19 @@ export function parseChapter(value: unknown): Chapter | undefined {
   if (!isRecord(value)) return undefined;
   const { id, name, collapsed, sceneIds } = value;
   if (!isId(id) || typeof name !== 'string' || typeof collapsed !== 'boolean') return undefined;
+  if (!name.trim() || name.length > MAX_CHAPTER_NAME_LENGTH) return undefined;
   if (!Array.isArray(sceneIds) || !sceneIds.every(isId)) return undefined;
+  if (new Set(sceneIds).size !== sceneIds.length) return undefined;
   return { id, name, collapsed, sceneIds: [...sceneIds] };
+}
+
+/** Chapters from untrusted data, each checked (`parseChapter`) and none sharing an id; or undefined. */
+export function parseChapters(value: unknown): Chapter[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const chapters = value.map(parseChapter);
+  if (!chapters.every((chapter): chapter is Chapter => chapter !== undefined)) return undefined;
+  const ids = new Set(chapters.map((chapter) => chapter.id));
+  return ids.size === chapters.length ? chapters : undefined;
 }
 
 /** A running order command from a window, keeping only its fields, or undefined. */

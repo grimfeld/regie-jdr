@@ -43,7 +43,7 @@ import {
 import {
   applyRunningOrderEdit,
   inRunningOrder,
-  parseChapter,
+  parseChapters,
   runningOrderOf,
   withCopy,
   withNewScene,
@@ -374,7 +374,7 @@ export const scenesDocument: DocumentType<ScenesFields> = {
       if (kept) unreadableNotes.push({ sceneId: kept.id, sceneName: kept.name, notes: item.notes });
       return kept;
     });
-    const parsedChapters = parseList(chapters, parseChapter);
+    const parsedChapters = parseChapters(chapters);
     if (!parsed || !parsedChapters) return undefined;
     const order = inRunningOrder(parsed.map(stored), parsedChapters);
     return unreadableNotes.length > 0 ? { ...order, unreadableNotes } : order;
