@@ -304,6 +304,38 @@ test('deleting an image used in Notes lists their Scene; confirming removes it f
   await expect(page.getByRole('button', { name: 'Annuler dans les notes' })).toBeDisabled();
 });
 
+test('deleting an image used only in other Scenes’ Notes keeps the open Notes and their undo', async ({
+  regie,
+}) => {
+  const page = regie.controlWindow;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Embuscade');
+  const map = await picturePng(regie, 'Plan du fort.png', { width: 80, height: 45 }, GREEN);
+  expect(await dropFiles(notes(page), [map])).toBe(true);
+  await expect(notesImage(page, 'Plan du fort')).toBeVisible();
+  await expect.poll(() => storedNotesImages(regie.dataDir)).toHaveLength(1);
+
+  await createScene(page, 'Cantina');
+  await notes(page).click();
+  await page.keyboard.type('Le traître');
+  await expect(page.getByRole('button', { name: 'Annuler dans les notes' })).toBeEnabled();
+
+  await libraryFilter(page, 'Références').click();
+  await libraryItem(page, 'Plan du fort')
+    .getByRole('button', { name: 'Supprimer Plan du fort' })
+    .click();
+  const dialog = page.getByRole('alertdialog', { name: 'Supprimer le média' });
+  await expect(dialog.getByRole('list', { name: 'Notes concernées' })).toHaveText('Embuscade');
+  await dialog.getByRole('button', { name: 'Supprimer quand même' }).click();
+  await expect(library(page).getByRole('listitem')).toHaveCount(0);
+  await expect.poll(() => storedNotesImages(regie.dataDir)).toEqual([]);
+
+  // The open Scene's Notes were not touched: the editor kept its undo history.
+  await expect(notes(page)).toContainText('Le traître');
+  await page.getByRole('button', { name: 'Annuler dans les notes' }).click();
+  await expect(notes(page)).not.toContainText('Le traître');
+});
+
 test('a Notes image whose file is missing on disk shows the missing-Media placeholder', async ({
   regie,
 }) => {

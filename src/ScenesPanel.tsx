@@ -40,6 +40,15 @@ import { useOnAir } from './useOnAir';
 import { useBackgroundFraming } from './useBackgroundFraming';
 import { useOverlayTransforms } from './useOverlayTransforms';
 
+/**
+ * Scene Notes changed outside the Notes editor: a deleted Media's images were removed from the
+ * Notes of `sceneIds`. `revision` changes with each such change.
+ */
+export interface NotesChange {
+  revision: number;
+  sceneIds: readonly SceneId[];
+}
+
 interface Props {
   campaignId: CampaignId;
   control: ControlBridge | undefined;
@@ -47,10 +56,11 @@ interface Props {
   mediaRevision: number;
   /**
    * Changes when a deleted Media's images were removed from Scene Notes: once the Scenes are read
-   * again, the Notes editor starts again on the cleaned Notes, its own undo history with it (the
-   * history could bring the deleted Media back).
+   * again, if the open Scene's Notes were among them, the Notes editor starts again on the
+   * cleaned Notes, its own undo history with it (the history could bring the deleted Media
+   * back). Other Notes leave the editor and its history as they are.
    */
-  notesRevision: number;
+  notesChange: NotesChange;
   /**
    * Image files dropped on the editor, or pasted or dropped into the Notes, were imported: the
    * library reads its Media again.
@@ -76,13 +86,18 @@ export function ScenesPanel({
   campaignId,
   control,
   mediaRevision,
-  notesRevision,
+  notesChange,
   onMediaImported,
   notesSlot,
 }: Props) {
   const [scenes, setScenes] = useState<Scene[]>([]);
-  /** The `notesRevision` the Scenes were last read for: the Notes editor's key. */
-  const [notesRead, setNotesRead] = useState(notesRevision);
+  /**
+   * The Notes change the Scenes were last read for, and the Notes editor's key, which changes
+   * only when that change touched the open Scene's Notes.
+   */
+  const [notesRead, setNotesRead] = useState({ revision: notesChange.revision, editorKey: 0 });
+  /** The open Scene's id as last rendered (`openedId` below), for the read below. */
+  const openedNow = useRef<SceneId | undefined>(undefined);
   /** The Scene the Game Master opened; undefined until they open one (see `selected`). */
   const [selectedId, setSelectedId] = useState<SceneId | undefined>(undefined);
   // Which Scene is on air.
@@ -103,7 +118,12 @@ export function ScenesPanel({
         if (cancelled) return;
         // Together, so the Notes editor starts again on the Notes just read, never older ones.
         setScenes(list);
-        setNotesRead(notesRevision);
+        setNotesRead((read) => {
+          if (read.revision === notesChange.revision) return read;
+          const opened = openedNow.current;
+          const touched = opened !== undefined && notesChange.sceneIds.includes(opened);
+          return { revision: notesChange.revision, editorKey: read.editorKey + (touched ? 1 : 0) };
+        });
       })
       .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
@@ -111,7 +131,7 @@ export function ScenesPanel({
     return () => {
       cancelled = true;
     };
-  }, [control, campaignId, mediaRevision, notesRevision]);
+  }, [control, campaignId, mediaRevision, notesChange]);
 
   // The library's images, to draw and to place, and its sounds, to name. Read again whenever a
   // Scene is opened, when the picker gets focus and when a sound is dropped, so Media imported
@@ -158,6 +178,9 @@ export function ScenesPanel({
       ? undefined
       : (scenes.find((scene) => scene.id === lastActiveId) ?? scenes.at(0))?.id);
   const selected = scenes.find((scene) => scene.id === openedId);
+  useEffect(() => {
+    openedNow.current = openedId;
+  });
   const undoState = useUndoState(control, campaignId, selected);
   const isActive = (scene: Scene) =>
     onAir?.campaignId === campaignId && onAir.activeSceneId === scene.id;
@@ -438,7 +461,7 @@ export function ScenesPanel({
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
           notesSlot={notesSlot}
-          notesRevision={notesRead}
+          notesRevision={notesRead.editorKey}
           undoState={undoState}
           onTravel={(shortcut) => void travel(selected, shortcut)}
           onRefreshImages={refreshImages}
