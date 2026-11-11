@@ -7,7 +7,7 @@ import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import { CampaignError, createCampaignInHomeTheme, updateCampaign } from '../core/campaigns.js';
 import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
-import { exportCampaign, exportFileName } from '../core/campaignExport.js';
+import { EXPORT_FILE_FILTER, exportCampaign, exportFileName } from '../core/campaignExport.js';
 import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
 import { createCampaignTransfers, type ByteProgress } from '../core/campaignTransfer.js';
 import { createPartialFiles, type PartialFiles } from '../core/partialFiles.js';
@@ -327,7 +327,7 @@ async function pickExportFile(defaultName: string): Promise<string | undefined> 
   const options: Electron.SaveDialogOptions = {
     title: 'Exporter la campagne',
     defaultPath: path.join(app.getPath('documents'), defaultName),
-    filters: [{ name: 'Archive zip', extensions: ['zip'] }],
+    filters: [{ name: EXPORT_FILE_FILTER.name, extensions: [...EXPORT_FILE_FILTER.extensions] }],
   };
   const result = controlWindow
     ? await dialog.showSaveDialog(controlWindow, options)
@@ -341,7 +341,7 @@ async function pickImportFile(): Promise<string | undefined> {
     title: 'Importer une campagne',
     defaultPath: app.getPath('documents'),
     properties: ['openFile'],
-    filters: [{ name: 'Archive zip', extensions: ['zip'] }],
+    filters: [{ name: EXPORT_FILE_FILTER.name, extensions: [...EXPORT_FILE_FILTER.extensions] }],
   };
   const result = controlWindow
     ? await dialog.showOpenDialog(controlWindow, options)

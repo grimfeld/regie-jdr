@@ -25,6 +25,8 @@ import { mediaFileName } from './mediaAddress.js';
 export class ExportError extends Error {}
 
 export const EXPORT_MANIFEST_FILE = 'regie-export.json';
+/** The filter of the save and open dialogs, named with the glossary's word: an Export. */
+export const EXPORT_FILE_FILTER = { name: 'Campagne exportée', extensions: ['zip'] } as const;
 export const EXPORT_FORMAT = 'regie-jdr-campaign-export';
 export const EXPORT_FORMAT_VERSION = 1;
 const MEDIA_FOLDER = 'media';

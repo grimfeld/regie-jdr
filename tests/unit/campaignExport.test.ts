@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  EXPORT_FILE_FILTER,
   EXPORT_FORMAT,
   EXPORT_FORMAT_VERSION,
   EXPORT_MANIFEST_FILE,
@@ -136,6 +137,13 @@ describe('planExport', () => {
           'réparer, puis exportez-la de nouveau.',
       ),
     );
+  });
+});
+
+describe('the file dialogs’ filter', () => {
+  it('names an Export as the glossary does, never an archive', () => {
+    expect(EXPORT_FILE_FILTER).toEqual({ name: 'Campagne exportée', extensions: ['zip'] });
+    expect(EXPORT_FILE_FILTER.name).not.toMatch(/archive/i);
   });
 });
 
