@@ -20,8 +20,8 @@ Wiki home: from 2026-11-11 (M1 closed as PR #74, merged forward at `m2-audio-mvp
 ## 2. Set up an isolated worktree
 
 ```
-git -C MAIN worktree add .claude/worktrees/<n> -b <prefix>/<n>-<slug> <milestone-branch>
-cd MAIN/.claude/worktrees/<n> && npm ci
+git -C MAIN worktree add F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n> -b <prefix>/<n>-<slug> <milestone-branch>
+cd F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n> && npm ci
 ```
 
 ## 3. Build it
@@ -54,3 +54,6 @@ Do not push, open PRs, comment on or close issues. The chief of staff does that.
 ## 6. Report (10 lines max)
 
 Merged SHA; gate results; every deviation from the issue's acceptance criteria and why; follow-ups; anything a later agent must know (put the detail in commit messages, not the report).
+
+
+Correction 2026-11-12 (#36 report): step 2 used a relative path, which put the worktree inside MAIN's own `.claude/worktrees` when MAIN is itself a worktree. Step 2 now gives the absolute repo-root path.

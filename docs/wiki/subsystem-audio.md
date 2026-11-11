@@ -31,3 +31,9 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Control-only channels: `audio:pad-command`, `audio:report-pads`, `soundboard:get`, `soundboard:edit`, `soundboard:press`. `AudioSounding.pads` feeds "En cours". `audio:get-mix` also resets main's pad bookkeeping (engine start/reload).
 - #41 hook: `useSoundboard` in `CampaignScreen` (`src/App.tsx`) exposes `pressPosition(n)` (1-based).
 - Known gaps: Sound effects decode on first press (no preload); level changes don't ramp a sounding pad; deleting a Media removes its pads silently (pads aren't counted as Media users).
+
+## Music controls (#36, 2026-11-12, `5a330db`)
+
+- Decision: adding Music to an Active Scene with no current Music is silent (added sounds never start themselves, like a new Ambience). Play with no current Music starts the Scene's first Music.
+- Pause/resume and stop live only on the "En cours" strip. Removing the current Music stops it with the 0.3 s pause fade.
+- Music level slider "Niveau" (`src/LevelSlider.tsx`) is heard while dragging; #37's `VolumeSlider` is not. Merge them once Ambience edits get live updates.
