@@ -108,6 +108,7 @@ const bridge: ControlBridge = {
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
   setFadeDuration: (fadeDurationMs) => invoke('settings:set-fade-duration', { fadeDurationMs }),
   setMasterVolume: (masterVolume) => invoke('settings:set-master-volume', { masterVolume }),
+  setBroadcastAlwaysOnTop: (on) => invoke('settings:set-broadcast-always-on-top', { on }),
   getSounding: () => invoke('audio:get-sounding'),
   setSilence: (on) => invoke('audio:set-silence', { on }),
   toggleSilence: () => invoke('audio:toggle-silence'),

@@ -215,6 +215,11 @@ export interface Settings {
   fadeDurationMs: number;
   /** The Master volume, 0..1, applied to all app audio. */
   masterVolume: number;
+  /**
+   * Keep the Broadcast window above other windows, so a single-monitor Game Master never covers
+   * what Discord streams (ADR-0002: covered by another application, it goes silent and black).
+   */
+  broadcastAlwaysOnTop: boolean;
 }
 
 /** A visible Background as the Broadcast window draws it. */

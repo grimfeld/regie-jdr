@@ -211,7 +211,8 @@ async function createBroadcastWindow() {
     return;
   }
   const placement = await savedPlacement('broadcast');
-  // A second click while the bounds were being read: the first one opened it.
+  const alwaysOnTop = await savedBroadcastAlwaysOnTop();
+  // A second click while the Settings were being read: the first one opened it.
   if (broadcastWindow && !broadcastWindow.isDestroyed()) {
     broadcastWindow.focus();
     return;
@@ -225,6 +226,7 @@ async function createBroadcastWindow() {
     // of the screen.
     backgroundColor: '#000000',
     autoHideMenuBar: true,
+    alwaysOnTop,
     webPreferences: secureWebPreferences('broadcast'),
   });
   rememberBounds(broadcastWindow, 'broadcast');
@@ -240,6 +242,27 @@ async function createBroadcastWindow() {
   broadcastWindow.on('closed', () => {
     broadcastWindow = null;
   });
+}
+
+/** Whether the Broadcast window should open on top; off when the Settings cannot be read. */
+async function savedBroadcastAlwaysOnTop(): Promise<boolean> {
+  if (!settings) return false;
+  try {
+    return (await settings.get()).broadcastAlwaysOnTop;
+  } catch (error) {
+    log.warn('Reading the Broadcast window always-on-top setting failed', error);
+    return false;
+  }
+}
+
+/**
+ * Keeps the open Broadcast window above other windows, or stops (ADR-0002: covered by another
+ * application, Discord streams it black and silent). Set from the Control window, like
+ * fullscreen; a Broadcast window opened later reads the saved Settings.
+ */
+function setBroadcastAlwaysOnTop(on: boolean) {
+  if (!broadcastWindow || broadcastWindow.isDestroyed()) return;
+  broadcastWindow.setAlwaysOnTop(on);
 }
 
 /**
@@ -614,6 +637,11 @@ function startApp() {
         // Listening to a library sound follows it too, through the sounding state.
         sendSounding();
         await retunePads();
+        return saved;
+      },
+      'settings:set-broadcast-always-on-top': async ({ on }) => {
+        const saved = await settingsStore.setBroadcastAlwaysOnTop(on);
+        setBroadcastAlwaysOnTop(saved.broadcastAlwaysOnTop);
         return saved;
       },
       // The engine reads the mix as it starts (or restarts, with the Control window): it is

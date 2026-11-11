@@ -1,8 +1,8 @@
 /**
  * Global Settings (one document, `<root>/settings.json`): the home page theme, the Control and
  * Broadcast window bounds, the last Active Scene of each Campaign (for highlighting only:
- * nothing goes on air after a restart), the fade duration and the Master volume. No Electron
- * dependency.
+ * nothing goes on air after a restart), the fade duration, the Master volume and whether the
+ * Broadcast window stays on top. No Electron dependency.
  */
 import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
@@ -32,6 +32,7 @@ export interface SettingsStore {
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   /** Throws a SettingsError for a volume outside 0..1. */
   setMasterVolume(masterVolume: number): Promise<Settings>;
+  setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
 }
 
 /** Master volume until the Game Master changes it: full. */
@@ -54,6 +55,7 @@ function defaults(): Settings {
     lastActiveSceneByCampaign: {},
     fadeDurationMs: FADE_DURATION_MS.default,
     masterVolume: DEFAULT_MASTER_VOLUME,
+    broadcastAlwaysOnTop: false,
   };
 }
 
@@ -70,14 +72,23 @@ export function parseWindowBounds(value: unknown): WindowBounds | undefined {
 
 const settingsDocument: DocumentType<Settings> = {
   name: 'settings',
-  version: 3,
+  version: 4,
   migrations: {
     // Version 2 adds the fade duration, at its default.
     1: (fields) => ({ ...fields, fadeDurationMs: FADE_DURATION_MS.default }),
     // Version 3 (Milestone 2) adds the Master volume, at its default.
     2: (fields) => ({ ...fields, masterVolume: DEFAULT_MASTER_VOLUME }),
+    // Version 4 (Milestone 4) adds the Broadcast window always on top, off.
+    3: (fields) => ({ ...fields, broadcastAlwaysOnTop: false }),
   },
-  parse({ theme, windowBounds, lastActiveSceneByCampaign, fadeDurationMs, masterVolume }) {
+  parse({
+    theme,
+    windowBounds,
+    lastActiveSceneByCampaign,
+    fadeDurationMs,
+    masterVolume,
+    broadcastAlwaysOnTop,
+  }) {
     if (!isThemeId(theme) || !isRecord(windowBounds) || !isRecord(lastActiveSceneByCampaign)) {
       return undefined;
     }
@@ -96,6 +107,7 @@ const settingsDocument: DocumentType<Settings> = {
       lastActiveSceneByCampaign: lastActive,
       fadeDurationMs: parseFadeDuration(fadeDurationMs) ?? FADE_DURATION_MS.default,
       masterVolume: parseVolume(masterVolume) ?? DEFAULT_MASTER_VOLUME,
+      broadcastAlwaysOnTop: broadcastAlwaysOnTop === true,
     };
   },
 };
@@ -158,5 +170,7 @@ export function createSettingsStore(storage: Storage): SettingsStore {
       }
       return change((settings) => ({ ...settings, masterVolume }));
     },
+    setBroadcastAlwaysOnTop: (on) =>
+      change((settings) => ({ ...settings, broadcastAlwaysOnTop: on })),
   };
 }

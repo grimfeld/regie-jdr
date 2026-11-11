@@ -458,6 +458,12 @@ export interface InvokeChannels {
   /** Change the Master volume (0..1): kept across restarts, ramped on all app audio. */
   'settings:set-master-volume': { payload: { masterVolume: number }; result: Settings };
   /**
+   * Keep the Broadcast window above other windows, or stop: saved, and applied to the open
+   * Broadcast window and to every one opened later. Set from the Control window only: the
+   * Broadcast window has no controls.
+   */
+  'settings:set-broadcast-always-on-top': { payload: { on: boolean }; result: Settings };
+  /**
    * The current mix, for the audio engine (on start and on every reload of the Control window,
    * when the main process forgets what the old engine reported).
    */
@@ -635,6 +641,7 @@ export interface ControlBridge extends BroadcastBridge {
   setHomeTheme(theme: ThemeId): Promise<Settings>;
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   setMasterVolume(masterVolume: number): Promise<Settings>;
+  setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
   toggleSilence(): Promise<AudioSounding>;

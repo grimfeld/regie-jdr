@@ -8,13 +8,14 @@ describe('settings', () => {
   const dir = useTempDir();
   const reopen = () => createSettingsStore(openStorage(dir.path));
 
-  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade and a full Master volume', async () => {
+  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade, a full Master volume and the Broadcast window not on top', async () => {
     expect(await reopen().get()).toEqual({
       theme: 'imperium',
       windowBounds: {},
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -47,6 +48,7 @@ describe('settings', () => {
       lastActiveSceneByCampaign: { 'star-wars': 'cantina' },
       fadeDurationMs: 600,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -68,6 +70,7 @@ describe('settings', () => {
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -89,6 +92,7 @@ describe('settings', () => {
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 900,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -124,6 +128,59 @@ describe('settings', () => {
     expect((await reopen().get()).masterVolume).toBe(0.4);
   });
 
+  it('give Settings saved before Milestone 4 a Broadcast window not on top, keeping the rest', async () => {
+    const storage = openStorage(dir.path);
+    await fs.writeFile(
+      storage.settingsFile,
+      JSON.stringify({
+        schemaVersion: 3,
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        fadeDurationMs: 900,
+        masterVolume: 0.5,
+      }),
+    );
+    expect(await reopen().get()).toEqual({
+      theme: 'retro',
+      windowBounds: {},
+      lastActiveSceneByCampaign: {},
+      fadeDurationMs: 900,
+      masterVolume: 0.5,
+      broadcastAlwaysOnTop: false,
+    });
+  });
+
+  it('keep a stored Broadcast always-on-top choice and drop an unusable one', async () => {
+    const storage = openStorage(dir.path);
+    const write = (broadcastAlwaysOnTop: unknown) =>
+      fs.writeFile(
+        storage.settingsFile,
+        JSON.stringify({
+          schemaVersion: 4,
+          theme: 'retro',
+          windowBounds: {},
+          lastActiveSceneByCampaign: {},
+          fadeDurationMs: 600,
+          masterVolume: 1,
+          broadcastAlwaysOnTop,
+        }),
+      );
+    await write(true);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(true);
+    for (const unusable of ['yes', 1, null]) {
+      await write(unusable);
+      expect((await reopen().get()).broadcastAlwaysOnTop).toBe(false);
+    }
+  });
+
+  it('remember the Broadcast always-on-top choice across a restart', async () => {
+    expect((await reopen().setBroadcastAlwaysOnTop(true)).broadcastAlwaysOnTop).toBe(true);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(true);
+    expect((await reopen().setBroadcastAlwaysOnTop(false)).broadcastAlwaysOnTop).toBe(false);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(false);
+  });
+
   it('remember the global theme across a restart', async () => {
     await reopen().setTheme('fantasy');
     expect((await reopen().get()).theme).toBe('fantasy');
@@ -146,6 +203,7 @@ describe('settings', () => {
       lastActiveSceneByCampaign: { 'star-wars': 'hangar', warhammer: 'cathedral' },
       fadeDurationMs: 600,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -190,6 +248,7 @@ describe('settings', () => {
       lastActiveSceneByCampaign: { 'star-wars': 'cantina' },
       fadeDurationMs: 1000,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 
@@ -210,6 +269,7 @@ describe('settings', () => {
       lastActiveSceneByCampaign: {},
       fadeDurationMs: 600,
       masterVolume: 1,
+      broadcastAlwaysOnTop: false,
     });
   });
 });

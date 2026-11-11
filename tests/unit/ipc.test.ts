@@ -55,6 +55,22 @@ describe('sender policy', () => {
     }
   });
 
+  it('lets only the Control window set the Broadcast window on top, with an on/off flag', () => {
+    const channel = 'settings:set-broadcast-always-on-top';
+    expect(checkInvoke(channel, 'broadcast', [{ on: true }])).toMatchObject({ ok: false });
+    expect(checkInvoke(channel, 'control', [{ on: true, x: 1 }])).toEqual({
+      ok: true,
+      payload: { on: true },
+    });
+    expect(checkInvoke(channel, 'control', [{ on: false }])).toEqual({
+      ok: true,
+      payload: { on: false },
+    });
+    for (const args of [[{ on: 'yes' }], [{}], [], [{ on: true }, { on: false }]]) {
+      expect(checkInvoke(channel, 'control', args)).toMatchObject({ ok: false });
+    }
+  });
+
   it('rejects messages from a window that is neither the Control nor the Broadcast window', () => {
     expect(checkInvoke('onAir:get', undefined, [])).toMatchObject({ ok: false });
   });
