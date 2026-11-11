@@ -155,6 +155,8 @@ export function openZipArchive(file: string): OpenArchive {
             path: entry.fileName,
             kind: archiveFileKind(entry),
             declaredSize: entry.uncompressedSize,
+            compressed: entry.compressionMethod !== 0,
+            compressedSize: entry.compressedSize,
             async open() {
               try {
                 return readable(await zip.openReadStreamPromise(entry));

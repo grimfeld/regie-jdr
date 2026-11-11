@@ -356,6 +356,11 @@ describe('openZipArchive', () => {
     await expectRefused([valid()[0], valid()[1], lying], /endommagée|n’a pas pu être lu/);
   });
 
+  it('refuses a Media entry deflated in the zip, even with honest sizes', async () => {
+    const [manifestEntry, campaign, media] = valid();
+    await expectRefused([manifestEntry, campaign, { ...media, deflate: true }], /endommagée/);
+  });
+
   it('refuses a zip bomb before unpacking it', async () => {
     const size = 64 * 1024 * 1024;
     await expectRefused(

@@ -23,6 +23,8 @@
  *   must have exactly the size the manifest gives and the content hash its name gives, documents
  *   and the manifest are capped, and the whole is capped relative to the zip's own size (a zip
  *   bomb is refused before it fills the disk).
+ * - A Media entry is stored as is, as Export writes it (never compressed, its size in the zip
+ *   the manifest's): so the Media together can never unpack to more than the zip's own size.
  * - The Media the manifest lists must fit in the free space of the drive they are unpacked to,
  *   checked before the first one is.
  * - Every document parses as its type. A `schemaVersion` newer than this app reads is refused;
@@ -116,16 +118,23 @@ export const MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
 /** Largest document, in bytes. */
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 /**
- * How many times its own size a zip may unpack to, plus a fixed allowance. Media are stored
- * uncompressed in an Export and documents compress about tenfold, so a real Export stays far
- * below; a zip bomb does not.
+ * How many times its own size the manifest and documents of a zip may unpack to, plus a fixed
+ * allowance. Documents compress about tenfold, so a real Export stays far below; a zip bomb does
+ * not. Media are stored as is (never compressed), so they take no more than the zip itself.
  */
 export const MAX_EXPANSION = 50;
 const EXPANSION_ALLOWANCE = 16 * 1024 * 1024;
 
-/** Most bytes a zip of `archiveBytes` may unpack to. */
+/**
+ * Most bytes a zip of `archiveBytes` may unpack to: its Media, no more than the zip, and its
+ * manifest and documents, within MAX_EXPANSION and never more than their own caps.
+ */
 export function unpackLimit(archiveBytes: number): number {
-  return archiveBytes * MAX_EXPANSION + EXPANSION_ALLOWANCE;
+  const documents = Math.min(
+    archiveBytes * MAX_EXPANSION + EXPANSION_ALLOWANCE,
+    MAX_MANIFEST_BYTES + DOCUMENT_COUNT * MAX_DOCUMENT_BYTES,
+  );
+  return archiveBytes + documents;
 }
 
 const MEDIA_FOLDER = 'media';
@@ -141,6 +150,9 @@ const DOCUMENT_TYPES = new Map<string, DocumentType<unknown>>([
   ['soundboard.json', soundboardDocument],
 ]);
 
+/** How many documents an Export may hold. */
+const DOCUMENT_COUNT = DOCUMENT_TYPES.size;
+
 /** A document name as an Export writes one; known or not, it names no other folder. */
 const DOCUMENT_PATH = /^[a-z0-9][a-z0-9-]{0,63}\.json$/;
 /** A Media file as an Export writes one: its content's SHA-256 and its extension. */
@@ -154,6 +166,10 @@ export interface ArchiveFile {
   kind: 'file' | 'folder' | 'link' | 'other';
   /** Uncompressed size the zip declares: checked, never trusted. */
   declaredSize: number;
+  /** Whether the entry is compressed in the zip (any method but "stored"). */
+  compressed: boolean;
+  /** What the entry takes in the zip, as it declares. */
+  compressedSize: number;
   /** Streams the entry's content, unpacked. */
   open(): Promise<AsyncIterable<Uint8Array>>;
 }
@@ -255,7 +271,9 @@ export type CheckedEntry =
 
 export interface EntryChecker {
   /** Checks the next entry after the manifest; throws ImportError when it is refused. */
-  check(entry: Pick<ArchiveFile, 'path' | 'kind' | 'declaredSize'>): CheckedEntry;
+  check(
+    entry: Pick<ArchiveFile, 'path' | 'kind' | 'declaredSize' | 'compressed' | 'compressedSize'>,
+  ): CheckedEntry;
   /** Checks, once every entry was seen, that none the manifest requires is missing. */
   finish(): void;
 }
@@ -267,7 +285,7 @@ export function createEntryChecker(manifest: ExportManifest): EntryChecker {
   const seen = new Set<string>();
 
   return {
-    check({ path: entryPath, kind, declaredSize }) {
+    check({ path: entryPath, kind, declaredSize, compressed, compressedSize }) {
       if (kind === 'folder' && entryPath === `${MEDIA_FOLDER}/`) return { role: 'folder' };
       const document = documents.get(entryPath);
       const file = media.get(entryPath);
@@ -282,7 +300,10 @@ export function createEntryChecker(manifest: ExportManifest): EntryChecker {
       const match = MEDIA_PATH.exec(entryPath);
       if (!file || !match) throw refusedEntry(entryPath);
       const [, contentHash, extension] = match;
-      if (declaredSize !== file.size) throw new ImportError(DAMAGED);
+      // Stored as is, as Export writes Media: what it takes in the zip is what it unpacks to.
+      if (declaredSize !== file.size || compressed || compressedSize !== file.size) {
+        throw new ImportError(DAMAGED);
+      }
       return {
         role: 'media',
         path: entryPath,
@@ -437,7 +458,8 @@ async function unpack(
         await readText(entry, MAX_MANIFEST_BYTES, budget, signal),
       );
       totalBytes = manifest.media.reduce((sum, file) => sum + file.size, 0);
-      if (totalBytes > unpackLimit(archive.archiveBytes)) throw new ImportError(TOO_BIG);
+      // Stored as is, the Media take no more than the zip itself.
+      if (totalBytes > archive.archiveBytes) throw new ImportError(TOO_BIG);
       // Before unpacking: a disk filled half-way through fails late and slows the whole computer.
       const { bavail, bsize } = await statfs(staging);
       if (totalBytes > bavail * bsize) throw notEnoughSpace(totalBytes, bavail * bsize);

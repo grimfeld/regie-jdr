@@ -96,6 +96,10 @@ interface FakeEntry {
   kind?: ArchiveFile['kind'];
   /** What the zip claims; the real size by default. */
   declaredSize?: number;
+  /** Deflated in the zip; stored as is by default. */
+  compressed?: boolean;
+  /** What it takes in the zip; its declared size by default. */
+  compressedSize?: number;
 }
 
 /** The entries of a well-formed Export, manifest first. */
@@ -122,6 +126,8 @@ function fakeArchive(
       path: entry.path,
       kind: entry.kind ?? 'file',
       declaredSize: entry.declaredSize ?? content.byteLength,
+      compressed: entry.compressed ?? false,
+      compressedSize: entry.compressedSize ?? entry.declaredSize ?? content.byteLength,
       open() {
         // Content in small chunks, as a stream gives it.
         async function* chunks() {
@@ -250,6 +256,8 @@ describe('createEntryChecker', () => {
     path: entryPath,
     kind: 'file' as const,
     declaredSize,
+    compressed: false,
+    compressedSize: declaredSize,
   });
 
   it('accepts the documents and Media the manifest lists, and the media folder', () => {
@@ -259,7 +267,7 @@ describe('createEntryChecker', () => {
       path: 'campaign.json',
       schemaVersion: 1,
     });
-    expect(checker.check({ path: 'media/', kind: 'folder', declaredSize: 0 })).toEqual({
+    expect(checker.check({ ...file('media/', 0), kind: 'folder' })).toEqual({
       role: 'folder',
     });
     expect(checker.check(file(MEDIA_PATH, PIXELS.byteLength))).toEqual({
@@ -283,10 +291,8 @@ describe('createEntryChecker', () => {
     'refuses a %s entry even under a listed path',
     (kind) => {
       const checker = createEntryChecker(manifest());
-      expect(() => checker.check({ path: MEDIA_PATH, kind, declaredSize: 3 })).toThrow(REFUSED);
-      expect(() => checker.check({ path: 'campaign.json', kind, declaredSize: 3 })).toThrow(
-        REFUSED,
-      );
+      expect(() => checker.check({ ...file(MEDIA_PATH), kind })).toThrow(REFUSED);
+      expect(() => checker.check({ ...file('campaign.json'), kind })).toThrow(REFUSED);
     },
   );
 
@@ -294,6 +300,19 @@ describe('createEntryChecker', () => {
     const checker = createEntryChecker(manifest());
     checker.check(file('campaign.json'));
     expect(() => checker.check(file('campaign.json'))).toThrow(DAMAGED);
+  });
+
+  it('refuses a Media entry compressed in the zip: an Export stores Media as they are', () => {
+    const size = PIXELS.byteLength;
+    const checker = createEntryChecker(manifest());
+    expect(() => checker.check({ ...file(MEDIA_PATH, size), compressed: true })).toThrow(DAMAGED);
+    expect(() =>
+      createEntryChecker(manifest()).check({ ...file(MEDIA_PATH, size), compressedSize: size - 1 }),
+    ).toThrow(DAMAGED);
+    // A document may be compressed.
+    expect(
+      createEntryChecker(manifest()).check({ ...file('campaign.json'), compressed: true }),
+    ).toMatchObject({ role: 'document' });
   });
 
   it('refuses a Media entry whose declared size is not the manifest’s', () => {
@@ -807,6 +826,14 @@ describe('importCampaign', () => {
 
     it('a zip declaring more entries than a zip may hold', async () => {
       await expectRefused(exportEntries(), TOO_BIG, { entryCount: MAX_ARCHIVE_ENTRIES + 1 });
+    });
+
+    it('a manifest listing more Media bytes than the zip holds, Media being stored as is', async () => {
+      const entries = exportEntries();
+      const archiveBytes = 100_000;
+      const twice = manifest({ media: [{ path: MEDIA_PATH, size: 2 * archiveBytes }] });
+      entries[0].content = manifestText(twice);
+      await expectRefused(entries, TOO_BIG, { archiveBytes });
     });
 
     it('a manifest listing far more Media bytes than the zip could hold', async () => {
