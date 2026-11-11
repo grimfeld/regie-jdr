@@ -106,6 +106,16 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
     // Adding Music does not start it: the mix changes only if it was the current Music.
     case 'add-music':
       return 'volume';
+    // A new Ambience starts off: nothing heard changes.
+    case 'add-ambience':
+      return 'volume';
+    // Switching an Ambience on or off, or removing one, fades it in or out.
+    case 'set-ambience-on':
+    case 'remove-ambience':
+      return 'ambience';
+    case 'set-ambience-volume':
+    case 'set-ambience-level':
+      return 'volume';
     // Picture edits: nothing heard changes, so the mix stays as it is.
     case 'place-background':
     case 'place-overlay':

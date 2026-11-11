@@ -15,6 +15,7 @@ import type {
   NormalizedPoint,
   Overlay,
   Scene,
+  SceneAmbience,
 } from '../shared/domain.js';
 import { CANVAS, clampZoom } from './canvas.js';
 import { isRecord } from './guards.js';
@@ -141,14 +142,16 @@ export function resizedOverlay(
 
 /**
  * The Media an edit adds to the Scene and what that Media must be: an image for a placement,
- * Music for the Music list. The caller checks the library (core/onAirCommands.ts).
+ * Music for the Music list, an Ambience for the Ambiences. The caller checks the library
+ * (core/onAirCommands.ts).
  */
 export function addedMedia(
   edit: SceneEdit,
-): { mediaId: MediaId; kind: 'image' | 'music' } | undefined {
+): { mediaId: MediaId; kind: 'image' | 'music' | 'ambience' } | undefined {
   if (edit.kind === 'place-background' || edit.kind === 'place-overlay') {
     return { mediaId: edit.mediaId, kind: 'image' };
   }
+  if (edit.kind === 'add-ambience') return { mediaId: edit.mediaId, kind: 'ambience' };
   return edit.kind === 'add-music' ? { mediaId: edit.mediaId, kind: 'music' } : undefined;
 }
 
@@ -345,7 +348,47 @@ export function applySceneEdit(scene: Scene, edit: SceneEdit, newId: () => strin
         throw new SceneError('Cette musique est déjà dans la scène.');
       }
       return { ...scene, music: [...scene.music, edit.mediaId] };
+    case 'add-ambience':
+      if (scene.ambiences.some((item) => item.mediaId === edit.mediaId)) {
+        throw new SceneError('Cette ambiance est déjà dans la scène.');
+      }
+      return {
+        ...scene,
+        ambiences: [...scene.ambiences, { mediaId: edit.mediaId, on: false, volume: 1 }],
+      };
+    case 'remove-ambience':
+      checkAmbienceListed(scene, edit.mediaId);
+      return {
+        ...scene,
+        ambiences: scene.ambiences.filter((item) => item.mediaId !== edit.mediaId),
+      };
+    case 'set-ambience-on':
+      return withAmbience(scene, edit.mediaId, (item) => ({ ...item, on: edit.on }));
+    case 'set-ambience-volume':
+      return withAmbience(scene, edit.mediaId, (item) => ({ ...item, volume: edit.volume }));
+    case 'set-ambience-level':
+      return { ...scene, volumes: { ...scene.volumes, ambience: edit.level } };
   }
+}
+
+/** Throws a SceneError unless the Scene lists an Ambience of Media `mediaId`. */
+function checkAmbienceListed(scene: Scene, mediaId: MediaId) {
+  if (!scene.ambiences.some((item) => item.mediaId === mediaId)) {
+    throw new SceneError('Cette ambiance n’est plus dans la scène.');
+  }
+}
+
+/** The Scene with its Ambience of Media `mediaId` changed by `change`; throws if not listed. */
+function withAmbience(
+  scene: Scene,
+  mediaId: MediaId,
+  change: (item: SceneAmbience) => SceneAmbience,
+): Scene {
+  checkAmbienceListed(scene, mediaId);
+  return {
+    ...scene,
+    ambiences: scene.ambiences.map((item) => (item.mediaId === mediaId ? change(item) : item)),
+  };
 }
 
 function isId(value: unknown): value is string {
@@ -465,6 +508,17 @@ export function parseSceneEdit(value: unknown): SceneEdit | undefined {
       return { kind: 'set-label-visible', overlayId: value.overlayId, visible: value.visible };
     case 'add-music':
       return isId(value.mediaId) ? { kind: 'add-music', mediaId: value.mediaId } : undefined;
+    case 'add-ambience':
+    case 'remove-ambience':
+      return isId(value.mediaId) ? { kind: value.kind, mediaId: value.mediaId } : undefined;
+    case 'set-ambience-on':
+      if (!isId(value.mediaId) || typeof value.on !== 'boolean') return undefined;
+      return { kind: 'set-ambience-on', mediaId: value.mediaId, on: value.on };
+    case 'set-ambience-volume':
+      if (!isId(value.mediaId) || !isUnit(value.volume)) return undefined;
+      return { kind: 'set-ambience-volume', mediaId: value.mediaId, volume: value.volume };
+    case 'set-ambience-level':
+      return isUnit(value.level) ? { kind: 'set-ambience-level', level: value.level } : undefined;
     default:
       return undefined;
   }

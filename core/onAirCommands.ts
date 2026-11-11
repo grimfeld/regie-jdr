@@ -132,6 +132,11 @@ export function createOnAirCommands(deps: {
           throw new MediaError('Seule une musique peut aller dans la liste des musiques.');
         }
         return;
+      case 'ambience':
+        if (item.kind !== 'audio' || item.role !== 'ambience') {
+          throw new MediaError('Seule une ambiance peut aller dans la liste des ambiances.');
+        }
+        return;
     }
   }
 

@@ -90,7 +90,20 @@ export type SceneEdit =
    * Adds a Music Media at the end of the Scene's Music list. A Media is listed once: adding one
    * already listed is refused.
    */
-  | { kind: 'add-music'; mediaId: MediaId };
+  | { kind: 'add-music'; mediaId: MediaId }
+  /**
+   * Adds an Ambience Media at the end of the Scene's Ambiences, switched off at full volume, so
+   * adding one never makes a sound. A Media is listed once: adding one already listed is refused.
+   */
+  | { kind: 'add-ambience'; mediaId: MediaId }
+  /** Removes an Ambience from the Scene. */
+  | { kind: 'remove-ambience'; mediaId: MediaId }
+  /** Switches an Ambience on or off; on the Active Scene it fades in or out. */
+  | { kind: 'set-ambience-on'; mediaId: MediaId; on: boolean }
+  /** Sets an Ambience's own volume (0..1). */
+  | { kind: 'set-ambience-volume'; mediaId: MediaId; volume: number }
+  /** Sets the Scene's Ambience level (0..1), which applies to all its Ambiences. */
+  | { kind: 'set-ambience-level'; level: number };
 
 /**
  * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,

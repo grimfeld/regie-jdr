@@ -219,6 +219,77 @@ describe('Scene Music list', () => {
   });
 });
 
+describe('Scene Ambiences', () => {
+  const listed = applyAll(
+    empty,
+    { kind: 'add-ambience', mediaId: 'a1' },
+    { kind: 'add-ambience', mediaId: 'a2' },
+  );
+
+  it('adds Ambiences at the end of the list, switched off at full volume, each Media once', () => {
+    expect(listed.ambiences).toEqual([
+      { mediaId: 'a1', on: false, volume: 1 },
+      { mediaId: 'a2', on: false, volume: 1 },
+    ]);
+    expect(() => applyAll(listed, { kind: 'add-ambience', mediaId: 'a1' })).toThrow(
+      'Cette ambiance est déjà dans la scène.',
+    );
+  });
+
+  it('switches one Ambience on or off and sets its volume, leaving the others as they are', () => {
+    const changed = applyAll(
+      listed,
+      { kind: 'set-ambience-on', mediaId: 'a2', on: true },
+      { kind: 'set-ambience-volume', mediaId: 'a2', volume: 0.25 },
+    );
+    expect(changed.ambiences).toEqual([
+      { mediaId: 'a1', on: false, volume: 1 },
+      { mediaId: 'a2', on: true, volume: 0.25 },
+    ]);
+    expect(
+      applyAll(changed, { kind: 'set-ambience-on', mediaId: 'a2', on: false }).ambiences[1],
+    ).toEqual({ mediaId: 'a2', on: false, volume: 0.25 });
+  });
+
+  it('removes an Ambience', () => {
+    expect(applyAll(listed, { kind: 'remove-ambience', mediaId: 'a1' }).ambiences).toEqual([
+      { mediaId: 'a2', on: false, volume: 1 },
+    ]);
+  });
+
+  it('sets the Scene Ambience level, leaving the Music level as it is', () => {
+    const scene = { ...listed, volumes: { music: 0.7, ambience: 1 } };
+    expect(applyAll(scene, { kind: 'set-ambience-level', level: 0.4 }).volumes).toEqual({
+      music: 0.7,
+      ambience: 0.4,
+    });
+  });
+
+  it('refuses an edit of an Ambience the Scene does not list, in French', () => {
+    const edits: SceneEdit[] = [
+      { kind: 'remove-ambience', mediaId: 'a9' },
+      { kind: 'set-ambience-on', mediaId: 'a9', on: true },
+      { kind: 'set-ambience-volume', mediaId: 'a9', volume: 0.5 },
+    ];
+    for (const edit of edits) {
+      expect(() => applyAll(listed, edit)).toThrow('Cette ambiance n’est plus dans la scène.');
+    }
+  });
+
+  it('refuses malformed Ambience messages', () => {
+    const malformed: unknown[] = [
+      { kind: 'add-ambience', mediaId: '' },
+      { kind: 'remove-ambience' },
+      { kind: 'set-ambience-on', mediaId: 'a1', on: 'yes' },
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: 1.5 },
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: Number.NaN },
+      { kind: 'set-ambience-level', level: -0.1 },
+      { kind: 'set-ambience-level' },
+    ];
+    for (const message of malformed) expect(parseSceneEdit(message)).toBeUndefined();
+  });
+});
+
 describe('Overlay transform commands', () => {
   const placed = applyAll(
     empty,
@@ -456,6 +527,26 @@ describe('Scene edit commands from a window message', () => {
     [
       { kind: 'add-music', mediaId: 'm1', toIndex: 0 },
       { kind: 'add-music', mediaId: 'm1' },
+    ],
+    [
+      { kind: 'add-ambience', mediaId: 'a1', on: true },
+      { kind: 'add-ambience', mediaId: 'a1' },
+    ],
+    [
+      { kind: 'remove-ambience', mediaId: 'a1', volume: 1 },
+      { kind: 'remove-ambience', mediaId: 'a1' },
+    ],
+    [
+      { kind: 'set-ambience-on', mediaId: 'a1', on: true, volume: 1 },
+      { kind: 'set-ambience-on', mediaId: 'a1', on: true },
+    ],
+    [
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: 0, on: true },
+      { kind: 'set-ambience-volume', mediaId: 'a1', volume: 0 },
+    ],
+    [
+      { kind: 'set-ambience-level', level: 1, mediaId: 'a1' },
+      { kind: 'set-ambience-level', level: 1 },
     ],
     [
       { kind: 'set-title', title: 'Le vieux moulin', name: 'x' },

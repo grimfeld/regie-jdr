@@ -152,6 +152,16 @@ describe('undo labels', () => {
     [{ kind: 'set-label-visible', overlayId: 'ov', visible: false }, 'masquer l’étiquette (Orc)'],
     [{ kind: 'add-music', mediaId: 'm-map' }, 'ajouter la musique Port'],
     [{ kind: 'add-music', mediaId: 'unknown' }, 'ajouter la musique'],
+    [{ kind: 'add-ambience', mediaId: 'm-map' }, 'ajouter l’ambiance Port'],
+    [{ kind: 'add-ambience', mediaId: 'unknown' }, 'ajouter l’ambiance'],
+    [{ kind: 'remove-ambience', mediaId: 'm-map' }, 'retirer l’ambiance Port'],
+    [{ kind: 'set-ambience-on', mediaId: 'm-map', on: true }, 'allumer l’ambiance Port'],
+    [{ kind: 'set-ambience-on', mediaId: 'm-map', on: false }, 'éteindre l’ambiance Port'],
+    [
+      { kind: 'set-ambience-volume', mediaId: 'm-map', volume: 0.5 },
+      'régler le volume de l’ambiance Port',
+    ],
+    [{ kind: 'set-ambience-level', level: 0.5 }, 'régler le niveau des ambiances'],
   ];
 
   it.each(cases)('names %j "%s"', (edit, label) => {

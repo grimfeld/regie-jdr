@@ -174,6 +174,16 @@ export function undoLabel(
       return `${edit.visible ? 'afficher' : 'masquer'} l’étiquette (${placed(edit.overlayId)})`;
     case 'add-music':
       return `ajouter la musique ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'add-ambience':
+      return `ajouter l’ambiance ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'remove-ambience':
+      return `retirer l’ambiance ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'set-ambience-on':
+      return `${edit.on ? 'allumer' : 'éteindre'} l’ambiance ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'set-ambience-volume':
+      return `régler le volume de l’ambiance ${mediaName(edit.mediaId) ?? ''}`.trimEnd();
+    case 'set-ambience-level':
+      return 'régler le niveau des ambiances';
   }
 }
 
