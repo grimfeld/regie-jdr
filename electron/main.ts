@@ -5,7 +5,7 @@ import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
-import { CampaignError, createCampaign, updateCampaign } from '../core/campaigns.js';
+import { CampaignError, createCampaignInHomeTheme, updateCampaign } from '../core/campaigns.js';
 import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
 import { exportCampaign, exportFileName } from '../core/campaignExport.js';
 import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
@@ -590,7 +590,8 @@ function startApp() {
         return deletion;
       },
       'campaigns:list': () => storage.campaigns.list(),
-      'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
+      'campaigns:create': ({ name }) =>
+        createCampaignInHomeTheme(storage.campaigns, settingsStore, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
       'campaigns:deletion-summary': ({ id }) => campaignDeletion.summary(id),
       'campaigns:move-to-trash': ({ id }) => campaignDeletion.moveToTrash(id),

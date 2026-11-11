@@ -514,8 +514,8 @@ button {
   color: var(--accent);
 }
 .theme-options {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 7px;
 }
 .theme-option {
@@ -534,7 +534,7 @@ button {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 9%, var(--surface-sunken));
 }
-.theme-option > span:nth-child(2) {
+.theme-option-text {
   flex: 1;
 }
 .theme-option strong,
@@ -549,13 +549,52 @@ button {
   color: var(--text-secondary);
   margin-top: 3px;
 }
-.theme-swatch {
-  width: 29px;
-  height: 29px;
+/*
+ * A Theme's sample panel. Its element carries data-theme, so every token below is that Theme's,
+ * not the window's: it sets its own colours and fonts rather than inheriting them.
+ */
+.theme-sample {
+  flex: none;
+  width: 92px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
   border-radius: var(--radius-small);
-  border: 1px solid var(--control-border);
-  /* Its element carries data-theme: the swatch shows its own theme's tokens. */
-  background: linear-gradient(135deg, var(--swatch-dark) 50%, var(--swatch-light) 50%);
+  background: var(--texture), var(--frame), var(--page);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+.theme-sample-bar {
+  height: 7px;
+  background: var(--title-bar);
+  border-bottom: 1px solid var(--border);
+}
+.theme-sample-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 6px;
+  padding: 5px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
+.theme-sample-heading {
+  font: 600 11px var(--font-display);
+}
+.theme-sample-line {
+  font-size: 8px;
+  color: var(--text-secondary);
+}
+.theme-sample-button {
+  padding: 1px 5px;
+  border-radius: var(--radius-small);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 8px;
+  font-weight: 700;
 }
 .radio-indicator {
   width: 12px;
@@ -660,7 +699,7 @@ button {
   padding: 2px 8px;
   border: 1px solid var(--accent);
   border-radius: 999px;
-  color: var(--accent2);
+  color: var(--accent-strong);
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1014,17 +1053,7 @@ button {
   color: var(--text-secondary);
 }
 .home-theme {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-}
-.home-theme select {
-  padding: 6px 8px;
-  color: var(--text);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
+  margin-top: 30px;
 }
 .scene-editor {
   border-top: 1px solid var(--border);

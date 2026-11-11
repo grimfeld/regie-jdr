@@ -47,8 +47,4 @@
   --font-display: 'Arial Narrow', Impact, sans-serif;
   --radius: 7px;
   --radius-small: 4px;
-
-  /* The theme's swatch in the theme choice, until the picker's sample cards (#65). */
-  --swatch-dark: #101217;
-  --swatch-light: #b58a46;
 }
