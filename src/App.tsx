@@ -3,7 +3,7 @@ import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from '
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
-import { CampaignList, errorMessage } from './CampaignList';
+import { CampaignList, errorMessage, type CampaignDeletionActions } from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
 import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboard';
@@ -154,6 +154,24 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     }
   }
 
+  /** A deleted Campaign leaves the list; the Game Master stays on it, even with one left. */
+  function forget(id: CampaignId) {
+    setCampaigns((current) => (current ?? []).filter((c) => c.id !== id));
+  }
+
+  const deletion: CampaignDeletionActions | undefined = control && {
+    describe: (id) => control.getCampaignDeletionSummary(id),
+    moveToTrash: async (id) => {
+      const outcome = await control.moveCampaignToTrash(id);
+      if (outcome.deleted) forget(id);
+      return outcome;
+    },
+    deletePermanently: async (id) => {
+      await control.deleteCampaignPermanently(id);
+      forget(id);
+    },
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -205,6 +223,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
             onOpen={(id) => void enter(id)}
             onCreate={create}
             onRename={(id, name) => update(id, { name })}
+            deletion={deletion}
           />
         )
       )}

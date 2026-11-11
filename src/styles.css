@@ -614,6 +614,7 @@ button {
 }
 .campaign-item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -632,6 +633,10 @@ button {
 }
 .campaign-open strong {
   font: 600 20px var(--display);
+}
+.campaign-delete-confirm {
+  flex-basis: 100%;
+  margin-top: 0;
 }
 .campaign-open:hover strong {
   color: var(--accent2);
