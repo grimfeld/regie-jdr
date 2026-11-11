@@ -551,6 +551,14 @@ describe('Placing a dropped image', () => {
     });
   });
 
+  it('on the canvas, places a Reference image as an Overlay centred on the drop point', () => {
+    expect(placementEdit(image('reference'), 'canvas', { x: 0.6, y: 0.4 })).toEqual({
+      kind: 'place-overlay',
+      mediaId: 'm-reference',
+      position: { x: 0.6, y: 0.4 },
+    });
+  });
+
   it('on the canvas, keeps a drop point on the black bars inside the canvas', () => {
     expect(placementEdit(image('character'), 'canvas', { x: -0.4, y: 1.3 })).toEqual({
       kind: 'place-overlay',

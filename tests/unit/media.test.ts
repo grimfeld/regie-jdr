@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
-import { mediaAddress } from '../../core/mediaAddress';
+import { MAX_PASTED_IMAGE_BYTES, mediaAddress } from '../../core/mediaAddress';
 import { openStorage } from '../../core/storage';
 import { wavFile } from './audioFiles';
 import { fakeResizer } from './fakeResizer';
@@ -405,6 +405,162 @@ describe('media library', () => {
     );
     expect(imported).toEqual([{ ...sound, durationSeconds: 4 }]);
     expect((await library.list(campaign.id))[0]).toEqual({ ...sound, durationSeconds: 4 });
+  });
+
+  it('imports images as Reference when the import asks for it, keeping one copy of known content', async () => {
+    const { storage, campaign, library } = await setup();
+    const [scenery] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+
+    const { imported } = await library.import(
+      campaign.id,
+      [await sourceFile('Carte secrète.png', 'carte'), await sourceFile('copie.png')],
+      { accept: 'image', category: 'reference' },
+    );
+
+    // New content is Reference; content already there keeps its Media and its category.
+    expect(imported).toEqual([
+      expect.objectContaining({ kind: 'image', name: 'Carte secrète', category: 'reference' }),
+      scenery,
+    ]);
+    expect(await library.list(campaign.id)).toEqual([scenery, imported[0]]);
+    const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+    expect(await fs.readdir(mediaFolder)).toHaveLength(2);
+  });
+
+  it('changes a Reference image to Scenery or Character, and back', async () => {
+    const { campaign, library } = await setup();
+    const [reference] = (
+      await library.import(campaign.id, [await sourceFile('Plan.png')], {
+        accept: 'image',
+        category: 'reference',
+      })
+    ).imported;
+
+    expect(await library.setImageCategory(campaign.id, reference.id, 'scenery')).toEqual({
+      ...reference,
+      category: 'scenery',
+    });
+    await library.setImageCategory(campaign.id, reference.id, 'character');
+    expect(await library.setImageCategory(campaign.id, reference.id, 'reference')).toEqual(
+      reference,
+    );
+  });
+
+  it('reads a Media index from before the Reference category unchanged', async () => {
+    const { storage, campaign, library } = await setup();
+    const stored = {
+      id: 'port',
+      contentHash: ABC_SHA256,
+      originalName: 'Port',
+      name: 'Port',
+      extension: '.png',
+      kind: 'image',
+      category: 'scenery',
+    };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'media.json'),
+      JSON.stringify({ schemaVersion: 2, media: [stored] }),
+    );
+
+    expect(await library.list(campaign.id)).toEqual([{ ...stored, campaignId: campaign.id }]);
+  });
+
+  describe('pasted images', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 4, 5, 6]);
+    const WEBP = Buffer.concat([
+      Buffer.from('RIFF'),
+      Buffer.from([9, 0, 0, 0]),
+      Buffer.from('WEBPVP8 '),
+    ]);
+
+    it('imports pasted bytes as a Reference image, its type read from its content', async () => {
+      const { storage, campaign, library } = await setup();
+
+      const result = await library.importPasted(campaign.id, PNG, 'Plan du fort.jpg');
+
+      expect(result.refused).toEqual([]);
+      const hash = createHash('sha256').update(PNG).digest('hex');
+      expect(result.imported).toEqual([
+        expect.objectContaining({
+          kind: 'image',
+          category: 'reference',
+          contentHash: hash,
+          extension: '.png',
+          originalName: 'Plan du fort',
+          name: 'Plan du fort',
+        }),
+      ]);
+      const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+      expect(await fs.readFile(path.join(mediaFolder, `${hash}.png`))).toEqual(PNG);
+    });
+
+    it.each([
+      ['JPEG', JPEG, '.jpg'],
+      ['WebP', WEBP, '.webp'],
+    ])('imports pasted %s', async (_type, bytes, extension) => {
+      const { campaign, library } = await setup();
+      const { imported } = await library.importPasted(campaign.id, bytes, 'capture.png');
+      expect(imported).toEqual([expect.objectContaining({ extension, category: 'reference' })]);
+    });
+
+    it('keeps one Media when the same image is pasted twice, or was imported before', async () => {
+      const { campaign, library } = await setup();
+      const [picked] = (
+        await library.import(campaign.id, [await sourceFile('Carte.png', PNG)], {
+          accept: 'image',
+        })
+      ).imported;
+
+      expect((await library.importPasted(campaign.id, PNG, 'image.png')).imported).toEqual([
+        picked,
+      ]);
+      expect((await library.importPasted(campaign.id, PNG, 'autre.png')).imported).toEqual([
+        picked,
+      ]);
+      expect(await library.list(campaign.id)).toEqual([picked]);
+    });
+
+    it.each([
+      ['image.png', 'Image collée'],
+      ['', 'Image collée'],
+      ['  ', 'Image collée'],
+      ['..\\..\\Windows\\carte.png', 'carte'],
+      ['../../carte.png', 'carte'],
+      ['CON', 'CON'],
+      ['a<b>:c"d|e?f*g.png', 'abcdefg'],
+      ['x'.repeat(300), 'x'.repeat(100)],
+    ])('names a pasted image %j as %j', async (name, expected) => {
+      const { campaign, library } = await setup();
+      const { imported } = await library.importPasted(campaign.id, PNG, name);
+      expect(imported[0]?.name).toBe(expected);
+    });
+
+    it('refuses pasted content that is not a PNG, JPEG or WebP image, and stores nothing', async () => {
+      const { storage, campaign, library } = await setup();
+      for (const bytes of [Buffer.from('abc'), Buffer.from('GIF89a......'), Buffer.alloc(0)]) {
+        expect(await library.importPasted(campaign.id, bytes, 'capture.png')).toEqual({
+          imported: [],
+          refused: [
+            '« capture.png » n’a pas été importé : ce n’est pas une image PNG, JPEG ou WebP.',
+          ],
+        });
+      }
+      expect(await library.list(campaign.id)).toEqual([]);
+      const folder = storage.campaignFolder(campaign.id);
+      expect(await fs.readdir(folder)).not.toContain('media');
+    });
+
+    it('refuses a pasted image larger than the limit', async () => {
+      const { campaign, library } = await setup();
+      const huge = Buffer.concat([PNG, Buffer.alloc(MAX_PASTED_IMAGE_BYTES)]);
+      expect(await library.importPasted(campaign.id, huge, 'énorme.png')).toEqual({
+        imported: [],
+        refused: ['« énorme.png » n’a pas été importé : l’image est trop volumineuse.'],
+      });
+    });
   });
 
   it('refuses to import into a Campaign that does not exist', async () => {

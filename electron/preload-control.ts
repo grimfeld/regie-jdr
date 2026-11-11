@@ -74,6 +74,13 @@ const bridge: ControlBridge = {
       files: files.map((file) => webUtils.getPathForFile(file)).filter((file) => file !== ''),
       ...kind,
     }),
+  // The page hands over the pasted File; the main process checks what its content is.
+  importPastedImage: async (campaignId, file) =>
+    invoke('media:import-pasted', {
+      campaignId,
+      data: new Uint8Array(await file.arrayBuffer()),
+      name: file.name,
+    }),
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),
   renameMedia: (campaignId, mediaId, name) => invoke('media:rename', { campaignId, mediaId, name }),

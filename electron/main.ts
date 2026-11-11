@@ -405,6 +405,11 @@ function startApp() {
         result.refused.forEach((message) => log.info(`Media refused: ${message}`));
         return result;
       },
+      'media:import-pasted': async ({ campaignId, data, name }) => {
+        const result = await library.importPasted(campaignId, data, name);
+        result.refused.forEach((message) => log.info(`Media refused: ${message}`));
+        return result;
+      },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
       'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),

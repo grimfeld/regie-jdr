@@ -50,6 +50,27 @@ export function mediaKindOfFileName(fileName: string): Media['kind'] | undefined
   return isMediaExtension(extension) ? MEDIA_FILE_TYPES[extension].kind : undefined;
 }
 
+/** Largest image pasted into the Notes, in bytes: larger ones are refused. */
+export const MAX_PASTED_IMAGE_BYTES = 50 * 1024 * 1024;
+
+function startsWith(bytes: Uint8Array, signature: readonly number[], offset = 0): boolean {
+  return signature.every((byte, index) => bytes[offset + index] === byte);
+}
+
+const ascii = (text: string) => Array.from(text, (letter) => letter.charCodeAt(0));
+
+/**
+ * The allowlisted image type of some content, read from its first bytes (PNG, JPEG or WebP), as
+ * the extension a Media of it gets; undefined for anything else. For content that comes with no
+ * trustworthy name: an image pasted from the clipboard.
+ */
+export function imageExtensionOfContent(bytes: Uint8Array): MediaExtension | undefined {
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return '.png';
+  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return '.jpg';
+  if (startsWith(bytes, ascii('RIFF')) && startsWith(bytes, ascii('WEBP'), 8)) return '.webp';
+  return undefined;
+}
+
 /** Name of a Media's file in its Campaign's media folder. */
 export function mediaFileName(media: Pick<Media, 'contentHash' | 'extension'>): string {
   return `${media.contentHash}${media.extension}`;

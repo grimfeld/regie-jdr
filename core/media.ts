@@ -14,6 +14,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, type Dirent } from 'node:fs';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import type { MediaImportKind, MediaImportResult } from '../shared/contract.js';
 import type {
@@ -30,7 +31,9 @@ import { CampaignError } from './campaigns.js';
 import { isRecord } from './guards.js';
 import {
   extensionsOf,
+  imageExtensionOfContent,
   isMediaExtension,
+  MAX_PASTED_IMAGE_BYTES,
   MEDIA_FILE_TYPES,
   mediaFileName,
   parseMediaAddress,
@@ -50,6 +53,13 @@ export interface MediaLibrary {
     files: readonly string[],
     kind: MediaImportKind,
   ): Promise<MediaImportResult>;
+  /**
+   * Imports an image pasted into the Notes, as a Reference image. `data` and `name` are
+   * untrusted: the type is read from the content (PNG, JPEG or WebP; anything else is refused,
+   * as is content larger than MAX_PASTED_IMAGE_BYTES), and the name only names the Media
+   * (`pastedImageName`). Content already in the library gives its Media, unchanged.
+   */
+  importPasted(campaignId: CampaignId, data: Uint8Array, name: string): Promise<MediaImportResult>;
   /** Changes an image's category. Audio has a role instead, fixed at import. */
   setImageCategory(
     campaignId: CampaignId,
@@ -81,7 +91,7 @@ export interface MediaLibrary {
   ): Promise<{ file: string; mimeType: string } | undefined>;
 }
 
-export const IMAGE_CATEGORIES: readonly ImageCategory[] = ['scenery', 'character'];
+export const IMAGE_CATEGORIES: readonly ImageCategory[] = ['scenery', 'character', 'reference'];
 export const AUDIO_ROLES: readonly AudioRole[] = ['music', 'soundEffect', 'ambience'];
 
 export function isImageCategory(value: unknown): value is ImageCategory {
@@ -105,6 +115,26 @@ export function validateMediaName(name: string): string {
     );
   }
   return trimmed;
+}
+
+/** What a pasted image is named when its name says nothing (Chromium names screenshots so). */
+const PASTED_IMAGE_NAME = 'Image collée';
+
+/**
+ * The name of a pasted image's Media, from the pasted file's untrusted name: its last path
+ * segment without extension, without the characters a Windows file name refuses, at most
+ * MAX_MEDIA_NAME_LENGTH long; "Image collée" when nothing is left or it is Chromium's "image".
+ */
+export function pastedImageName(name: string): string {
+  const fileName = name.split(/[\\/]/).pop() ?? '';
+  const dot = fileName.lastIndexOf('.');
+  const stem = (dot > 0 ? fileName.slice(0, dot) : fileName)
+    // eslint-disable-next-line no-control-regex -- control characters are what is removed here
+    .replace(/[<>:"|?*\u0000-\u001f]/g, '')
+    .trim()
+    .slice(0, MAX_MEDIA_NAME_LENGTH)
+    .trim();
+  return stem === '' || stem.toLowerCase() === 'image' ? PASTED_IMAGE_NAME : stem;
 }
 
 /** Category of a newly imported image, until the Game Master changes it. */
@@ -133,7 +163,14 @@ export const MEDIA_KINDS: Record<Media['kind'], MediaKindRules> = {
     extensions: extensionsOf('image'),
     refusal: (fileName) => `« ${fileName} » n’a pas été importé : ce n’est pas une image.`,
     picker: { title: 'Importer des images', filterName: 'Images' },
-    defaults: () => Promise.resolve({ kind: 'image', category: DEFAULT_IMAGE_CATEGORY }),
+    // Looked up by `accept`, so this is always an image import.
+    defaults: (kind) =>
+      Promise.resolve({
+        kind: 'image',
+        category:
+          (kind as Extract<MediaImportKind, { accept: 'image' }>).category ??
+          DEFAULT_IMAGE_CATEGORY,
+      }),
   },
   audio: {
     extensions: extensionsOf('audio'),
@@ -184,13 +221,21 @@ function migrateMediaIndexV1(fields: Record<string, unknown>): Record<string, un
   return { ...fields, media };
 }
 
+/**
+ * Version 2 to 3 (Milestone 3): images may be in the Reference category. Nothing to change: the
+ * version only keeps an older app from reading a category it does not know.
+ */
+function migrateMediaIndexV2(fields: Record<string, unknown>): Record<string, unknown> {
+  return fields;
+}
+
 /** The index stores Media without their Campaign id: it is the folder's. */
 type StoredMedia = Omit<Media, 'campaignId'>;
 
 const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
   name: 'media',
-  version: 2,
-  migrations: { 1: migrateMediaIndexV1 },
+  version: 3,
+  migrations: { 1: migrateMediaIndexV1, 2: migrateMediaIndexV2 },
   parse({ media }) {
     if (!Array.isArray(media)) return undefined;
     const parsed = media.map((item) => parseMedia(item, ''));
@@ -269,77 +314,121 @@ export function createMediaLibrary(
     });
   }
 
+  /** A file to import: where it is, what the Game Master knows it as, what its Media is named. */
+  interface Source {
+    file: string;
+    fileName: string;
+    originalName: string;
+  }
+
+  function importSources(
+    campaignId: CampaignId,
+    sources: readonly Source[],
+    kind: MediaImportKind,
+  ): Promise<MediaImportResult> {
+    return serialized(campaignId, async () => {
+      const folder = await campaignFolder(campaignId);
+      const library = await readIndex(folder, campaignId);
+      const mediaFolder = path.join(folder, MEDIA_FOLDER);
+      const result: MediaImportResult = { imported: [], refused: [] };
+      const rules = MEDIA_KINDS[kind.accept];
+      let changed = false;
+      for (const { file: source, fileName, originalName } of sources) {
+        const extension = path.extname(source).toLowerCase();
+        const type = isMediaExtension(extension) ? MEDIA_FILE_TYPES[extension] : undefined;
+        if (!type) {
+          result.refused.push(
+            `« ${fileName} » n’a pas été importé : ce type de fichier n’est pas pris en charge (images PNG, JPEG, WebP ; sons MP3, WAV, OGG, FLAC, M4A).`,
+          );
+          continue;
+        }
+        if (type.kind !== kind.accept) {
+          result.refused.push(rules.refusal(fileName));
+          continue;
+        }
+        if (!(await exists(source))) {
+          result.refused.push(
+            `« ${fileName} » n’a pas été importé : ce n’est pas un fichier lisible.`,
+          );
+          continue;
+        }
+        const contentHash = await sha256Of(source);
+        const existingIndex = library.findIndex((media) => media.contentHash === contentHash);
+        if (existingIndex >= 0) {
+          // Same content again: no second Media. Puts its file back if it went missing.
+          let existing = library[existingIndex];
+          await storeFile(source, mediaFolder, existing);
+          await prepareThumbnail(folder, existing);
+          if (existing.kind === 'audio' && existing.durationSeconds === null) {
+            // Imported before durations were recorded, or unreadable then: try again.
+            const durationSeconds = (await readAudioDuration(source)) ?? null;
+            if (durationSeconds !== null) {
+              existing = { ...existing, durationSeconds };
+              library[existingIndex] = existing;
+              changed = true;
+            }
+          }
+          result.imported.push(existing);
+          continue;
+        }
+        const base = {
+          id: randomUUID(),
+          campaignId,
+          contentHash,
+          originalName,
+          name: originalName,
+          extension,
+        };
+        const media = { ...base, ...(await rules.defaults(kind, source)) } as Media;
+        await storeFile(source, mediaFolder, media);
+        await prepareThumbnail(folder, media);
+        library.push(media);
+        result.imported.push(media);
+        changed = true;
+      }
+      if (changed) await writeIndex(folder, library);
+      return result;
+    });
+  }
+
   return {
     async list(campaignId) {
       return readIndex(await campaignFolder(campaignId), campaignId);
     },
 
     import(campaignId, files, kind) {
-      return serialized(campaignId, async () => {
-        const folder = await campaignFolder(campaignId);
-        const library = await readIndex(folder, campaignId);
-        const mediaFolder = path.join(folder, MEDIA_FOLDER);
-        const result: MediaImportResult = { imported: [], refused: [] };
-        const rules = MEDIA_KINDS[kind.accept];
-        let changed = false;
-        for (const source of files) {
-          const extension = path.extname(source).toLowerCase();
-          const fileName = path.basename(source);
-          const type = isMediaExtension(extension) ? MEDIA_FILE_TYPES[extension] : undefined;
-          if (!type) {
-            result.refused.push(
-              `« ${fileName} » n’a pas été importé : ce type de fichier n’est pas pris en charge (images PNG, JPEG, WebP ; sons MP3, WAV, OGG, FLAC, M4A).`,
-            );
-            continue;
-          }
-          if (type.kind !== kind.accept) {
-            result.refused.push(rules.refusal(fileName));
-            continue;
-          }
-          if (!(await exists(source))) {
-            result.refused.push(
-              `« ${fileName} » n’a pas été importé : ce n’est pas un fichier lisible.`,
-            );
-            continue;
-          }
-          const contentHash = await sha256Of(source);
-          const existingIndex = library.findIndex((media) => media.contentHash === contentHash);
-          if (existingIndex >= 0) {
-            // Same content again: no second Media. Puts its file back if it went missing.
-            let existing = library[existingIndex];
-            await storeFile(source, mediaFolder, existing);
-            await prepareThumbnail(folder, existing);
-            if (existing.kind === 'audio' && existing.durationSeconds === null) {
-              // Imported before durations were recorded, or unreadable then: try again.
-              const durationSeconds = (await readAudioDuration(source)) ?? null;
-              if (durationSeconds !== null) {
-                existing = { ...existing, durationSeconds };
-                library[existingIndex] = existing;
-                changed = true;
-              }
-            }
-            result.imported.push(existing);
-            continue;
-          }
-          const originalName = path.basename(source, path.extname(source));
-          const base = {
-            id: randomUUID(),
-            campaignId,
-            contentHash,
-            originalName,
-            name: originalName,
-            extension,
-          };
-          const media = { ...base, ...(await rules.defaults(kind, source)) } as Media;
-          await storeFile(source, mediaFolder, media);
-          await prepareThumbnail(folder, media);
-          library.push(media);
-          result.imported.push(media);
-          changed = true;
-        }
-        if (changed) await writeIndex(folder, library);
-        return result;
+      return importSources(
+        campaignId,
+        files.map((file) => ({
+          file,
+          fileName: path.basename(file),
+          originalName: path.basename(file, path.extname(file)),
+        })),
+        kind,
+      );
+    },
+
+    async importPasted(campaignId, data, name) {
+      const extension = imageExtensionOfContent(data);
+      const refused = (why: string) => ({
+        imported: [],
+        refused: [`« ${name} » n’a pas été importé : ${why}`],
       });
+      if (!extension) return refused('ce n’est pas une image PNG, JPEG ou WebP.');
+      if (data.byteLength > MAX_PASTED_IMAGE_BYTES) return refused('l’image est trop volumineuse.');
+      // Imported from a file like any other, in a folder of its own named by the app only.
+      const folder = await fsp.mkdtemp(path.join(os.tmpdir(), 'regie-paste-'));
+      try {
+        const file = path.join(folder, `collee${extension}`);
+        await fsp.writeFile(file, data);
+        return await importSources(
+          campaignId,
+          [{ file, fileName: name, originalName: pastedImageName(name) }],
+          { accept: 'image', category: 'reference' },
+        );
+      } finally {
+        await fsp.rm(folder, { recursive: true, force: true });
+      }
     },
 
     setImageCategory(campaignId, mediaId, category) {

@@ -128,8 +128,11 @@ describe('parseNotes', () => {
     ['a table', doc({ type: 'table', content: [] })],
     ['an image with no Media id', doc({ type: 'image', attrs: {} })],
     ['an image with a file path', doc({ type: 'image', attrs: { src: 'C:/carte.png' } })],
-    ['an image naming a file path as its Media', doc(image('C:\Users\mj\carte.png'))],
-    ['an image naming embedded data as its Media', doc(image('data:image/png;base64,iVBORw0KGgo='))],
+    ['an image naming a file path as its Media', doc(image(String.raw`C:\Users\mj\carte.png`))],
+    [
+      'an image naming embedded data as its Media',
+      doc(image('data:image/png;base64,iVBORw0KGgo=')),
+    ],
     ['an image with a Media id in capitals', doc(image(MAP_ID.toUpperCase()))],
     ['an image with content', doc({ ...image(), content: [paragraph()] })],
     ['an image inside a paragraph', doc(paragraph(image()))],

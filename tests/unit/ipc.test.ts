@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkInvoke } from '../../core/ipc';
+import { MAX_PASTED_IMAGE_BYTES } from '../../core/mediaAddress';
 
 const campaign = { campaignId: 'star-wars' };
 const scene = { sceneId: 'cantina' };
@@ -162,6 +163,7 @@ describe('Media channels', () => {
       ['media:list', [{ campaignId }]],
       ['media:import', [{ campaignId, accept: 'image' }]],
       ['media:import-dropped', [{ campaignId, files: [], accept: 'image' }]],
+      ['media:import-pasted', [{ campaignId, data: new Uint8Array([1]), name: 'capture.png' }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
       ['media:rename', [{ campaignId, mediaId, name: 'Port de nuit' }]],
       ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
@@ -194,6 +196,40 @@ describe('Media channels', () => {
         { campaignId, files: [], accept: 'audio', role: 'ambience', x: 1 },
       ]),
     ).toEqual({ ok: true, payload: { campaignId, files: [], accept: 'audio', role: 'ambience' } });
+  });
+
+  it('accept an image import with a category for the new images', () => {
+    for (const category of ['scenery', 'character', 'reference']) {
+      expect(
+        checkInvoke('media:import', 'control', [{ campaignId, accept: 'image', category }]),
+      ).toEqual({
+        ok: true,
+        payload: { campaignId, accept: 'image', category },
+      });
+    }
+    const files = [path.resolve('Plan.png')];
+    expect(
+      checkInvoke('media:import-dropped', 'control', [
+        { campaignId, files, accept: 'image', category: 'reference' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, files, accept: 'image', category: 'reference' } });
+  });
+
+  it('accept pasted image content with its name, keeping only contract fields', () => {
+    const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    expect(
+      checkInvoke('media:import-pasted', 'control', [
+        { campaignId, data, name: 'image.png', category: 'scenery', path: 'C:/x.png' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, data, name: 'image.png' } });
+  });
+
+  it('accept a category change to Reference', () => {
+    expect(
+      checkInvoke('media:set-category', 'control', [
+        { campaignId, mediaId, category: 'reference' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, category: 'reference' } });
   });
 
   it('accept a category change, keeping only contract fields', () => {
@@ -232,6 +268,51 @@ describe('Media channels', () => {
     ['a Campaign id that is a path', 'media:list', [{ campaignId: '../..' }]],
     ['no Campaign id', 'media:list', [{}]],
     ['an unknown kind', 'media:import', [{ campaignId, accept: 'video' }]],
+    [
+      'an image import with an unknown category',
+      'media:import',
+      [{ campaignId, accept: 'image', category: 'handout' }],
+    ],
+    [
+      'dropped images with an unknown category',
+      'media:import-dropped',
+      [{ campaignId, files: [], accept: 'image', category: 'secret' }],
+    ],
+    [
+      'pasted content that is not bytes',
+      'media:import-pasted',
+      [{ campaignId, data: [1, 2], name: 'x.png' }],
+    ],
+    [
+      'pasted content as text',
+      'media:import-pasted',
+      [{ campaignId, data: 'iVBORw0KGgo=', name: 'x.png' }],
+    ],
+    [
+      'empty pasted content',
+      'media:import-pasted',
+      [{ campaignId, data: new Uint8Array(0), name: 'x.png' }],
+    ],
+    [
+      'pasted content larger than the limit',
+      'media:import-pasted',
+      [{ campaignId, data: new Uint8Array(MAX_PASTED_IMAGE_BYTES + 1), name: 'x.png' }],
+    ],
+    [
+      'pasted content with no name',
+      'media:import-pasted',
+      [{ campaignId, data: new Uint8Array([1]) }],
+    ],
+    [
+      'pasted content with a very long name',
+      'media:import-pasted',
+      [{ campaignId, data: new Uint8Array([1]), name: 'x'.repeat(5000) }],
+    ],
+    [
+      'pasted content for no Campaign',
+      'media:import-pasted',
+      [{ data: new Uint8Array([1]), name: 'x' }],
+    ],
     ['audio with no role', 'media:import', [{ campaignId, accept: 'audio' }]],
     ['audio with an unknown role', 'media:import', [{ campaignId, accept: 'audio', role: 'loop' }]],
     [

@@ -33,6 +33,7 @@ import type {
   ThemeId,
 } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
+import { MAX_PASTED_IMAGE_BYTES } from './mediaAddress.js';
 import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
@@ -173,7 +174,11 @@ function padPress(value: unknown): Parsed<{ campaignId: CampaignId; padId: strin
 }
 
 function importKindOf(value: Record<string, unknown>): Parsed<MediaImportKind> {
-  if (value.accept === 'image') return { accept: 'image' };
+  if (value.accept === 'image') {
+    const { category } = value;
+    if (category === undefined) return { accept: 'image' };
+    return isImageCategory(category) ? { accept: 'image', category } : INVALID;
+  }
   if (value.accept === 'audio' && isAudioRole(value.role)) {
     return { accept: 'audio', role: value.role };
   }
@@ -217,6 +222,21 @@ function droppedImport(
   if (!Array.isArray(files) || files.length > MAX_DROPPED_FILES) return INVALID;
   if (!files.every(isDroppedPath)) return INVALID;
   return { ...campaign, files: [...files], ...kind };
+}
+
+/**
+ * Pasted image content: bytes (not a list or text), at most MAX_PASTED_IMAGE_BYTES, with a name.
+ * Whether the bytes are an image is the import's check (core/media.ts).
+ */
+function pastedImport(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; data: Uint8Array; name: string }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { data, name } = value;
+  if (!(data instanceof Uint8Array) || !isName(name)) return INVALID;
+  if (data.byteLength === 0 || data.byteLength > MAX_PASTED_IMAGE_BYTES) return INVALID;
+  return { ...campaign, data, name };
 }
 
 function categoryChange(
@@ -323,6 +343,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
   'media:import-dropped': { from: controlOnly, parse: onePayload(droppedImport) },
+  'media:import-pasted': { from: controlOnly, parse: onePayload(pastedImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
   'media:rename': { from: controlOnly, parse: onePayload(mediaRename) },
   'media:delete': { from: controlOnly, parse: onePayload(mediaDelete) },

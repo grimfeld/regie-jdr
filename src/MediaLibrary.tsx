@@ -21,12 +21,14 @@ import { gridColumns, gridWindow } from './virtualGrid';
 const categoryLabels: Record<ImageCategory, string> = {
   scenery: 'Décors',
   character: 'Personnage',
+  reference: 'Référence',
 };
 
 const filterLabels: Record<LibraryFilter, string> = {
   all: 'Tous',
   scenery: 'Décors',
   character: 'Personnages',
+  reference: 'Références',
 };
 
 const roleLabels: Record<AudioRole, string> = {

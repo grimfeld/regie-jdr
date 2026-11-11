@@ -172,8 +172,12 @@ export interface UndoState {
   redo: string | null;
 }
 
-/** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
-export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
+/**
+ * What an import accepts: images, with the category new images get (Scenery when absent; images
+ * already in the library keep theirs), or audio with the role (fixed) every imported file gets.
+ */
+export type MediaImportKind =
+  { accept: 'image'; category?: ImageCategory } | { accept: 'audio'; role: AudioRole };
 
 export interface MediaImportResult {
   /** One Media per accepted file, in order; content already in the Campaign gives its Media. */
@@ -286,6 +290,16 @@ export interface InvokeChannels {
    */
   'media:import-dropped': {
     payload: { campaignId: CampaignId; files: string[] } & MediaImportKind;
+    result: MediaImportResult;
+  };
+  /**
+   * Import an image the Game Master pasted into the Notes, as a Reference image: `data` is the
+   * pasted file's content, `name` its name. Untrusted: the main process reads the type from the
+   * content (PNG, JPEG or WebP) and refuses anything else or anything larger than
+   * MAX_PASTED_IMAGE_BYTES (core/mediaAddress.ts). Content already in the library gives its Media.
+   */
+  'media:import-pasted': {
+    payload: { campaignId: CampaignId; data: Uint8Array; name: string };
     result: MediaImportResult;
   };
   /** Change an image's category. Fails for audio: its role is fixed at import. */
@@ -462,6 +476,11 @@ export interface ControlBridge extends BroadcastBridge {
     files: readonly File[],
     kind: MediaImportKind,
   ): Promise<MediaImportResult>;
+  /**
+   * Imports an image pasted into the Notes, as a Reference image. Takes the pasted File: the
+   * bridge sends its content and name.
+   */
+  importPastedImage(campaignId: CampaignId, file: File): Promise<MediaImportResult>;
   setImageCategory(
     campaignId: CampaignId,
     mediaId: MediaId,

@@ -22,8 +22,11 @@ export interface Campaign {
   updatedAt: Timestamp;
 }
 
-/** How the Game Master intends to use an image. Changeable; never restricts placement. */
-export type ImageCategory = 'scenery' | 'character';
+/**
+ * How the Game Master intends to use an image: Scenery, Character, or Reference (material for the
+ * Game Master's eyes, such as a screenshot in the Notes). Changeable; never restricts placement.
+ */
+export type ImageCategory = 'scenery' | 'character' | 'reference';
 
 /**
  * Role of an audio Media, fixed at import: Music (the looping atmosphere track, one at a time),

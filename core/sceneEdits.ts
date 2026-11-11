@@ -164,7 +164,8 @@ export type PlacementTarget = 'canvas' | 'backgrounds' | 'overlays';
 
 /**
  * The edit that places `image` dropped on `target`. On the canvas, Scenery becomes a Background
- * and a Character an Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
+ * and a Character or a Reference image (shown to the players like a handout on the Scene) an
+ * Overlay centred on `dropPoint` (canvas fractions; a point on the black bars
  * is moved to the nearest canvas edge). On a list, it becomes that type; an Overlay then goes to
  * the canvas centre. Every drag-and-drop placement (library or Explorer) goes through here.
  */
@@ -183,6 +184,7 @@ export function placementEdit(
         case 'scenery':
           return { kind: 'place-background', mediaId: image.id };
         case 'character':
+        case 'reference':
           return dropPoint
             ? {
                 kind: 'place-overlay',
