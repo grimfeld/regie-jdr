@@ -10,6 +10,7 @@ import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js'
 import { exportCampaign, exportFileName } from '../core/campaignExport.js';
 import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
 import { createCampaignTransfers, type ByteProgress } from '../core/campaignTransfer.js';
+import { createPartialFiles, type PartialFiles } from '../core/partialFiles.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
@@ -371,6 +372,25 @@ function startApp() {
       log.warn('Could not remove the folders left by an interrupted Import', error);
     },
   );
+  // An Export's zip is written as a partial file beside its target; one an app killed meanwhile
+  // left is deleted now. Recording them never fails an Export: a failure is only logged.
+  const partialExports = createPartialFiles(
+    storage.documents,
+    path.join(storage.root, 'partial-exports.json'),
+  );
+  partialExports.clear().catch((error: unknown) => {
+    log.warn('Could not remove the partial files left by an interrupted Export', error);
+  });
+  const trackedPartials: Pick<PartialFiles, 'add' | 'remove'> = {
+    add: (file) =>
+      partialExports.add(file).catch((error: unknown) => {
+        log.warn(`Could not record the partial file ${file}`, error);
+      }),
+    remove: (file) =>
+      partialExports.remove(file).catch((error: unknown) => {
+        log.warn(`Could not forget the partial file ${file}`, error);
+      }),
+  };
   // One Export or Import at a time; its progress goes to the Control window, throttled.
   const transfers = createCampaignTransfers({
     send: (progress) =>
@@ -617,7 +637,7 @@ function startApp() {
               campaignName: campaign.name,
               media: await library.list(campaignId),
               appVersion: app.getVersion(),
-              writeArchive: writeZipArchive(file),
+              writeArchive: writeZipArchive(file, trackedPartials),
               signal,
               onProgress,
             });

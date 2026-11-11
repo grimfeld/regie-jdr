@@ -12,6 +12,7 @@
  *   <root>/campaigns/<campaignId>/notes-illisibles/ unreadable Notes kept aside (core/scenes.ts)
  *   <root>/settings.json                          global Settings (core/settings.ts)
  *   <root>/imports/                               Imports being checked (core/campaignImport.ts)
+ *   <root>/partial-exports.json                   Export zips being written (core/partialFiles.ts)
  * Every document has a `<file>.bak` (previous good version) next to it once rewritten.
  */
 import path from 'node:path';

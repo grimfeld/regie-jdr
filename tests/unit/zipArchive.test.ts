@@ -90,6 +90,52 @@ describe('writeZipArchive', () => {
     expect(await fs.readdir(path.dirname(target))).toEqual([]);
   });
 
+  it('records its partial file before creating it, and forgets it once done or failed', async () => {
+    const target = path.join(dir.path, 'out', 'Export.zip');
+    await fs.mkdir(path.dirname(target));
+    const events: string[] = [];
+    const partials = {
+      add: async (file: string) => {
+        const created = await fs.lstat(file).then(
+          () => true,
+          () => false,
+        );
+        events.push(`add ${path.basename(file)} created=${String(created)}`);
+      },
+      remove: (file: string) => {
+        events.push(`remove ${path.basename(file)}`);
+        return Promise.reject(new Error('the list could not be saved'));
+      },
+    };
+
+    // A list that cannot be saved after the rename does not fail a complete Export.
+    await writeZipArchive(
+      target,
+      partials,
+    )([{ path: 'a.json', compress: true, source: { data: Buffer.from('{}') } }]);
+    await expect(
+      writeZipArchive(
+        target,
+        partials,
+      )([
+        {
+          path: 'media/gone.png',
+          compress: false,
+          source: { file: path.join(dir.path, 'gone.png'), size: 3 },
+        },
+      ]),
+    ).rejects.toThrow();
+
+    const partial = String.raw`Export\.zip\.[0-9a-f-]{36}\.partial`;
+    expect(events).toEqual([
+      expect.stringMatching(new RegExp(`^add ${partial} created=false$`)),
+      expect.stringMatching(new RegExp(`^remove ${partial}$`)),
+      expect.stringMatching(new RegExp(`^add ${partial} created=false$`)),
+      expect.stringMatching(new RegExp(`^remove ${partial}$`)),
+    ]);
+    expect(await fs.readdir(path.dirname(target))).toEqual(['Export.zip']);
+  });
+
   it('writes nothing when already cancelled', async () => {
     const target = path.join(dir.path, 'Export.zip');
     const controller = new AbortController();

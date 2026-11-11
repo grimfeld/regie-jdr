@@ -14,12 +14,20 @@ import * as yauzl from 'yauzl';
 import { ZipFile } from 'yazl';
 import type { WriteArchive } from '../core/campaignExport.js';
 import { unreadableArchive, type ArchiveFile, type OpenArchive } from '../core/campaignImport.js';
+import type { PartialFiles } from '../core/partialFiles.js';
 
 /**
  * A WriteArchive writing a zip to `target`. The zip is written next to it under a temporary
  * name and renamed over `target` once complete: a failed or cancelled write leaves no file.
+ * The rename is the commit point: a cancel that comes before it leaves no file, and once it is
+ * done the Export succeeded, whatever follows. `partials` records the temporary file before it is
+ * created and forgets it after, so the next start deletes it if the app is killed meanwhile
+ * (core/partialFiles.ts); forgetting it may fail, it is only a list.
  */
-export function writeZipArchive(target: string): WriteArchive {
+export function writeZipArchive(
+  target: string,
+  partials?: Pick<PartialFiles, 'add' | 'remove'>,
+): WriteArchive {
   return async (entries, { signal, onBytes } = {}) => {
     signal?.throwIfAborted();
     // A failed input (a file gone meanwhile) or a yazl 'error' event ends the write.
@@ -60,9 +68,11 @@ export function writeZipArchive(target: string): WriteArchive {
 
     const partial = `${target}.${randomUUID()}.partial`;
     try {
+      await partials?.add(partial);
       await pipeline(zip.outputStream, createWriteStream(partial), {
         signal: signal ? AbortSignal.any([signal, failed.signal]) : failed.signal,
       });
+      signal?.throwIfAborted();
       await fsp.rename(partial, target);
     } catch (error) {
       // Stop yazl: close the file it is reading, and ignore what it still writes.
@@ -70,6 +80,8 @@ export function writeZipArchive(target: string): WriteArchive {
       inputs.forEach((input) => input.destroy());
       await fsp.rm(partial, { force: true, maxRetries: 5 });
       throw failed.signal.aborted ? failed.signal.reason : error;
+    } finally {
+      await partials?.remove(partial).catch(() => undefined);
     }
   };
 }
