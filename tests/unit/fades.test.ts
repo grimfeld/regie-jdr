@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { FADE_DURATION_MS, parseFadeDuration, withLeaving, withoutLeaving } from '../../core/fades';
+import {
+  ACTIVATE_DURATION_MS,
+  AUDIO_FADE_MS,
+  FADE_DURATION_MS,
+  dissolveEnded,
+  dissolveStarted,
+  firstLayers,
+  parseFadeDuration,
+  withLeaving,
+  withNewestPicture,
+  withoutLeaving,
+  withTransition,
+} from '../../core/fades';
 
 const keyOf = (item: { id: string }) => item.id;
 const shown = (...ids: string[]) => ids.map((id) => ({ key: id, item: { id }, leaving: false }));
@@ -87,5 +99,66 @@ describe('the items a renderer draws while they fade', () => {
   it('stops drawing items once they have faded out', () => {
     const fading = withLeaving(shown('a', 'b'), [{ id: 'b' }], keyOf);
     expect(withoutLeaving(fading)).toEqual(shown('b'));
+  });
+});
+
+describe('the picture layers a renderer draws through Transitions', () => {
+  const DURATION = 1000;
+  const [cantina] = firstLayers(0, 'cantina');
+  const keys = (layers: readonly { key: number }[]) => layers.map((layer) => layer.key);
+
+  it('Activate dissolves picture and sound over the same 1.5 s', () => {
+    expect(ACTIVATE_DURATION_MS).toBe(1500);
+    expect(AUDIO_FADE_MS.activate).toBe(ACTIVATE_DURATION_MS);
+  });
+
+  it('draws the first picture as it is, with no dissolve', () => {
+    expect(firstLayers(0, 'cantina')).toEqual([
+      { key: 0, picture: 'cantina', durationMs: 0, phase: 'shown' },
+    ]);
+  });
+
+  it('adds the incoming picture on top, transparent until its images are decoded', () => {
+    expect(withTransition([cantina], 1, 'hangar', DURATION)).toEqual([
+      cantina,
+      { key: 1, picture: 'hangar', durationMs: DURATION, phase: 'waiting' },
+    ]);
+  });
+
+  it('dissolves the incoming picture in, then draws it alone', () => {
+    const waiting = withTransition([cantina], 1, 'hangar', DURATION);
+    const dissolving = dissolveStarted(waiting, 1, 200);
+    expect(dissolving.at(-1)).toMatchObject({ phase: 'dissolving', startedAt: 200 });
+    expect(dissolveEnded(dissolving, 1)).toEqual([
+      { key: 1, picture: 'hangar', durationMs: DURATION, phase: 'shown' },
+    ]);
+  });
+
+  it('starts a new Transition from the frame on screen: a dissolve in progress stops where it is', () => {
+    const dissolving = dissolveStarted(withTransition([cantina], 1, 'hangar', DURATION), 1, 0);
+    const layers = withTransition(dissolving, 2, 'forest', DURATION);
+    expect(keys(layers)).toEqual([0, 1, 2]);
+    expect(layers[1]).toMatchObject({ phase: 'frozen' });
+    expect(layers[2]).toMatchObject({ phase: 'waiting' });
+  });
+
+  it('drops an incoming picture still waiting for its images: nothing of it was seen', () => {
+    const waiting = withTransition([cantina], 1, 'hangar', DURATION);
+    expect(keys(withTransition(waiting, 2, 'forest', DURATION))).toEqual([0, 2]);
+  });
+
+  it('ignores the end or start of a dissolve a newer Transition replaced', () => {
+    const first = dissolveStarted(withTransition([cantina], 1, 'hangar', DURATION), 1, 0);
+    const layers = withTransition(first, 2, 'forest', DURATION);
+    expect(dissolveEnded(layers, 1)).toEqual(layers);
+    expect(dissolveStarted(layers, 1, 600)).toEqual(layers);
+  });
+
+  it('keeps the newest picture up to date, older ones as they were last drawn', () => {
+    const layers = withTransition([cantina], 1, 'hangar', DURATION);
+    expect(withNewestPicture(layers, 'hangar, edited').map((layer) => layer.picture)).toEqual([
+      'cantina',
+      'hangar, edited',
+    ]);
   });
 });

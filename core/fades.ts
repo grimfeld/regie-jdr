@@ -15,13 +15,20 @@ export function parseFadeDuration(value: unknown): number | undefined {
 }
 
 /**
+ * How long Activating a Scene takes, in milliseconds: the picture's Crossfade and the audio
+ * fade alike, so sound and picture change together. Fixed for now; the Activate duration
+ * setting (#50) replaces it.
+ */
+export const ACTIVATE_DURATION_MS = 1500;
+
+/**
  * How long each kind of audio change takes, in milliseconds: fixed in Milestone 2, settings in
  * Milestone 3 (#50). The audio engine fades new voices in, ramps changed ones and fades out
  * voices that left over the duration the mix carries (core/audioMix.ts picks it).
  */
 export const AUDIO_FADE_MS = {
   /** Activating a Scene: the outgoing Scene's audio fades out, the new one's fades in. */
-  activate: 1500,
+  activate: ACTIVATE_DURATION_MS,
   /** Picking another track of the Active Scene's Music list. */
   crossfade: 2000,
   /** Switching an Ambience on or off. */
@@ -79,4 +86,78 @@ export function withLeaving<T>(
 /** What to draw once the leaving items have faded out. */
 export function withoutLeaving<T>(drawn: readonly Fading<T>[]): Fading<T>[] {
   return drawn.filter((entry) => !entry.leaving);
+}
+
+/**
+ * A picture a renderer draws during Transitions, as one layer over a black backdrop. The newest
+ * layer is on top: `waiting` (transparent) until its images are decoded, then `dissolving` (fading
+ * in over `durationMs`), then `shown`, when it is drawn alone. A layer a newer Transition covers
+ * mid-dissolve is `frozen`: its fade pauses where it is, so the new Transition starts from the
+ * frame on screen. Each layer is opaque black underneath, so a dissolve mixes the two pictures
+ * with no dip, and what both share (a Background, an Overlay) stays steady.
+ */
+export interface TransitionLayer<T> {
+  /** The Transition that brought it in (Transition.id); the first picture drawn has its own. */
+  key: number;
+  /** The newest layer's picture follows the Active Scene; older ones stay as last drawn. */
+  picture: T;
+  durationMs: number;
+  phase: 'shown' | 'waiting' | 'dissolving' | 'frozen';
+  /** When the dissolve started (the renderer's clock), once dissolving. */
+  startedAt?: number;
+}
+
+/** The first picture a renderer draws: as it is, with no dissolve (a window just opened). */
+export function firstLayers<T>(key: number, picture: T): TransitionLayer<T>[] {
+  return [{ key, picture, durationMs: 0, phase: 'shown' }];
+}
+
+/**
+ * A new Transition `key` to `picture`: a dissolve in progress stops where it is, an incoming
+ * picture still waiting for its images is dropped (nothing of it was seen), and the new picture
+ * waits on top.
+ */
+export function withTransition<T>(
+  layers: readonly TransitionLayer<T>[],
+  key: number,
+  picture: T,
+  durationMs: number,
+): TransitionLayer<T>[] {
+  const kept = layers
+    .filter((layer) => layer.phase !== 'waiting')
+    .map((layer): TransitionLayer<T> =>
+      layer.phase === 'dissolving' ? { ...layer, phase: 'frozen' } : layer,
+    );
+  return [...kept, { key, picture, durationMs, phase: 'waiting' }];
+}
+
+/** The newest picture's images are decoded: its dissolve starts at `now`. */
+export function dissolveStarted<T>(
+  layers: readonly TransitionLayer<T>[],
+  key: number,
+  now: number,
+): TransitionLayer<T>[] {
+  const newest = layers.at(-1);
+  if (newest?.key !== key || newest.phase !== 'waiting') return [...layers];
+  return [...layers.slice(0, -1), { ...newest, phase: 'dissolving', startedAt: now }];
+}
+
+/** The newest picture's dissolve is over: it is drawn alone. */
+export function dissolveEnded<T>(
+  layers: readonly TransitionLayer<T>[],
+  key: number,
+): TransitionLayer<T>[] {
+  const newest = layers.at(-1);
+  if (newest?.key !== key || newest.phase !== 'dissolving') return [...layers];
+  return [{ key, picture: newest.picture, durationMs: newest.durationMs, phase: 'shown' }];
+}
+
+/** The Active Scene changed without a Transition (an edit): only the newest picture follows. */
+export function withNewestPicture<T>(
+  layers: readonly TransitionLayer<T>[],
+  picture: T,
+): TransitionLayer<T>[] {
+  return layers.map((layer, index) =>
+    index === layers.length - 1 ? { ...layer, picture } : layer,
+  );
 }

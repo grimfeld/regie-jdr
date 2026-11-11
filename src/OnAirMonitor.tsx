@@ -45,6 +45,7 @@ export function OnAirMonitor({ control }: { control: ControlBridge | undefined }
           blackout={blackout}
           window="control"
           fadeDurationMs={onAir?.fadeDurationMs}
+          transition={onAir?.transition}
         />
         {badge && <span className="on-air-badge">{badge}</span>}
       </div>

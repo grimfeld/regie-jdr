@@ -205,3 +205,160 @@ describe('a missing Media on the canvas', () => {
     expect(placement?.style.visibility).toBe('hidden');
   });
 });
+
+describe('a Transition on the broadcast', () => {
+  const OTHER = `regie-media://media/campagne/${'b'.repeat(64)}.png`;
+  const DISSOLVE = 1500;
+  const background = (id: string, src: string) => ({
+    id,
+    src,
+    fit: 'cover' as const,
+    zoom: 1,
+    focus: { x: 0.5, y: 0.5 },
+  });
+  const cantina: Picture = { backgrounds: [background('b1', SRC)], overlays: [], title: 'Cantina' };
+  const hangar: Picture = { backgrounds: [background('b2', OTHER)], overlays: [], title: 'Hangar' };
+
+  function onAir(picture: Picture | null, id: number | null, blackout = false) {
+    act(() =>
+      root.render(
+        <SceneCanvas
+          picture={picture}
+          blackout={blackout}
+          window="broadcast"
+          fadeDurationMs={FADE}
+          transition={id === null ? null : { id, durationMs: DISSOLVE }}
+        />,
+      ),
+    );
+  }
+
+  /** Each picture layer, bottom first: its phase and the Media addresses it draws. */
+  function layers() {
+    return [...container.querySelectorAll('.canvas-layer')].map((layer) => ({
+      phase: layer.getAttribute('data-transition'),
+      srcs: [...layer.querySelectorAll('img')].map((image) => image.getAttribute('src')),
+    }));
+  }
+
+  function dissolve() {
+    act(() => {
+      vi.advanceTimersByTime(DISSOLVE);
+    });
+  }
+
+  it('draws what is on air when it opens, with no dissolve', () => {
+    onAir(cantina, 3);
+    expect(layers()).toEqual([{ phase: 'shown', srcs: [SRC] }]);
+  });
+
+  it('crossfades: the incoming Scene waits for its images, dissolves in, then is drawn alone', async () => {
+    onAir(cantina, 1);
+    await loadImages();
+    onAir(hangar, 2);
+    expect(layers()).toEqual([
+      { phase: 'shown', srcs: [SRC] },
+      { phase: 'waiting', srcs: [OTHER] },
+    ]);
+    // Never drawn half-done: hidden until decoded, then drawn whole as the layer dissolves.
+    expect(drawn('.canvas-layer:last-child .canvas-background')).toEqual([
+      { fade: 'pending', text: '' },
+    ]);
+
+    dissolve();
+    expect(layers()[1]?.phase).toBe('waiting');
+
+    await loadImages();
+    expect(layers()[1]?.phase).toBe('dissolving');
+    expect(drawn('.canvas-layer:last-child .canvas-background')).toEqual([
+      { fade: 'steady', text: '' },
+    ]);
+    expect(
+      container
+        .querySelector<HTMLElement>('.canvas-layer:last-child')
+        ?.style.getPropertyValue('--transition-duration'),
+    ).toBe(`${DISSOLVE}ms`);
+
+    dissolve();
+    expect(layers()).toEqual([{ phase: 'shown', srcs: [OTHER] }]);
+  });
+
+  it('dissolves the Scene title with the picture', async () => {
+    onAir(cantina, 1);
+    await loadImages();
+    onAir(hangar, 2);
+    expect(drawn('.canvas-title')).toEqual([
+      { fade: 'shown', text: 'Cantina' },
+      { fade: 'steady', text: 'Hangar' },
+    ]);
+    await loadImages();
+    dissolve();
+    expect(drawn('.canvas-title')).toEqual([{ fade: 'steady', text: 'Hangar' }]);
+  });
+
+  it('fades in from black when nothing was on air', async () => {
+    onAir(null, null);
+    onAir(cantina, 1);
+    expect(layers()).toEqual([
+      { phase: 'shown', srcs: [] },
+      { phase: 'waiting', srcs: [SRC] },
+    ]);
+    await loadImages();
+    dissolve();
+    expect(layers()).toEqual([{ phase: 'shown', srcs: [SRC] }]);
+  });
+
+  it('starts from the frame on screen when Activated mid-Transition: the dissolve pauses', async () => {
+    onAir(cantina, 1);
+    await loadImages();
+    onAir(hangar, 2);
+    await loadImages();
+    act(() => {
+      vi.advanceTimersByTime(DISSOLVE / 2);
+    });
+
+    onAir(cantina, 3);
+    expect(layers().map((layer) => layer.phase)).toEqual(['shown', 'frozen', 'waiting']);
+    await loadImages();
+    dissolve();
+    expect(layers()).toEqual([{ phase: 'shown', srcs: [SRC] }]);
+  });
+
+  it('drops an incoming Scene nobody saw yet when another is Activated', async () => {
+    onAir(cantina, 1);
+    await loadImages();
+    onAir(hangar, 2);
+    onAir({ ...cantina, title: 'Cantina, plus tard' }, 3);
+    expect(layers().map((layer) => layer.phase)).toEqual(['shown', 'waiting']);
+  });
+
+  it('starts the dissolve when an incoming image is missing: nothing to wait for', async () => {
+    onAir(cantina, 1);
+    await loadImages();
+    onAir(hangar, 2);
+    act(() => {
+      container.querySelector('.canvas-layer:last-child img')?.dispatchEvent(new Event('error'));
+    });
+    expect(layers()[1]?.phase).toBe('dissolving');
+  });
+
+  it('keeps Blackout above the Transition, which runs underneath', async () => {
+    onAir(cantina, 1, true);
+    await loadImages();
+    onAir(hangar, 2, true);
+    await loadImages();
+    const stage = container.querySelector('.scene-canvas-stage');
+    expect(stage?.lastElementChild?.className).toBe('canvas-blackout');
+    dissolve();
+    expect(layers()).toEqual([{ phase: 'shown', srcs: [OTHER] }]);
+    expect(drawn('.canvas-blackout')).toEqual([{ fade: 'shown', text: '' }]);
+  });
+
+  it('fades an edit of the Active Scene item by item, with no Transition', async () => {
+    onAir(cantina, 1);
+    await loadImages();
+    onAir({ ...cantina, title: undefined }, 1);
+    expect(layers()).toEqual([{ phase: 'shown', srcs: [SRC] }]);
+    expect(drawn('.canvas-title')).toEqual([{ fade: 'leaving', text: 'Cantina' }]);
+  });
+});

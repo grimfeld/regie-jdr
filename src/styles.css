@@ -808,6 +808,31 @@ button {
 .scene-canvas-stage [data-fade='leaving'] {
   opacity: 0;
 }
+/* A steady item (it dissolves in with its picture): not drawn until decoded, then drawn at once. */
+.scene-canvas-stage [data-fade='pending'] {
+  visibility: hidden;
+}
+/*
+ * Transitions (src/SceneCanvas.tsx data-transition): each picture is a layer on a black
+ * backdrop. The incoming one waits transparent until its images are decoded, then dissolves in
+ * linearly over the Transition's duration. A newer Transition pauses a dissolve where it is
+ * (frozen), so it starts from the frame on screen.
+ */
+.canvas-layer {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+.canvas-layer[data-transition='waiting'] {
+  opacity: 0;
+}
+.canvas-layer[data-transition='dissolving'],
+.canvas-layer[data-transition='frozen'] {
+  animation: canvas-fade-in var(--transition-duration, 0ms) linear backwards;
+}
+.canvas-layer[data-transition='frozen'] {
+  animation-play-state: paused;
+}
 @keyframes canvas-fade-in {
   from {
     opacity: 0;

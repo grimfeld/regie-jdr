@@ -23,6 +23,7 @@ export default function BroadcastView({ bridge }: { bridge: BroadcastBridge | un
         blackout={onAir?.blackout}
         window="broadcast"
         fadeDurationMs={onAir?.fadeDurationMs}
+        transition={onAir?.transition}
       />
     </main>
   );
