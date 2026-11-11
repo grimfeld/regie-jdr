@@ -404,7 +404,8 @@ function startApp() {
     onProgress: (progress: ByteProgress) => void,
   ): Promise<CampaignImportResult> {
     await importLeftoversCleared;
-    const { id } = await importCampaign({
+    // Once importCampaign returns, the Campaign is in place: nothing after it may fail the Import.
+    const { id, campaign } = await importCampaign({
       openArchive: openZipArchive(file),
       campaignsFolder: storage.campaignsFolder,
       importsFolder: storage.importsFolder,
@@ -412,8 +413,6 @@ function startApp() {
       signal,
       onProgress,
     });
-    const campaign = await storage.campaigns.get(id);
-    if (!campaign) throw new CampaignError('La campagne importée est illisible.');
     log.info(`Imported Campaign ${id}`);
     return { imported: true, campaign };
   }

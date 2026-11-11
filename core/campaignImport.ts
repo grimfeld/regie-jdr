@@ -35,7 +35,7 @@ import { createWriteStream } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import type { CampaignId } from '../shared/domain.js';
+import type { Campaign, CampaignId } from '../shared/domain.js';
 import {
   EXPORT_FORMAT,
   EXPORT_FORMAT_VERSION,
@@ -492,6 +492,9 @@ async function exists(file: string): Promise<boolean> {
  * " (importée)" suffix. An Export whose Media do not fit in the drive's free space is refused
  * before anything is unpacked. Progress is in Media bytes unpacked; `signal` cancels. On any
  * failure, nothing is left behind.
+ *
+ * The final move is the commit point: Cancel is checked right before it, and once it is done
+ * nothing else runs, so the Campaign it returns is there (the caller need not read it back).
  */
 export async function importCampaign(input: {
   openArchive: OpenArchive;
@@ -503,7 +506,7 @@ export async function importCampaign(input: {
   statfs?: Statfs;
   signal?: AbortSignal;
   onProgress?: (progress: ImportProgress) => void;
-}): Promise<{ id: CampaignId; name: string }> {
+}): Promise<{ id: CampaignId; name: string; campaign: Campaign }> {
   const { campaignsFolder, importsFolder, signal } = input;
   const newId = input.newId ?? randomUUID;
   signal?.throwIfAborted();
@@ -535,14 +538,14 @@ export async function importCampaign(input: {
       await fsp.writeFile(path.join(staging, documentPath), text, { encoding: 'utf8', flag: 'wx' });
     }
 
-    signal?.throwIfAborted();
     const id = newId();
     await fsp.mkdir(campaignsFolder, { recursive: true });
     const target = path.join(campaignsFolder, id);
     // Import never overwrites: a Campaign already there keeps its folder.
     if (await exists(target)) throw new ImportError('Une campagne porte déjà cet identifiant.');
+    signal?.throwIfAborted();
     await nodeFileSystem.rename(staging, target);
-    return { id, name };
+    return { id, name, campaign: { id, ...campaign.value, name } };
   } catch (error) {
     await fsp.rm(staging, { recursive: true, force: true, maxRetries: 5 });
     throw error;

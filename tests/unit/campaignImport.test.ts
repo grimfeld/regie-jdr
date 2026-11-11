@@ -608,6 +608,43 @@ describe('importCampaign', () => {
     expect(await filesUnder(folders().importsFolder)).toEqual([]);
   });
 
+  it('checks Cancel right before the final move, the moment the Import is committed', async () => {
+    const controller = new AbortController();
+    await expect(
+      importCampaign({
+        openArchive: fakeArchive(exportEntries()).open,
+        ...folders(),
+        existingNames: [],
+        signal: controller.signal,
+        // Cancel arrives once everything is unpacked, just before the Campaign moves in.
+        newId: () => {
+          controller.abort();
+          return 'late-cancel';
+        },
+      }),
+    ).rejects.toThrow();
+    expect(await filesUnder(folders().campaignsFolder)).toEqual([]);
+    expect(await filesUnder(folders().importsFolder)).toEqual([]);
+  });
+
+  it('returns the imported Campaign as stored, so nothing needs reading after the move', async () => {
+    const imported = await importCampaign({
+      openArchive: fakeArchive(exportEntries()).open,
+      ...folders(),
+      existingNames: ['Les Ombres'],
+      newId: () => 'imported',
+    });
+    const stored = JSON.parse(
+      await fs.readFile(path.join(folders().campaignsFolder, 'imported', 'campaign.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const { schemaVersion: _version, ...fields } = stored;
+    expect(imported).toEqual({
+      id: 'imported',
+      name: 'Les Ombres (importée)',
+      campaign: { id: 'imported', ...fields },
+    });
+  });
+
   describe('free disk space', () => {
     /** A statfs reporting `freeBytes` available, recording the folders it is asked about. */
     function fakeStatfs(freeBytes: number) {
