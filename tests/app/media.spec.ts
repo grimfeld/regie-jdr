@@ -45,9 +45,13 @@ async function importImages(page: Page) {
   await page.getByRole('button', { name: 'Importer des images' }).click();
 }
 
+/** Imports sounds with the picker, choosing `role` when the library asks for it. */
 async function importSounds(page: Page, role: 'Musique' | 'Bruitage' | 'Ambiance') {
-  await page.getByLabel('Rôle des sons importés').selectOption({ label: role });
   await page.getByRole('button', { name: 'Importer des sons' }).click();
+  await page
+    .getByRole('dialog', { name: 'Rôle des sons' })
+    .getByRole('button', { name: role })
+    .click();
 }
 
 test('an imported image is in the library, loads, and is still there after a restart', async ({

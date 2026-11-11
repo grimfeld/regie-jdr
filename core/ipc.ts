@@ -116,14 +116,19 @@ function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
   return { campaignId: value.campaignId };
 }
 
+function importKindOf(value: Record<string, unknown>): Parsed<MediaImportKind> {
+  if (value.accept === 'image') return { accept: 'image' };
+  if (value.accept === 'audio' && isAudioRole(value.role)) {
+    return { accept: 'audio', role: value.role };
+  }
+  return INVALID;
+}
+
 function mediaImport(value: unknown): Parsed<{ campaignId: CampaignId } & MediaImportKind> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value)) return INVALID;
-  if (value.accept === 'image') return { ...campaign, accept: 'image' };
-  if (value.accept === 'audio' && isAudioRole(value.role)) {
-    return { ...campaign, accept: 'audio', role: value.role };
-  }
-  return INVALID;
+  const kind = importKindOf(value);
+  return kind === INVALID ? INVALID : { ...campaign, ...kind };
 }
 
 /** More dropped files than this in one message is a malformed message. */
@@ -145,13 +150,17 @@ function isDroppedPath(value: unknown): value is string {
   );
 }
 
-function droppedImport(value: unknown): Parsed<{ campaignId: CampaignId; files: string[] }> {
+function droppedImport(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; files: string[] } & MediaImportKind> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const kind = importKindOf(value);
+  if (kind === INVALID) return INVALID;
   const { files } = value;
   if (!Array.isArray(files) || files.length > MAX_DROPPED_FILES) return INVALID;
   if (!files.every(isDroppedPath)) return INVALID;
-  return { ...campaign, files: [...files] };
+  return { ...campaign, files: [...files], ...kind };
 }
 
 function categoryChange(

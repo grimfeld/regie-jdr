@@ -2,8 +2,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { AudioLines, ImagePlus, Music2, Pencil, Search, Trash2 } from 'lucide-react';
 import type { AudioRole, CampaignId, ImageCategory, ImageMedia, Media } from '../shared/domain';
 import type { ControlBridge, MediaDeletion, MediaImportKind } from '../shared/contract';
-import { imageLibrary, type LibraryFilter } from '../core/librarySearch';
-import { thumbnailAddress } from '../core/mediaAddress';
+import {
+  audioLibrary,
+  formatDuration,
+  imageLibrary,
+  type AudioFilter,
+  type LibraryFilter,
+} from '../core/librarySearch';
+import { mediaKindOfFileName, thumbnailAddress } from '../core/mediaAddress';
 import { errorMessage } from './CampaignList';
 import { carriesFiles, droppedFiles, startMediaDrag } from './mediaDrag';
 import { useDropTarget } from './PlacementLists';
@@ -24,9 +30,23 @@ const filterLabels: Record<LibraryFilter, string> = {
 
 const roleLabels: Record<AudioRole, string> = {
   music: 'Musique',
-  soundEffect: 'Bruitage',
   ambience: 'Ambiance',
+  soundEffect: 'Bruitage',
 };
+
+const audioFilterLabels: Record<AudioFilter, string> = {
+  all: 'Tous',
+  music: 'Musiques',
+  ambience: 'Ambiances',
+  soundEffect: 'Bruitages',
+};
+
+/** Sounds waiting for the Game Master to choose their role, and what to do with the answer. */
+interface RoleRequest {
+  /** How many dropped sounds; 0 when they are still to be picked. */
+  count: number;
+  answer: (role: AudioRole | null) => void;
+}
 
 interface Props {
   campaignId: CampaignId;
@@ -40,9 +60,10 @@ interface Props {
 }
 
 /**
- * The open Campaign's Media library: import (with the picker, or by dropping image files from
- * Explorer on it), the image library (thumbnails, filter by Image category, search by name), the
- * sounds, renaming, changing an image's category, deleting.
+ * The open Campaign's Media library: import (with the picker, or by dropping files from Explorer
+ * on it; sounds get the role the Game Master chooses then, for good), the image library
+ * (thumbnails, filter by Image category, search by name), the audio library (filter by role,
+ * search by name, duration), renaming, changing an image's category, deleting.
  */
 export function MediaLibrary({
   campaignId,
@@ -52,15 +73,21 @@ export function MediaLibrary({
   importRevision,
 }: Props) {
   const [media, setMedia] = useState<Media[]>([]);
-  const [audioRole, setAudioRole] = useState<AudioRole>('music');
   const [filter, setFilter] = useState<LibraryFilter>('all');
   const [query, setQuery] = useState('');
+  const [audioFilter, setAudioFilter] = useState<AudioFilter>('all');
+  const [audioQuery, setAudioQuery] = useState('');
+  const [roleRequest, setRoleRequest] = useState<RoleRequest | null>(null);
   /** A Media used by Scenes, waiting for the Game Master to confirm its deletion. */
   const [pending, setPending] = useState<{ media: Media; scenes: string[] } | null>(null);
 
   const images = useMemo(() => imageLibrary(media, filter, query), [media, filter, query]);
-  const sounds = useMemo(() => media.filter((item) => item.kind === 'audio'), [media]);
+  const sounds = useMemo(
+    () => audioLibrary(media, audioFilter, audioQuery),
+    [media, audioFilter, audioQuery],
+  );
   const hasImages = media.some((item) => item.kind === 'image');
+  const hasSounds = media.some((item) => item.kind === 'audio');
 
   useEffect(() => {
     if (!control) return;
@@ -98,10 +125,48 @@ export function MediaLibrary({
     refused.forEach(showNotice);
   }
 
-  /** Image files dropped from Explorer, imported like picked ones. Failures: as above. */
+  /** Asks the Game Master which role `count` sounds get; null when they cancel. */
+  function askRole(count: number): Promise<AudioRole | null> {
+    return new Promise((resolve) => {
+      setRoleRequest({
+        count,
+        answer: (role) => {
+          setRoleRequest(null);
+          resolve(role);
+        },
+      });
+    });
+  }
+
+  /** Picks sounds once the Game Master has chosen their role. */
+  async function importSounds() {
+    const role = await askRole(0);
+    if (role) await importMedia({ accept: 'audio', role });
+  }
+
+  /**
+   * Files dropped from Explorer, imported like picked ones: sounds with the role the Game Master
+   * then chooses, everything else as images (other types are refused there, with a message).
+   * Failures: as above.
+   */
   async function importDropped(files: readonly File[]) {
     if (!control || files.length === 0) return;
-    const { imported, refused } = await control.importDroppedImages(campaignId, files);
+    const dropped = files.filter((file) => mediaKindOfFileName(file.name) === 'audio');
+    const others = files.filter((file) => !dropped.includes(file));
+    if (others.length > 0) {
+      const { imported, refused } = await control.importDroppedMedia(campaignId, others, {
+        accept: 'image',
+      });
+      merge(imported);
+      refused.forEach(showNotice);
+    }
+    if (dropped.length === 0) return;
+    const role = await askRole(dropped.length);
+    if (!role) return;
+    const { imported, refused } = await control.importDroppedMedia(campaignId, dropped, {
+      accept: 'audio',
+      role,
+    });
     merge(imported);
     refused.forEach(showNotice);
   }
@@ -175,24 +240,12 @@ export function MediaLibrary({
           >
             <ImagePlus size={16} /> Importer des images
           </button>
-          <label className="library-role">
-            Rôle des sons importés
-            <select value={audioRole} onChange={(e) => setAudioRole(e.target.value as AudioRole)}>
-              {Object.entries(roleLabels).map(([role, label]) => (
-                <option key={role} value={role}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="secondary-button"
-            onClick={() => void importMedia({ accept: 'audio', role: audioRole })}
-          >
+          <button className="secondary-button" onClick={() => void importSounds()}>
             <AudioLines size={16} /> Importer des sons
           </button>
         </div>
       </div>
+      {roleRequest && <RoleChoice request={roleRequest} />}
       {hasImages && (
         <div className="library-toolbar">
           <div className="library-filter" role="group" aria-label="Filtrer les images">
@@ -252,6 +305,32 @@ export function MediaLibrary({
           Aucune image ne correspond à ce filtre ou à cette recherche.
         </div>
       )}
+      {hasSounds && (
+        <div className="library-toolbar sound-toolbar">
+          <div className="library-filter" role="group" aria-label="Filtrer les sons">
+            {(Object.keys(audioFilterLabels) as AudioFilter[]).map((option) => (
+              <button
+                key={option}
+                aria-pressed={audioFilter === option}
+                className={audioFilter === option ? 'selected' : ''}
+                onClick={() => setAudioFilter(option)}
+              >
+                {audioFilterLabels[option]}
+              </button>
+            ))}
+          </div>
+          <label className="library-search">
+            <Search size={14} aria-hidden />
+            <input
+              type="search"
+              aria-label="Rechercher un son"
+              placeholder="Rechercher par nom"
+              value={audioQuery}
+              onChange={(e) => setAudioQuery(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
       <ul className="media-library sound-library" aria-label="Sons">
         {sounds.map((item) => (
           <li className="media-item" key={item.id}>
@@ -259,11 +338,22 @@ export function MediaLibrary({
               <Music2 size={20} />
             </span>
             <MediaName item={item} onRename={(name) => void rename(item, name)} />
-            <span className="media-role">{roleLabels[item.role]}</span>
+            <span className="media-sound-facts">
+              <span className="media-role">{roleLabels[item.role]}</span>
+              <span
+                className="media-duration"
+                title={item.durationSeconds === null ? 'Durée inconnue' : 'Durée'}
+              >
+                {formatDuration(item.durationSeconds)}
+              </span>
+            </span>
             {deleteButton(item)}
           </li>
         ))}
       </ul>
+      {hasSounds && sounds.length === 0 && (
+        <div className="asset-empty">Aucun son ne correspond à ce filtre ou à cette recherche.</div>
+      )}
       {pending && (
         <div
           className="media-delete-confirm"
@@ -295,9 +385,46 @@ export function MediaLibrary({
       {media.length === 0 && (
         <div className="asset-empty">
           Vos décors, personnages, musiques, bruitages et ambiances apparaîtront ici après import.
-          Vous pouvez aussi glisser des images ici depuis l’Explorateur.
+          Vous pouvez aussi glisser des images et des sons ici depuis l’Explorateur.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Asks which role imported sounds get: Music, Ambience or Sound effect. The role cannot be
+ * changed afterwards, so the question says so. Escape cancels.
+ */
+function RoleChoice({ request }: { request: RoleRequest }) {
+  const { count, answer } = request;
+  const what = count === 0 ? 'ces sons' : count > 1 ? `ces ${count} sons` : 'ce son';
+  return (
+    <div
+      className="media-role-choice"
+      role="dialog"
+      aria-label="Rôle des sons"
+      aria-describedby="media-role-message"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') answer(null);
+      }}
+    >
+      <p id="media-role-message">Quel rôle donner à {what} ? Il ne pourra plus être changé.</p>
+      <div className="media-delete-actions">
+        {(Object.keys(roleLabels) as AudioRole[]).map((role, index) => (
+          <button
+            key={role}
+            className="primary-button"
+            autoFocus={index === 0}
+            onClick={() => answer(role)}
+          >
+            {roleLabels[role]}
+          </button>
+        ))}
+        <button className="secondary-button" onClick={() => answer(null)}>
+          Annuler
+        </button>
+      </div>
     </div>
   );
 }

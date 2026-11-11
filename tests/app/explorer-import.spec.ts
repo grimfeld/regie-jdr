@@ -33,6 +33,10 @@ function images(page: Page) {
   return page.getByRole('list', { name: 'Images' });
 }
 
+function sounds(page: Page) {
+  return page.getByRole('list', { name: 'Sons' });
+}
+
 function editor(page: Page) {
   return page.getByRole('region', { name: 'Scène ouverte' });
 }
@@ -44,7 +48,7 @@ async function createScene(page: Page, name: string) {
   await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
 }
 
-test('image files dropped on the library are imported; other types are refused with a message', async ({
+test('files dropped on the library are imported, sounds with the role asked for; other types are refused with a message', async ({
   regie,
 }) => {
   const { controlWindow, dataDir } = regie;
@@ -57,13 +61,52 @@ test('image files dropped on the library are imported; other types are refused w
   expect(over).toBe(true);
   await expect(images(controlWindow).getByRole('img', { name: IMAGE })).toBeVisible();
   await expect(images(controlWindow).getByRole('listitem')).toHaveCount(1);
-  await expect(controlWindow.getByRole('alert').first()).toBeVisible();
-  const alerts = controlWindow.getByRole('alert');
-  await expect(alerts).toContainText([
+  await expect(controlWindow.getByRole('alert')).toContainText([
     '« notes.txt » n’a pas été importé : ce type de fichier n’est pas pris en charge',
-    '« cloche.ogg » n’a pas été importé : ce n’est pas une image.',
   ]);
-  expect(await storedMediaFiles(dataDir)).toHaveLength(1);
+  // The sound waits for its role, which cannot be changed later.
+  const question = controlWindow.getByRole('dialog', { name: 'Rôle des sons' });
+  await expect(question).toContainText(
+    'Quel rôle donner à ce son ? Il ne pourra plus être changé.',
+  );
+  await question.getByRole('button', { name: 'Bruitage' }).click();
+  await expect(question).toHaveCount(0);
+  await expect(sounds(controlWindow).getByRole('listitem')).toHaveCount(1);
+  await expect(sounds(controlWindow).getByRole('listitem')).toContainText('cloche');
+  await expect(sounds(controlWindow).getByRole('listitem')).toContainText('Bruitage');
+  expect(await storedMediaFiles(dataDir)).toHaveLength(2);
+});
+
+test('cancelling the role of dropped sounds imports none of them', async ({ regie }) => {
+  const { controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow);
+  const sound = await fileOnDisk(dataDir, 'cloche.ogg', 'OggS');
+  const other = await fileOnDisk(dataDir, 'gong.mp3', 'gong');
+
+  await dropFiles(library(controlWindow), [sound, other]);
+  const question = controlWindow.getByRole('dialog', { name: 'Rôle des sons' });
+  await expect(question).toContainText('Quel rôle donner à ces 2 sons ?');
+  await question.getByRole('button', { name: 'Annuler' }).click();
+
+  await expect(question).toHaveCount(0);
+  await expect(sounds(controlWindow).getByRole('listitem')).toHaveCount(0);
+  expect(await storedMediaFiles(dataDir)).toEqual([]);
+});
+
+test('a sound dropped on the Scene editor is refused: only images are placed there', async ({
+  regie,
+}) => {
+  const { controlWindow, dataDir } = regie;
+  await createCampaign(controlWindow);
+  await createScene(controlWindow, 'Cantina');
+  const sound = await fileOnDisk(dataDir, 'cloche.ogg', 'OggS');
+
+  await dropFiles(editor(controlWindow).locator('.editor-canvas .scene-canvas'), [sound]);
+
+  await expect(controlWindow.getByRole('alert')).toContainText(
+    '« cloche.ogg » n’a pas été importé : ce n’est pas une image.',
+  );
+  expect(await storedMediaFiles(dataDir)).toEqual([]);
 });
 
 test('dropping a file the Campaign already has keeps one Media and one file', async ({ regie }) => {

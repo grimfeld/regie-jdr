@@ -146,7 +146,7 @@ describe('Media channels', () => {
     for (const [channel, args] of [
       ['media:list', [{ campaignId }]],
       ['media:import', [{ campaignId, accept: 'image' }]],
-      ['media:import-dropped', [{ campaignId, files: [] }]],
+      ['media:import-dropped', [{ campaignId, files: [], accept: 'image' }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
       ['media:rename', [{ campaignId, mediaId, name: 'Port de nuit' }]],
       ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
@@ -167,15 +167,18 @@ describe('Media channels', () => {
     }
   });
 
-  it('accept dropped files as absolute paths, keeping only contract fields', () => {
+  it('accept dropped files as absolute paths, as images or as audio with a role, keeping only contract fields', () => {
     const files = [path.resolve('Cantina.png'), path.resolve('Orc.webp')];
     expect(
-      checkInvoke('media:import-dropped', 'control', [{ campaignId, files, accept: 'audio' }]),
-    ).toEqual({ ok: true, payload: { campaignId, files } });
-    expect(checkInvoke('media:import-dropped', 'control', [{ campaignId, files: [] }])).toEqual({
-      ok: true,
-      payload: { campaignId, files: [] },
-    });
+      checkInvoke('media:import-dropped', 'control', [
+        { campaignId, files, accept: 'image', role: 'music' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, files, accept: 'image' } });
+    expect(
+      checkInvoke('media:import-dropped', 'control', [
+        { campaignId, files: [], accept: 'audio', role: 'ambience', x: 1 },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, files: [], accept: 'audio', role: 'ambience' } });
   });
 
   it('accept a category change, keeping only contract fields', () => {
@@ -221,45 +224,69 @@ describe('Media channels', () => {
       'media:import',
       [{ campaignId, accept: 'image' }, ['C:/x.png']],
     ],
-    ['dropped files that are not a list', 'media:import-dropped', [{ campaignId, files: 'x' }]],
-    ['a dropped file that is not text', 'media:import-dropped', [{ campaignId, files: [7] }]],
-    ['a dropped file with an empty path', 'media:import-dropped', [{ campaignId, files: [''] }]],
+    [
+      'dropped files that are not a list',
+      'media:import-dropped',
+      [{ campaignId, files: 'x', accept: 'image' }],
+    ],
+    [
+      'a dropped file that is not text',
+      'media:import-dropped',
+      [{ campaignId, files: [7], accept: 'image' }],
+    ],
+    [
+      'a dropped file with an empty path',
+      'media:import-dropped',
+      [{ campaignId, files: [''], accept: 'image' }],
+    ],
     [
       'a dropped file with a relative path',
       'media:import-dropped',
-      [{ campaignId, files: ['x.png'] }],
+      [{ campaignId, files: ['x.png'], accept: 'image' }],
     ],
     [
       'a dropped file up the folder tree',
       'media:import-dropped',
-      [{ campaignId, files: ['../../x.png'] }],
+      [{ campaignId, files: ['../../x.png'], accept: 'image' }],
     ],
     [
       'a dropped file on a network share',
       'media:import-dropped',
-      [{ campaignId, files: ['\\\\serveur\\partage\\x.png'] }],
+      [{ campaignId, files: ['\\\\serveur\\partage\\x.png'], accept: 'image' }],
     ],
     [
       'a dropped file on a network share, forward slashes',
       'media:import-dropped',
-      [{ campaignId, files: ['//serveur/partage/x.png'] }],
+      [{ campaignId, files: ['//serveur/partage/x.png'], accept: 'image' }],
     ],
     [
       'a dropped file with a NUL character',
       'media:import-dropped',
-      [{ campaignId, files: [`${path.resolve('x.png')}\0.txt`] }],
+      [{ campaignId, files: [`${path.resolve('x.png')}\0.txt`], accept: 'image' }],
     ],
     [
       'a dropped file with a huge path',
       'media:import-dropped',
-      [{ campaignId, files: [path.resolve('x'.repeat(40000))] }],
+      [{ campaignId, files: [path.resolve('x'.repeat(40000))], accept: 'image' }],
     ],
     [
       'too many dropped files',
       'media:import-dropped',
-      [{ campaignId, files: Array.from({ length: 1001 }, (_, i) => path.resolve(`${i}.png`)) }],
+      [
+        {
+          campaignId,
+          files: Array.from({ length: 1001 }, (_, i) => path.resolve(`${i}.png`)),
+          accept: 'image',
+        },
+      ],
     ],
-    ['dropped files with no Campaign id', 'media:import-dropped', [{ files: [] }]],
+    ['dropped files with no Campaign id', 'media:import-dropped', [{ files: [], accept: 'image' }]],
+    ['dropped files with no kind', 'media:import-dropped', [{ campaignId, files: [] }]],
+    [
+      'dropped audio with no role',
+      'media:import-dropped',
+      [{ campaignId, files: [], accept: 'audio' }],
+    ],
     ['an unknown category', 'media:set-category', [{ campaignId, mediaId, category: 'creature' }]],
     ['no Media id', 'media:set-category', [{ campaignId, category: 'scenery' }]],
     ['a rename with no name', 'media:rename', [{ campaignId, mediaId }]],

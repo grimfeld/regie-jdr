@@ -64,10 +64,11 @@ const bridge: ControlBridge = {
   listMedia: (campaignId) => invoke('media:list', { campaignId }),
   importMedia: (campaignId, kind) => invoke('media:import', { campaignId, ...kind }),
   // Only files the Game Master really dropped have a path; files made by the page have none.
-  importDroppedImages: (campaignId, files) =>
+  importDroppedMedia: (campaignId, files, kind) =>
     invoke('media:import-dropped', {
       campaignId,
       files: files.map((file) => webUtils.getPathForFile(file)).filter((file) => file !== ''),
+      ...kind,
     }),
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),

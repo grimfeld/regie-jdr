@@ -163,14 +163,30 @@ button {
   align-items: center;
   gap: 10px;
 }
-.library-role {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  color: var(--muted);
+.media-role-choice {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel2);
+  font-size: 12px;
 }
-.library-role select,
+.media-role-choice p {
+  margin: 0 0 8px;
+}
+.sound-toolbar {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+.media-sound-facts {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.media-duration {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .media-item select {
   background: var(--panel);
   color: var(--text);

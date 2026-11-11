@@ -197,12 +197,13 @@ export interface InvokeChannels {
     result: MediaImportResult;
   };
   /**
-   * Import image files the Game Master dropped from outside the app (Windows Explorer) into the
-   * Campaign's library, like `media:import` with `accept: 'image'`. `files` are the dropped
-   * files' absolute paths, which only the Control window's bridge reads off the drop.
+   * Import files the Game Master dropped from outside the app (Windows Explorer) into the
+   * Campaign's library, like `media:import`: images, or audio with the role chosen for the drop.
+   * `files` are the dropped files' absolute paths, which only the Control window's bridge reads
+   * off the drop.
    */
   'media:import-dropped': {
-    payload: { campaignId: CampaignId; files: string[] };
+    payload: { campaignId: CampaignId; files: string[] } & MediaImportKind;
     result: MediaImportResult;
   };
   /** Change an image's category. Fails for audio: its role is fixed at import. */
@@ -315,10 +316,14 @@ export interface ControlBridge extends BroadcastBridge {
   listMedia(campaignId: CampaignId): Promise<Media[]>;
   importMedia(campaignId: CampaignId, kind: MediaImportKind): Promise<MediaImportResult>;
   /**
-   * Imports image files dropped from outside the app. Takes the drop's File objects, not
+   * Imports files dropped from outside the app, as `kind`. Takes the drop's File objects, not
    * paths: the bridge reads their paths itself, so the page cannot name other files.
    */
-  importDroppedImages(campaignId: CampaignId, files: readonly File[]): Promise<MediaImportResult>;
+  importDroppedMedia(
+    campaignId: CampaignId,
+    files: readonly File[],
+    kind: MediaImportKind,
+  ): Promise<MediaImportResult>;
   setImageCategory(
     campaignId: CampaignId,
     mediaId: MediaId,

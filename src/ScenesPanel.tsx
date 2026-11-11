@@ -171,7 +171,9 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
     try {
       if (mediaId === undefined) {
         if (files.length === 0) return;
-        const { imported, refused } = await control.importDroppedImages(campaignId, files);
+        const { imported, refused } = await control.importDroppedMedia(campaignId, files, {
+          accept: 'image',
+        });
         refused.forEach(showNotice);
         if (imported.length > 0) onMediaImported();
         for (const media of imported) {

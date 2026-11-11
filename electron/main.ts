@@ -318,8 +318,8 @@ function startApp() {
         result.refused.forEach((message) => log.info(`Media refused: ${message}`));
         return result;
       },
-      'media:import-dropped': async ({ campaignId, files }) => {
-        const result = await library.import(campaignId, files, { accept: 'image' });
+      'media:import-dropped': async ({ campaignId, files, ...kind }) => {
+        const result = await library.import(campaignId, files, kind);
         result.refused.forEach((message) => log.info(`Media refused: ${message}`));
         return result;
       },
