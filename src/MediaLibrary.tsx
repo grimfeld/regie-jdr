@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AudioLines, ImagePlus, Music2, Pencil, Search, Trash2 } from 'lucide-react';
+import { AudioLines, ImagePlus, Music2, Pencil, Search, Star, Trash2 } from 'lucide-react';
 import type { AudioRole, CampaignId, ImageCategory, ImageMedia, Media } from '../shared/domain';
 import type { ControlBridge, MediaDeletion, MediaImportKind } from '../shared/contract';
 import {
@@ -105,7 +105,8 @@ interface Props {
  * The open Campaign's Media library: import (with the picker, or by dropping files from Explorer
  * on it; sounds get the role the Game Master chooses then, for good), the image library
  * (thumbnails, filter by Image category, search by name), the audio library (filter by role,
- * search by name, duration), renaming, changing an image's category, deleting.
+ * search by name, duration), both with a "Favoris" filter; starring, renaming, changing an
+ * image's category, deleting.
  */
 export function MediaLibrary({
   campaignId,
@@ -120,16 +121,22 @@ export function MediaLibrary({
   const [query, setQuery] = useState('');
   const [audioFilter, setAudioFilter] = useState<AudioFilter>('all');
   const [audioQuery, setAudioQuery] = useState('');
+  /** The "Favoris" filters: only starred images, only starred sounds. */
+  const [favouriteImages, setFavouriteImages] = useState(false);
+  const [favouriteSounds, setFavouriteSounds] = useState(false);
   /** Questions about sounds' roles, asked one at a time in order: a drop never replaces one. */
   const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
   const nextRoleRequest = useRef(0);
   /** A Media in use, waiting for the Game Master to confirm its deletion. */
   const [pending, setPending] = useState<PendingDeletion | null>(null);
 
-  const images = useMemo(() => imageLibrary(media, filter, query), [media, filter, query]);
+  const images = useMemo(
+    () => imageLibrary(media, filter, query, favouriteImages),
+    [media, filter, query, favouriteImages],
+  );
   const sounds = useMemo(
-    () => audioLibrary(media, audioFilter, audioQuery),
-    [media, audioFilter, audioQuery],
+    () => audioLibrary(media, audioFilter, audioQuery, favouriteSounds),
+    [media, audioFilter, audioQuery, favouriteSounds],
   );
   const hasImages = media.some((item) => item.kind === 'image');
   const hasSounds = media.some((item) => item.kind === 'audio');
@@ -235,6 +242,19 @@ export function MediaLibrary({
     }
   }
 
+  async function setFavourite(item: Media, favourite: boolean) {
+    if (!control) return;
+    try {
+      merge([await control.setMediaFavourite(campaignId, item.id, favourite)]);
+    } catch (error) {
+      showNotice(errorMessage(error));
+    }
+  }
+
+  const favouriteButton = (item: Media) => (
+    <FavouriteButton item={item} onChange={(favourite) => void setFavourite(item, favourite)} />
+  );
+
   async function rename(item: Media, name: string) {
     if (!control || name.trim() === item.name) return;
     try {
@@ -309,17 +329,20 @@ export function MediaLibrary({
       {roleRequests[0] && <RoleChoice key={roleRequests[0].id} request={roleRequests[0]} />}
       {hasImages && (
         <div className="library-toolbar">
-          <div className="library-filter" role="group" aria-label="Filtrer les images">
-            {(Object.keys(filterLabels) as LibraryFilter[]).map((option) => (
-              <button
-                key={option}
-                aria-pressed={filter === option}
-                className={filter === option ? 'selected' : ''}
-                onClick={() => setFilter(option)}
-              >
-                {filterLabels[option]}
-              </button>
-            ))}
+          <div className="library-filters">
+            <div className="library-filter" role="group" aria-label="Filtrer les images">
+              {(Object.keys(filterLabels) as LibraryFilter[]).map((option) => (
+                <button
+                  key={option}
+                  aria-pressed={filter === option}
+                  className={filter === option ? 'selected' : ''}
+                  onClick={() => setFilter(option)}
+                >
+                  {filterLabels[option]}
+                </button>
+              ))}
+            </div>
+            <FavouritesFilter what="images" on={favouriteImages} onChange={setFavouriteImages} />
           </div>
           <label className="library-search">
             <Search size={14} aria-hidden />
@@ -345,7 +368,11 @@ export function MediaLibrary({
             >
               <MediaImage address={thumbnailAddress(image)} alt={image.name} window="control" />
             </span>
-            <MediaName item={image} onRename={(name) => void rename(image, name)} />
+            <MediaName
+              item={image}
+              star={favouriteButton(image)}
+              onRename={(name) => void rename(image, name)}
+            />
             <select
               aria-label={`Catégorie de ${image.name}`}
               value={image.category}
@@ -368,17 +395,20 @@ export function MediaLibrary({
       )}
       {hasSounds && (
         <div className="library-toolbar sound-toolbar">
-          <div className="library-filter" role="group" aria-label="Filtrer les sons">
-            {(Object.keys(audioFilterLabels) as AudioFilter[]).map((option) => (
-              <button
-                key={option}
-                aria-pressed={audioFilter === option}
-                className={audioFilter === option ? 'selected' : ''}
-                onClick={() => setAudioFilter(option)}
-              >
-                {audioFilterLabels[option]}
-              </button>
-            ))}
+          <div className="library-filters">
+            <div className="library-filter" role="group" aria-label="Filtrer les sons">
+              {(Object.keys(audioFilterLabels) as AudioFilter[]).map((option) => (
+                <button
+                  key={option}
+                  aria-pressed={audioFilter === option}
+                  className={audioFilter === option ? 'selected' : ''}
+                  onClick={() => setAudioFilter(option)}
+                >
+                  {audioFilterLabels[option]}
+                </button>
+              ))}
+            </div>
+            <FavouritesFilter what="sons" on={favouriteSounds} onChange={setFavouriteSounds} />
           </div>
           <label className="library-search">
             <Search size={14} aria-hidden />
@@ -405,7 +435,11 @@ export function MediaLibrary({
             >
               <Music2 size={20} />
             </span>
-            <MediaName item={item} onRename={(name) => void rename(item, name)} />
+            <MediaName
+              item={item}
+              star={favouriteButton(item)}
+              onRename={(name) => void rename(item, name)}
+            />
             <span className="media-sound-facts">
               <span className="media-role">{roleLabels[item.role]}</span>
               {missingSounds.has(item.id) && <MissingMediaBadge name={item.name} />}
@@ -588,8 +622,70 @@ function ImageGrid({
   );
 }
 
-/** A Media's name, with its original file name in the tooltip, and renaming in place. */
-function MediaName({ item, onRename }: { item: Media; onRename: (name: string) => void }) {
+/**
+ * The "Favoris" filter of one library: on, it shows only starred Media, combined with the
+ * category or role filter and the search.
+ */
+function FavouritesFilter({
+  what,
+  on,
+  onChange,
+}: {
+  what: 'images' | 'sons';
+  on: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div className="library-filter" role="group" aria-label={`Favoris parmi les ${what}`}>
+      <button
+        aria-pressed={on}
+        className={on ? 'selected' : ''}
+        title={on ? `Montrer tous les ${what}` : `Montrer seulement les ${what} favoris`}
+        onClick={() => onChange(!on)}
+      >
+        <Star size={12} aria-hidden fill={on ? 'currentColor' : 'none'} /> Favoris
+      </button>
+    </div>
+  );
+}
+
+/** The star of a Media: filled when it is a favourite; a click stars or unstars it. */
+function FavouriteButton({
+  item,
+  onChange,
+}: {
+  item: Media;
+  onChange: (favourite: boolean) => void;
+}) {
+  const label = item.favourite
+    ? `Retirer ${item.name} des favoris`
+    : `Ajouter ${item.name} aux favoris`;
+  return (
+    <button
+      className={`media-favourite${item.favourite ? ' starred' : ''}`}
+      aria-pressed={item.favourite}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!item.favourite)}
+    >
+      <Star size={12} aria-hidden fill={item.favourite ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
+/**
+ * A Media's name, with its original file name in the tooltip, and renaming in place. `star`
+ * (its favourite button) goes before the name.
+ */
+function MediaName({
+  item,
+  star,
+  onRename,
+}: {
+  item: Media;
+  star: ReactNode;
+  onRename: (name: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   /** Set once the edit is committed or cancelled, so a later blur does not commit again. */
   const finished = useRef(false);
@@ -621,6 +717,7 @@ function MediaName({ item, onRename }: { item: Media; onRename: (name: string) =
 
   return (
     <span className="media-name-row">
+      {star}
       <span
         className="media-name"
         title={`${item.name}\nFichier d’origine : ${item.originalName}${item.extension}`}

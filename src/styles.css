@@ -232,6 +232,11 @@ button {
   gap: 10px;
   margin-bottom: 10px;
 }
+.library-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .library-filter {
   display: inline-flex;
   border: 1px solid var(--border);
@@ -239,6 +244,9 @@ button {
   overflow: hidden;
 }
 .library-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 5px 12px;
   border: 0;
   background: transparent;
@@ -292,6 +300,26 @@ button {
 }
 .media-rename-button:hover,
 .media-rename-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+/* A Media's star: filled when it is a favourite (the shape, not only the colour, says so). */
+.media-favourite {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.media-favourite.starred {
+  color: var(--accent);
+}
+.media-favourite:hover,
+.media-favourite:focus-visible {
   border-color: var(--accent);
   color: var(--text);
 }

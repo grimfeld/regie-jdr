@@ -65,8 +65,8 @@ async function backToCampaignList(page: Page) {
 }
 
 /**
- * A Campaign named `name` with the Scenes "Cantina" and "Hangar" and one imported image, left
- * closed on the Campaign list.
+ * A Campaign named `name` with the Scenes "Cantina" and "Hangar" and one imported image, starred
+ * as a favourite, left closed on the Campaign list.
  */
 async function campaignWithScenesAndAnImage(
   { app, controlWindow: page }: RunningApp,
@@ -78,6 +78,8 @@ async function campaignWithScenesAndAnImage(
   await expect(
     page.getByRole('list', { name: 'Images' }).getByRole('img', { name: IMAGE }),
   ).toBeVisible();
+  await page.getByRole('button', { name: `Ajouter ${IMAGE} aux favoris` }).click();
+  await expect(page.getByRole('button', { name: `Retirer ${IMAGE} des favoris` })).toBeVisible();
   const [campaign] = await call<{ id: string }[]>(page, 'listCampaigns');
   await call(page, 'createScene', campaign.id, 'Cantina');
   await call(page, 'createScene', campaign.id, 'Hangar');
@@ -97,12 +99,17 @@ async function importFrom({ app, controlWindow: page }: RunningApp, file: string
   await page.getByRole('button', { name: 'Importer une campagne' }).click();
 }
 
+/** The Scenes and the starred image of `campaignWithScenesAndAnImage`. */
 async function expectScenesAndImage(page: Page) {
   await expect(page.getByRole('list', { name: 'Scènes de la campagne' })).toContainText('Cantina');
   await expect(page.getByRole('list', { name: 'Scènes de la campagne' })).toContainText('Hangar');
   await expect(
     page.getByRole('list', { name: 'Images' }).getByRole('img', { name: IMAGE }),
   ).toBeVisible();
+  await expect(page.getByRole('button', { name: `Retirer ${IMAGE} des favoris` })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
 }
 
 async function filesIn(folder: string): Promise<string[]> {
