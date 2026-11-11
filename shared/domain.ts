@@ -53,6 +53,8 @@ export interface ImageMedia extends MediaBase {
 export interface AudioMedia extends MediaBase {
   kind: 'audio';
   role: AudioRole;
+  /** Length in seconds, read from the file at import; null when it could not be read. */
+  durationSeconds: number | null;
 }
 
 /** A user-imported image or audio file kept in a Campaign's library. */

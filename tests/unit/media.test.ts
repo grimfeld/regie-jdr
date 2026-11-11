@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -5,6 +6,7 @@ import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
 import { mediaAddress } from '../../core/mediaAddress';
 import { openStorage } from '../../core/storage';
+import { wavFile } from './audioFiles';
 import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
@@ -22,7 +24,7 @@ describe('media library', () => {
   }
 
   /** Writes a file to pick, outside the data folder. */
-  async function sourceFile(name: string, content = 'abc'): Promise<string> {
+  async function sourceFile(name: string, content: string | Buffer = 'abc'): Promise<string> {
     const folder = path.join(dir.path, 'picked');
     await fs.mkdir(folder, { recursive: true });
     const file = path.join(folder, name);
@@ -300,6 +302,88 @@ describe('media library', () => {
       'Seules les images ont une catégorie',
     );
     expect(await library.list(campaign.id)).toEqual([sound]);
+  });
+
+  it('records an audio Media’s duration at import, and keeps it after a restart', async () => {
+    const { campaign, library } = await setup();
+
+    const { imported } = await library.import(
+      campaign.id,
+      [await sourceFile('Taverne.wav', wavFile(125))],
+      { accept: 'audio', role: 'music' },
+    );
+
+    expect(imported).toEqual([expect.objectContaining({ kind: 'audio', durationSeconds: 125 })]);
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
+    expect(await reopened.list(campaign.id)).toEqual(imported);
+  });
+
+  it('imports audio whose duration cannot be read, with no duration', async () => {
+    const { campaign, library } = await setup();
+
+    const { imported, refused } = await library.import(
+      campaign.id,
+      [await sourceFile('abime.ogg', 'pas un son')],
+      { accept: 'audio', role: 'ambience' },
+    );
+
+    expect(refused).toEqual([]);
+    expect(imported).toEqual([expect.objectContaining({ kind: 'audio', durationSeconds: null })]);
+  });
+
+  it('keeps one audio Media, with its first role, when the same sound is imported again', async () => {
+    const { campaign, library } = await setup();
+    const sound = await sourceFile('Pluie.wav', wavFile(3));
+    const [first] = (
+      await library.import(campaign.id, [sound], { accept: 'audio', role: 'ambience' })
+    ).imported;
+
+    const again = await library.import(campaign.id, [await sourceFile('copie.wav', wavFile(3))], {
+      accept: 'audio',
+      role: 'music',
+    });
+
+    expect(again.imported).toEqual([first]);
+    expect(await library.list(campaign.id)).toEqual([first]);
+  });
+
+  it('gives audio imported before durations were recorded no duration, until imported again', async () => {
+    const { storage, campaign, library } = await setup();
+    const hash = createHash('sha256').update(wavFile(4)).digest('hex');
+    const stored = {
+      contentHash: hash,
+      originalName: 'Feu',
+      name: 'Feu de camp',
+      extension: '.wav',
+    };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'media.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        media: [
+          { ...stored, id: 'feu', kind: 'audio', role: 'ambience' },
+          { ...stored, contentHash: ABC_SHA256, id: 'carte', kind: 'image', category: 'scenery' },
+        ],
+      }),
+    );
+
+    const [sound, image] = await library.list(campaign.id);
+    expect(sound).toEqual(expect.objectContaining({ id: 'feu', durationSeconds: null }));
+    expect(image).not.toHaveProperty('durationSeconds');
+
+    const { imported } = await library.import(
+      campaign.id,
+      [await sourceFile('Feu.wav', wavFile(4))],
+      {
+        accept: 'audio',
+        role: 'ambience',
+      },
+    );
+    expect(imported).toEqual([{ ...sound, durationSeconds: 4 }]);
+    expect((await library.list(campaign.id))[0]).toEqual({ ...sound, durationSeconds: 4 });
   });
 
   it('refuses to import into a Campaign that does not exist', async () => {

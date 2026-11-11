@@ -8,6 +8,7 @@
  *   thumbnails/<sha256>.png     library thumbnails of the images (core/thumbnails.ts)
  *
  * Deduplication is per Campaign: the same file imported into two Campaigns is stored in both.
+ * An audio Media's duration is read from its file at import (core/audioDuration.ts).
  * Errors meant for the Game Master are MediaError with a French message.
  */
 import { createHash, randomUUID } from 'node:crypto';
@@ -24,6 +25,7 @@ import type {
   Media,
   MediaId,
 } from '../shared/domain.js';
+import { readAudioDuration } from './audioDuration.js';
 import { CampaignError } from './campaigns.js';
 import { isRecord } from './guards.js';
 import {
@@ -115,10 +117,13 @@ export interface MediaKindRules {
   refusal(fileName: string): string;
   /** The native file picker for this kind. */
   picker: { title: string; filterName: string };
-  /** The kind-specific fields of a newly imported Media. */
+  /** The kind-specific fields of a newly imported Media, read from its file where needed. */
   defaults(
     kind: MediaImportKind,
-  ): Pick<ImageMedia, 'kind' | 'category'> | Pick<AudioMedia, 'kind' | 'role'>;
+    file: string,
+  ): Promise<
+    Pick<ImageMedia, 'kind' | 'category'> | Pick<AudioMedia, 'kind' | 'role' | 'durationSeconds'>
+  >;
 }
 
 /** One entry per Media kind; looked up by the import's `accept`. */
@@ -127,16 +132,17 @@ export const MEDIA_KINDS: Record<Media['kind'], MediaKindRules> = {
     extensions: extensionsOf('image'),
     refusal: (fileName) => `« ${fileName} » n’a pas été importé : ce n’est pas une image.`,
     picker: { title: 'Importer des images', filterName: 'Images' },
-    defaults: () => ({ kind: 'image', category: DEFAULT_IMAGE_CATEGORY }),
+    defaults: () => Promise.resolve({ kind: 'image', category: DEFAULT_IMAGE_CATEGORY }),
   },
   audio: {
     extensions: extensionsOf('audio'),
     refusal: (fileName) => `« ${fileName} » n’a pas été importé : ce n’est pas un son.`,
     picker: { title: 'Importer des sons', filterName: 'Sons' },
     // Looked up by `accept`, so this is always an audio import.
-    defaults: (kind) => ({
+    defaults: async (kind, file) => ({
       kind: 'audio',
       role: (kind as Extract<MediaImportKind, { accept: 'audio' }>).role,
+      durationSeconds: (await readAudioDuration(file)) ?? null,
     }),
   },
 };
@@ -155,8 +161,26 @@ function parseMedia(value: unknown, campaignId: CampaignId): Media | undefined {
   if (kind === 'image' && isImageCategory(value.category)) {
     return { ...base, kind, category: value.category };
   }
-  if (kind === 'audio' && isAudioRole(value.role)) return { ...base, kind, role: value.role };
+  if (kind === 'audio' && isAudioRole(value.role) && isDuration(value.durationSeconds)) {
+    return { ...base, kind, role: value.role, durationSeconds: value.durationSeconds };
+  }
   return undefined;
+}
+
+function isDuration(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value > 0);
+}
+
+/**
+ * Version 1 to 2 (Milestone 2): audio Media gain a duration. Reading it needs the file, so
+ * Media imported before have none (null) until their file is imported again.
+ */
+function migrateMediaIndexV1(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.media)) return fields;
+  const media = fields.media.map((item: unknown) =>
+    isRecord(item) && item.kind === 'audio' ? { ...item, durationSeconds: null } : item,
+  );
+  return { ...fields, media };
 }
 
 /** The index stores Media without their Campaign id: it is the folder's. */
@@ -164,8 +188,8 @@ type StoredMedia = Omit<Media, 'campaignId'>;
 
 const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
   name: 'media',
-  version: 1,
-  migrations: {},
+  version: 2,
+  migrations: { 1: migrateMediaIndexV1 },
   parse({ media }) {
     if (!Array.isArray(media)) return undefined;
     const parsed = media.map((item) => parseMedia(item, ''));
@@ -268,11 +292,21 @@ export function createMediaLibrary(storage: Storage, resizer: ImageResizer): Med
             continue;
           }
           const contentHash = await sha256Of(source);
-          const existing = library.find((media) => media.contentHash === contentHash);
-          if (existing) {
+          const existingIndex = library.findIndex((media) => media.contentHash === contentHash);
+          if (existingIndex >= 0) {
             // Same content again: no second Media. Puts its file back if it went missing.
+            let existing = library[existingIndex];
             await storeFile(source, mediaFolder, existing);
             await prepareThumbnail(folder, existing);
+            if (existing.kind === 'audio' && existing.durationSeconds === null) {
+              // Imported before durations were recorded, or unreadable then: try again.
+              const durationSeconds = (await readAudioDuration(source)) ?? null;
+              if (durationSeconds !== null) {
+                existing = { ...existing, durationSeconds };
+                library[existingIndex] = existing;
+                changed = true;
+              }
+            }
             result.imported.push(existing);
             continue;
           }
@@ -285,7 +319,7 @@ export function createMediaLibrary(storage: Storage, resizer: ImageResizer): Med
             name: originalName,
             extension,
           };
-          const media = { ...base, ...rules.defaults(kind) } as Media;
+          const media = { ...base, ...(await rules.defaults(kind, source)) } as Media;
           await storeFile(source, mediaFolder, media);
           await prepareThumbnail(folder, media);
           library.push(media);

@@ -16,6 +16,7 @@ const sound: AudioMedia = {
   extension: '.ogg',
   kind: 'audio',
   role: 'ambience',
+  durationSeconds: 92,
 };
 
 describe('library search', () => {
