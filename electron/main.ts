@@ -422,6 +422,7 @@ function startApp() {
     settings: settingsStore,
     trash: recycleBin,
     openCampaignId: () => onAir.current().campaignId,
+    isTransferring: (id) => transfers.isRunningFor(id),
   });
   const commands = createOnAirCommands({
     campaigns: storage.campaigns,
@@ -606,19 +607,23 @@ function startApp() {
         const campaign = await storage.campaigns.get(campaignId);
         if (!campaign) throw new CampaignError('Cette campagne n’existe plus.');
         // A cancel or a failure leaves no file: the zip is renamed into place once complete.
-        const outcome = await transfers.run('export', async (signal, onProgress) => {
-          const file = await pickExportFile(exportFileName(campaign.name, new Date()));
-          if (!file) return undefined;
-          return exportCampaign({
-            campaignFolder: storage.campaignFolder(campaignId),
-            campaignName: campaign.name,
-            media: await library.list(campaignId),
-            appVersion: app.getVersion(),
-            writeArchive: writeZipArchive(file),
-            signal,
-            onProgress,
-          });
-        });
+        const outcome = await transfers.run(
+          'export',
+          async (signal, onProgress) => {
+            const file = await pickExportFile(exportFileName(campaign.name, new Date()));
+            if (!file) return undefined;
+            return exportCampaign({
+              campaignFolder: storage.campaignFolder(campaignId),
+              campaignName: campaign.name,
+              media: await library.list(campaignId),
+              appVersion: app.getVersion(),
+              writeArchive: writeZipArchive(file),
+              signal,
+              onProgress,
+            });
+          },
+          campaignId,
+        );
         if (outcome.status === 'cancelled') {
           log.info(`Export of Campaign ${campaignId} cancelled by the Game Master`);
           return { saved: false, cancelled: true };

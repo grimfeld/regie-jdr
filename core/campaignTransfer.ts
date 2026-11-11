@@ -5,7 +5,9 @@
  * core/campaignImport.ts) clean up after a cancel or a failure; this module only drives them.
  */
 import type { CampaignTransferProgress } from '../shared/contract.js';
+import type { CampaignId } from '../shared/domain.js';
 import { CampaignError } from './campaigns.js';
+import { isSameCampaignId } from './storage/index.js';
 
 export type TransferKind = CampaignTransferProgress['kind'];
 
@@ -48,12 +50,16 @@ export interface CampaignTransfers {
   /**
    * Runs `task`, the whole Export or Import (its dialog included), with a signal that Cancel
    * aborts and a throttled progress reporter. Resolves `cancelled` when Cancel stopped it;
-   * rethrows any other failure. Throws CampaignError while another transfer runs.
+   * rethrows any other failure. Throws CampaignError while another transfer runs. `campaignId`
+   * names the Campaign an Export reads, which may not be deleted meanwhile (isRunningFor).
    */
   run<T>(
     kind: TransferKind,
     task: (signal: AbortSignal, onProgress: (progress: ByteProgress) => void) => Promise<T>,
+    campaignId?: CampaignId,
   ): Promise<TransferOutcome<T>>;
+  /** Whether the running transfer reads that Campaign (letter case ignored, isSameCampaignId). */
+  isRunningFor(campaignId: CampaignId): boolean;
   /** Cancels the running transfer; false when none runs. */
   cancel(): boolean;
 }
@@ -64,8 +70,9 @@ export function createCampaignTransfers(options: {
   now?: () => number;
 }): CampaignTransfers {
   let running: AbortController | undefined;
+  let runningFor: CampaignId | null = null;
   return {
-    async run(kind, task) {
+    async run(kind, task, campaignId) {
       if (running) {
         throw new CampaignError(
           'Un export ou un import de campagne est déjà en cours : attendez sa fin ou annulez-le.',
@@ -73,6 +80,7 @@ export function createCampaignTransfers(options: {
       }
       const controller = new AbortController();
       running = controller;
+      runningFor = campaignId ?? null;
       const report = throttleProgress((progress) => options.send({ kind, ...progress }), {
         intervalMs: options.intervalMs ?? PROGRESS_INTERVAL_MS,
         now: options.now ?? Date.now,
@@ -84,8 +92,10 @@ export function createCampaignTransfers(options: {
         throw error;
       } finally {
         running = undefined;
+        runningFor = null;
       }
     },
+    isRunningFor: (id) => isSameCampaignId(runningFor, id),
     cancel() {
       if (!running) return false;
       running.abort();

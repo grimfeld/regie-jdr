@@ -42,6 +42,7 @@ describe('deleting a Campaign', () => {
     refusal,
     open = null,
   }: { refusal?: Error; open?: CampaignId | null } = {}) {
+    let transferring: CampaignId | null = null;
     const root = path.join(dir.path, 'data');
     const storage = openStorage(root);
     const scenes = createSceneLibrary(storage);
@@ -56,6 +57,7 @@ describe('deleting a Campaign', () => {
       settings,
       trash,
       openCampaignId: () => openId,
+      isTransferring: (id) => id === transferring,
     });
     const campaign = await createCampaign(storage.campaigns, 'Les Ombres');
     return {
@@ -70,6 +72,9 @@ describe('deleting a Campaign', () => {
       folder: storage.campaignFolder(campaign.id),
       setOpen: (id: CampaignId | null) => {
         openId = id;
+      },
+      setTransferring: (id: CampaignId | null) => {
+        transferring = id;
       },
     };
   }
@@ -160,6 +165,7 @@ describe('deleting a Campaign', () => {
       settings,
       trash: { moveToTrash: () => Promise.resolve() },
       openCampaignId: () => null,
+      isTransferring: () => false,
     });
 
     expect(await deletion.moveToTrash(campaign.id)).toMatchObject({ deleted: false });
@@ -240,6 +246,24 @@ describe('deleting a Campaign', () => {
       expect((await settings.get()).lastActiveSceneByCampaign).toEqual({});
     },
   );
+
+  it('refuses to delete a Campaign while it is being exported, in any way', async () => {
+    const { deletion, campaign, received, folder, setTransferring } = await setup({
+      refusal: new Error('locked'),
+    });
+    await deletion.moveToTrash(campaign.id);
+    setTransferring(campaign.id);
+
+    await expect(deletion.summary(campaign.id)).rejects.toThrow(/export/);
+    await expect(deletion.moveToTrash(campaign.id)).rejects.toThrow(/export/);
+    await expect(deletion.deletePermanently(campaign.id)).rejects.toThrow(/export/);
+    expect(received).toHaveLength(1);
+    expect(await exists(folder)).toBe(true);
+
+    setTransferring(null);
+    await deletion.deletePermanently(campaign.id);
+    expect(await exists(folder)).toBe(false);
+  });
 
   it('refuses ids that are not a Campaign of the campaigns folder, touching nothing', async () => {
     const { deletion, received, root } = await setup();

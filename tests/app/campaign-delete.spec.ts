@@ -147,6 +147,45 @@ test('when the Recycle Bin refuses, nothing is deleted until a second confirmati
   expect(await lastActiveScenes(dataDir)).toEqual({});
 });
 
+test('a Campaign being exported cannot be deleted until its Export ends', async ({ regie }) => {
+  const { app, controlWindow: page, dataDir } = regie;
+  await stubRecycleBin(app, dataDir, 'move');
+  const id = await twoCampaigns(page);
+  // The save dialog stays open until the test answers it: the Export runs meanwhile.
+  await app.evaluate(({ dialog }) => {
+    dialog.showSaveDialog = () =>
+      new Promise((resolve) => {
+        (globalThis as { answerSaveDialog?: () => void }).answerSaveDialog = () =>
+          resolve({ canceled: true, filePath: '' });
+      });
+  });
+
+  await campaignList(page).getByRole('button', { name: 'Exporter Star Wars' }).click();
+
+  await expect(
+    campaignList(page).getByRole('button', { name: 'Supprimer Star Wars' }),
+  ).toBeDisabled();
+  await expect(
+    campaignList(page).getByRole('button', { name: 'Supprimer Warhammer' }),
+  ).toBeEnabled();
+  // Even asked directly through the bridge, the main process refuses.
+  const outcome = await page.evaluate(
+    (campaignId) =>
+      (window as unknown as { regie: Bridge }).regie.moveCampaignToTrash(campaignId).then(
+        () => 'deleted',
+        () => 'refused',
+      ),
+    id,
+  );
+  expect(outcome).toBe('refused');
+  await expect(fs.stat(path.join(dataDir, 'campaigns', id, 'campaign.json'))).resolves.toBeTruthy();
+
+  await app.evaluate(() => (globalThis as { answerSaveDialog?: () => void }).answerSaveDialog?.());
+  await expect(
+    campaignList(page).getByRole('button', { name: 'Supprimer Star Wars' }),
+  ).toBeEnabled();
+});
+
 test('delete is never offered inside a Campaign, and the open Campaign cannot be deleted', async ({
   regie,
 }) => {

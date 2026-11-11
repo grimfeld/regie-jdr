@@ -2,7 +2,8 @@
  * Deleting a Campaign (ADR-0005): its folder goes to the Recycle Bin, through a Trash the main
  * process provides (Windows' Recycle Bin) and tests fake. When the Recycle Bin refuses it,
  * nothing is deleted; a permanent delete is then allowed for that Campaign only, once the
- * Game Master confirms again. Never the open Campaign: delete is offered on the Campaign list.
+ * Game Master confirms again. Never the open Campaign (delete is offered on the Campaign list),
+ * nor one being exported.
  *
  * The id comes from a window, so it is never trusted to name a folder: before anything is
  * deleted, the folder must be a real folder (not a link) directly inside the campaigns folder,
@@ -41,6 +42,8 @@ export interface CampaignDeletionDeps {
   trash: Trash;
   /** The Campaign open in the Control window, which may not be deleted. */
   openCampaignId(): CampaignId | null;
+  /** Whether an Export of this Campaign runs (core/campaignTransfer.ts): it reads the folder. */
+  isTransferring(id: CampaignId): boolean;
 }
 
 const NOT_A_CAMPAIGN = 'Cette campagne n’existe plus.';
@@ -93,6 +96,11 @@ export function createCampaignDeletion(deps: CampaignDeletionDeps): CampaignDele
     if (!isCampaignId(id)) throw new CampaignError(NOT_A_CAMPAIGN);
     if (isSameCampaignId(deps.openCampaignId(), id)) {
       throw new CampaignError('Fermez cette campagne avant de la supprimer.');
+    }
+    if (deps.isTransferring(id)) {
+      throw new CampaignError(
+        'Cette campagne est en cours d’export : attendez sa fin ou annulez-le avant de la supprimer.',
+      );
     }
     const folder = storage.campaignFolder(id);
     let stats;

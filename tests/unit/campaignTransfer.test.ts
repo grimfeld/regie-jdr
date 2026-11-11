@@ -109,6 +109,22 @@ describe('createCampaignTransfers', () => {
     });
   });
 
+  it('tells which Campaign an Export runs for, until it ends, whatever its letter case', async () => {
+    const { transfers: t } = transfers();
+    const finishers: (() => void)[] = [];
+    const running = t.run(
+      'export',
+      () => new Promise<void>((resolve) => finishers.push(resolve)),
+      'star-wars',
+    );
+    expect(t.isRunningFor('star-wars')).toBe(true);
+    expect(t.isRunningFor('Star-Wars')).toBe(true);
+    expect(t.isRunningFor('warhammer')).toBe(false);
+    finishers.forEach((finish) => finish());
+    await running;
+    expect(t.isRunningFor('star-wars')).toBe(false);
+  });
+
   it('has nothing to cancel when no transfer runs', async () => {
     const { transfers: t } = transfers();
     expect(t.cancel()).toBe(false);

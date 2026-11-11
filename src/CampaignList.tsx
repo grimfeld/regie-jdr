@@ -356,6 +356,7 @@ export function CampaignList({
                     className="secondary-button"
                     aria-label={`Supprimer ${campaign.name}`}
                     title="Supprimer"
+                    disabled={exporting === campaign.id}
                     onClick={() => void startDelete(campaign)}
                   >
                     <Trash2 size={14} aria-hidden /> Supprimer
@@ -366,7 +367,7 @@ export function CampaignList({
             {pending?.summary.id === campaign.id && (
               <DeletionConfirmation
                 pending={pending}
-                busy={deleting}
+                busy={deleting || exporting === campaign.id}
                 onCancel={() => setPending(null)}
                 onConfirm={() => void confirm(pending)}
               />
