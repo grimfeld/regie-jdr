@@ -295,6 +295,9 @@ describe('Scene channels', () => {
       ['scenes:edit', [edit]],
       ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:show-transient', [transient]],
+      ['scenes:undo-state', [{ campaignId, sceneId: 'cantina' }]],
+      ['scenes:undo', [{ campaignId, sceneId: 'cantina' }]],
+      ['scenes:redo', [{ campaignId, sceneId: 'cantina' }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
       expect(checkInvoke(channel, 'broadcast', [...args])).toMatchObject({ ok: false });
@@ -329,8 +332,21 @@ describe('Scene channels', () => {
     });
   });
 
+  it('accept a Scene to undo or redo on, keeping only contract fields', () => {
+    const target = { campaignId, sceneId: 'cantina' };
+    for (const channel of ['scenes:undo-state', 'scenes:undo', 'scenes:redo'] as const) {
+      expect(checkInvoke(channel, 'control', [{ ...target, edit: {} }])).toEqual({
+        ok: true,
+        payload: target,
+      });
+    }
+  });
+
   it.each([
     ['a Campaign id that is a path', 'scenes:list', [{ campaignId: '../..' }]],
+    ['an undo with no Scene', 'scenes:undo', [{ campaignId }]],
+    ['a redo with no Campaign', 'scenes:redo', [{ sceneId: 'cantina' }]],
+    ['an undo state with an empty Scene id', 'scenes:undo-state', [{ campaignId, sceneId: '' }]],
     ['a delete with no Scene', 'scenes:delete', [{ campaignId }]],
     ['a delete with no Campaign', 'scenes:delete', [{ sceneId: 'cantina' }]],
     ['no name', 'scenes:create', [{ campaignId }]],

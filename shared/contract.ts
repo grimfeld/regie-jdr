@@ -90,6 +90,15 @@ export type SceneEdit =
  */
 export type OverlayTransform = Extract<SceneEdit, { kind: 'transform-overlay' }>;
 
+/**
+ * What can be undone and redone on a Scene: the French label of the next undo and of the next
+ * redo ("masquer Orc"), or null when there is none.
+ */
+export interface UndoState {
+  undo: string | null;
+  redo: string | null;
+}
+
 /** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
 export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
 
@@ -156,6 +165,15 @@ export interface InvokeChannels {
     payload: { campaignId: CampaignId; sceneId: SceneId; edit: OverlayTransform };
     result: void;
   };
+  /** What can be undone and redone on a Scene (its undo history, kept by the main process). */
+  'scenes:undo-state': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: UndoState };
+  /**
+   * Undo the last Scene edit of a Scene's history and get the Scene as saved; on the Active
+   * Scene it goes on air at once, like any edit. Fails when there is nothing to undo.
+   */
+  'scenes:undo': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
+  /** Redo the last undone edit of a Scene, like `scenes:undo`. */
+  'scenes:redo': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
   /**
    * Delete a Scene. When it is the Active Scene, the Active Scene is cleared: nothing of it
    * stays on air. The window asks the Game Master to confirm first.
@@ -288,6 +306,9 @@ export interface ControlBridge extends BroadcastBridge {
     sceneId: SceneId,
     edit: OverlayTransform,
   ): Promise<void>;
+  getUndoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
+  undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
+  redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;

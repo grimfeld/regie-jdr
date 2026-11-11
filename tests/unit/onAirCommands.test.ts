@@ -551,6 +551,136 @@ describe('on-air commands', () => {
     });
   });
 
+  describe('undo and redo', () => {
+    /** An open Campaign with Scene Cantina, Active, holding a Hidden Overlay p1 of the image. */
+    async function editing(ctx: Awaited<ReturnType<typeof setup>>) {
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      const edit = (command: SceneEdit) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+      const placed = await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+      return {
+        scene,
+        placed,
+        edit,
+        undo: () => ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id),
+        redo: () => ctx.commands.redoSceneEdit(ctx.campaign.id, scene.id),
+        state: () => ctx.commands.undoState(ctx.campaign.id, scene.id),
+      };
+    }
+    const onAirOverlays = (ctx: Awaited<ReturnType<typeof setup>>) =>
+      ctx.broadcast.at(-1)?.scene?.overlays ?? [];
+
+    it('undoes and redoes an edit on the Active Scene, live, naming it by its Media', async () => {
+      const ctx = await setup();
+      const { placed, edit, undo, redo, state } = await editing(ctx);
+      const shown = await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+      expect(onAirOverlays(ctx)).toHaveLength(1);
+      expect(await state()).toEqual({ undo: 'afficher Cantina', redo: null });
+
+      expect(await undo()).toEqual(placed);
+      expect(await ctx.scenes.get(ctx.campaign.id, placed.id)).toEqual(placed);
+      expect(onAirOverlays(ctx)).toEqual([]);
+      expect(await state()).toEqual({
+        undo: 'placer Cantina en superposition',
+        redo: 'afficher Cantina',
+      });
+
+      expect(await redo()).toEqual(shown);
+      expect(onAirOverlays(ctx)).toHaveLength(1);
+      expect(await state()).toEqual({ undo: 'afficher Cantina', redo: null });
+    });
+
+    it('undoes a whole drag as one step, whatever transient updates came before', async () => {
+      const ctx = await setup();
+      const { scene, placed, edit, undo, state } = await editing(ctx);
+      for (const x of [0.1, 0.2, 0.3]) {
+        await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+          kind: 'transform-overlay',
+          placementId: 'p1',
+          position: { x, y: 0.5 },
+        });
+      }
+      await edit({ kind: 'transform-overlay', placementId: 'p1', position: { x: 0.4, y: 0.6 } });
+      expect((await state()).undo).toBe('déplacer Cantina');
+
+      expect(await undo()).toEqual(placed);
+    });
+
+    it('merges quick moves of one Overlay (a nudge burst) into one step', async () => {
+      const ctx = await setup();
+      const { placed, edit, undo, state } = await editing(ctx);
+      for (const x of [0.51, 0.52, 0.53]) {
+        await edit({ kind: 'transform-overlay', placementId: 'p1', position: { x } });
+      }
+
+      expect(await undo()).toEqual(placed);
+      expect((await state()).undo).toBe('placer Cantina en superposition');
+    });
+
+    it('refuses to undo or redo with nothing to, in French', async () => {
+      const ctx = await setup();
+      const { undo, redo } = await editing(ctx);
+      await expect(redo()).rejects.toThrow('Rien à rétablir.');
+      await undo();
+      await expect(undo()).rejects.toThrow('Rien à annuler.');
+    });
+
+    it('keeps each Scene its own history, across Activating, until the Campaign is opened again', async () => {
+      const ctx = await setup();
+      const { scene, state } = await editing(ctx);
+      const hangar = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.editScene(ctx.campaign.id, hangar.id, { kind: 'rename', name: 'Dock' });
+      await ctx.commands.activateScene(hangar.id);
+      await ctx.commands.setBlackout(true);
+
+      expect(await state()).toEqual({ undo: 'placer Cantina en superposition', redo: null });
+      expect(await ctx.commands.undoState(ctx.campaign.id, hangar.id)).toEqual({
+        undo: 'renommer la scène',
+        redo: null,
+      });
+
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: null,
+        redo: null,
+      });
+    });
+
+    it('clears the history when the Campaign is closed or the Scene deleted', async () => {
+      const ctx = await setup();
+      const first = await editing(ctx);
+      await ctx.commands.closeCampaign();
+      expect(await first.state()).toEqual({ undo: null, redo: null });
+
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await first.edit({ kind: 'rename', name: 'Cantina 2' });
+      await ctx.commands.deleteScene(ctx.campaign.id, first.scene.id);
+      expect(await first.state()).toEqual({ undo: null, redo: null });
+    });
+
+    it('clears the history of the Scenes whose placements a Media deletion removed', async () => {
+      const ctx = await setup();
+      const { state, undo } = await editing(ctx);
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true);
+
+      expect(await state()).toEqual({ undo: null, redo: null });
+      await expect(undo()).rejects.toThrow('Rien à annuler.');
+    });
+
+    it('refuses an undo once the Scene changed outside its history, and clears it', async () => {
+      const ctx = await setup();
+      const { scene, placed, undo, state } = await editing(ctx);
+      await ctx.scenes.save({ ...placed, notes: 'changed elsewhere' });
+
+      await expect(undo()).rejects.toThrow('La scène a changé entre-temps');
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.notes).toBe('changed elsewhere');
+    });
+  });
+
   it('does not put a Scene of another Campaign on air', async () => {
     const ctx = await setup();
     const scene = await sceneShowing(ctx, 'Cantina');

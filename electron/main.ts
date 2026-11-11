@@ -305,6 +305,9 @@ function startApp() {
         commands.editScene(campaignId, sceneId, edit),
       'scenes:show-transient': ({ campaignId, sceneId, edit }) =>
         commands.showTransientEdit(campaignId, sceneId, edit),
+      'scenes:undo-state': ({ campaignId, sceneId }) => commands.undoState(campaignId, sceneId),
+      'scenes:undo': ({ campaignId, sceneId }) => commands.undoSceneEdit(campaignId, sceneId),
+      'scenes:redo': ({ campaignId, sceneId }) => commands.redoSceneEdit(campaignId, sceneId),
       'scenes:delete': ({ campaignId, sceneId }) => commands.deleteScene(campaignId, sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
