@@ -30,7 +30,7 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - `core/padVoices.ts`: max 8 pad voices, oldest cut first (`AUDIO_FADE_MS.pad` = 80 ms). Gain = Master × Soundboard level × pad volume, fixed at press. Engine side `src/padPlayer.ts`.
 - Control-only channels: `audio:pad-command`, `audio:report-pads`, `soundboard:get`, `soundboard:edit`, `soundboard:press`. `AudioSounding.pads` feeds "En cours". `audio:get-mix` also resets main's pad bookkeeping (engine start/reload).
 - #41 hook: `useSoundboard` in `CampaignScreen` (`src/App.tsx`) exposes `pressPosition(n)` (1-based).
-- Known gaps: Sound effects decode on first press (no preload); level changes don't ramp a sounding pad; deleting a Media removes its pads silently (pads aren't counted as Media users).
+- Known gaps: (preload done 2026-11-12, `51acc8d`) Sound effects decode on first press (no preload); level changes don't ramp a sounding pad; deleting a Media removes its pads silently (pads aren't counted as Media users).
 
 ## Music controls (#36, 2026-11-12, `5a330db`)
 
@@ -50,7 +50,7 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Supersedes the #40 plug-in note: Silence is `MixInput.silence` (optional), not an `AudioOnAir` state field. In `mixOf` it sets every voice to gain 0 and paused, so lifting it restores the same mix with Music where it was.
 - Starting Silence cuts sounding pads (`padVoices.clear('silence')`); pads pressed during Silence play normally. Activate and `clear()` lift it; never saved.
 - State reaches the strip as `AudioSounding.silence` (Broadcast gets nothing). Control-only `audio:set-silence` / `ControlBridge.setSilence`.
-- #41 hook: `setSilence(control, on)` exported from `src/NowPlaying.tsx`; current state `useSounding(control)?.silence`.
+- #41 hook (superseded 2026-11-12, `51acc8d`: use `toggleSilence` from `src/NowPlaying.tsx`): `setSilence(control, on)` exported from `src/NowPlaying.tsx`; current state `useSounding(control)?.silence`.
 - During Silence the strip labels voices "silence" and hides pause/stop. Gap: a track or Ambience started during Silence shows "silence", not loading.
 
 ## Activate fades and continuity (#38, 2026-11-12, `1808490`)

@@ -41,3 +41,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - 2026-11-12: #41 shortcuts merged at `2879653` (753 unit, 128 app tests). See [shortcuts](subsystem-keyboard-shortcuts.md). Silence key S is the agent's choice: flag in PR.
 - 2026-11-12: #43 private listening merged at `67d47e3` (130 app tests). Built the ADR-0002 fallback branch: "Écouter" only during Silence with nothing sounding, warning "Écoute audible par les joueurs". Name the branch in the PR. Manual Discord check pending.
 - 2026-11-12: gapless loops merged at `f9f5dc9` (753 unit, 131 app tests).
+- 2026-11-12: M2 review fixes merged at `51acc8d` (771 unit, 135 app tests). See [review](review-m2-2026-11-12.md).
