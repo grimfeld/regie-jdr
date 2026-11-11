@@ -34,3 +34,9 @@
 - Control-only `campaigns:import-dropped { file }`; bridge reads the path with `webUtils.getPathForFile`; `core/ipc.ts` checks it with the existing `isDroppedPath` (one path check). Dialog and drop share main-side `importCampaignFrom` (`importCampaign` + `openZipArchive`).
 - Drop anywhere on the Campaign list page. Non-`.zip` refused with a French notice; a renamed non-zip gets Import's "n’a pas pu être lu"; several files refused in the page. Broadcast window still refuses all drops (app test).
 - #63 adds progress/cancel through `importCampaignFrom`.
+
+## Progress and Cancel (#63, 2026-11-12, `m4-campaign-themes-qol@012c48c`)
+
+- `core/campaignTransfer.ts`: one Export or Import at a time (second refused in French); the slot is taken before the save/open dialog. Cancel over `campaigns:cancel-transfer`; progress `campaigns:transfer-progress` at most every 100 ms plus first and last. Cancelled calls resolve `{saved|imported: false, cancelled: true}`; a real failure exactly at Cancel reports as a cancel.
+- Tests: 16 MiB mid-stream cancel both ways (unit, real zip); app test with a 1 GiB Media checks save folder, campaigns folder and `imports/` are empty after cancel.
+- Manual check left: watch the UI with a multi-gigabyte real-content Campaign (only a 3 GiB zero-filled file was tried, unwatched).
