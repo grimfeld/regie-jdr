@@ -279,7 +279,7 @@ test('Scenes are created, renamed and deleted, and the changes survive a restart
   // Cancelling the confirmation keeps the Scene.
   await selectScene(controlWindow, 'Brouillon');
   await editor(controlWindow).getByRole('button', { name: 'Supprimer', exact: true }).click();
-  await editor(controlWindow).getByRole('button', { name: 'Annuler' }).click();
+  await editor(controlWindow).getByRole('button', { name: 'Annuler', exact: true }).click();
   await expect(sceneEntry(controlWindow, 'Brouillon')).toBeVisible();
   await deleteSelectedScene(controlWindow);
   await expect(sceneEntry(controlWindow, 'Brouillon')).toHaveCount(0);
@@ -290,7 +290,7 @@ test('Scenes are created, renamed and deleted, and the changes survive a restart
   await editor(controlWindow).getByLabel('Nouveau nom de la scène').fill('   ');
   await editor(controlWindow).getByRole('button', { name: 'Enregistrer' }).click();
   await expect(editor(controlWindow).getByRole('alert')).toHaveText('Donnez un nom à la scène.');
-  await editor(controlWindow).getByRole('button', { name: 'Annuler' }).click();
+  await editor(controlWindow).getByRole('button', { name: 'Annuler', exact: true }).click();
   await app.close();
 
   const restarted = await launchApp(dataDir);

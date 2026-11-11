@@ -909,6 +909,19 @@ button {
   gap: 12px;
   margin-bottom: 12px;
 }
+/* Undo and redo of the Selected Scene's edits; each button names its edit. */
+.undo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.undo-bar button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .scene-editor-heading h3 {
   flex: 1;
   margin: 0;

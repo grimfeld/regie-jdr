@@ -216,6 +216,10 @@ export function useOverlayTransforms({ scene, active, onCommit, onTransient }: O
     scene: shownScene,
     selectedId: scene.overlays.some((item) => item.id === selectedId) ? selectedId : undefined,
     onOverlayPointerDown,
+    /** Saves a nudge burst still waiting, so an undo sent next comes after it. */
+    commitPending: () => {
+      if (nudgeTimer.current !== undefined) commit();
+    },
     /** Props of the focusable element around the editor canvas. */
     canvasProps: { tabIndex: 0, onKeyDown, onBlur, onPointerDown },
   };

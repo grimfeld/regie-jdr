@@ -28,6 +28,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'editScene',
     'getOnAir',
     'getSettings',
+    'getUndoState',
     'importDroppedImages',
     'importMedia',
     'listCampaigns',
@@ -37,6 +38,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'onOnAirChanged',
     'openBroadcast',
     'openCampaign',
+    'redoSceneEdit',
     'renameMedia',
     'setBlackout',
     'setFadeDuration',
@@ -45,6 +47,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'showTransientEdit',
     'takeNotices',
     'toggleBroadcastFullscreen',
+    'undoSceneEdit',
     'updateCampaign',
   ]);
   expect(await broadcastWindow.evaluate(keysOf)).toEqual([

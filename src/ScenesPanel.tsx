@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
-import { Clapperboard, History, Pencil, Plus, Radio, Trash2 } from 'lucide-react';
+import { Clapperboard, History, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
 import type { CampaignId, ImageMedia, NormalizedPoint, Scene, SceneId } from '../shared/domain';
-import type { ControlBridge, OverlayTransform, SceneEdit } from '../shared/contract';
+import type { ControlBridge, OverlayTransform, SceneEdit, UndoState } from '../shared/contract';
 import { layOutCanvas } from '../core/canvas';
 import { editorPictureOf } from '../core/onAir';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
+import { editShortcutOf, type EditShortcut } from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
@@ -97,6 +98,7 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
       ? undefined
       : (scenes.find((scene) => scene.id === lastActiveId) ?? scenes.at(0))?.id);
   const selected = scenes.find((scene) => scene.id === openedId);
+  const undoState = useUndoState(control, campaignId, selected);
   const isActive = (scene: Scene) =>
     onAir?.campaignId === campaignId && onAir.activeSceneId === scene.id;
   const hasActive = onAir?.campaignId === campaignId && onAir.activeSceneId !== null;
@@ -189,6 +191,21 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
     }
   }
 
+  /** Undoes or redoes the last edit of `scene` and shows the Scene as saved. */
+  async function travel(scene: Scene, shortcut: EditShortcut) {
+    if (!control) return;
+    try {
+      const saved =
+        shortcut === 'undo'
+          ? await control.undoSceneEdit(campaignId, scene.id)
+          : await control.redoSceneEdit(campaignId, scene.id);
+      setScenes((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+    } catch (error) {
+      showNotice(errorMessage(error));
+      setScenes(await control.listScenes(campaignId));
+    }
+  }
+
   async function activate(scene: Scene) {
     if (!control) return;
     try {
@@ -274,6 +291,8 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
           images={images}
           active={isActive(selected)}
           fadeDurationMs={onAir?.fadeDurationMs}
+          undoState={undoState}
+          onTravel={(shortcut) => void travel(selected, shortcut)}
           onRefreshImages={refreshImages}
           onEdit={(command) => edit(selected, command)}
           onEditShowingFailure={(command) => editShowingFailure(selected, command)}
@@ -310,6 +329,10 @@ interface EditorProps {
   active: boolean;
   /** The fade duration setting (OnAirState.fadeDurationMs), undefined until known. */
   fadeDurationMs: number | undefined;
+  /** What can be undone and redone on the Scene. */
+  undoState: UndoState;
+  /** Undoes or redoes the last edit of the Scene. */
+  onTravel: (shortcut: EditShortcut) => void;
   onRefreshImages: () => void;
   /** Sends an edit; rejects with the failure, the Scene already reloaded. */
   onEdit: (command: SceneEdit) => Promise<void>;
@@ -347,6 +370,28 @@ function SceneEditor(props: EditorProps) {
   const [renameTo, setRenameTo] = useState<string | null>(null);
   const [renameError, setRenameError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  /** Undo or redo, if there is something to; a nudge burst still waiting is saved first. */
+  function travel(shortcut: EditShortcut) {
+    if (props.undoState[shortcut] === null) return;
+    transforms.commitPending();
+    props.onTravel(shortcut);
+  }
+  // Ctrl+Z / Ctrl+Y anywhere in the window, except while typing in a field.
+  const latestTravel = useRef(travel);
+  useEffect(() => {
+    latestTravel.current = travel;
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const shortcut = editShortcutOf(event);
+      if (!shortcut) return;
+      event.preventDefault();
+      latestTravel.current(shortcut);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   async function submitRename(event: FormEvent) {
     event.preventDefault();
@@ -411,6 +456,7 @@ function SceneEditor(props: EditorProps) {
           {renameError}
         </p>
       )}
+      <UndoBar state={props.undoState} onTravel={travel} />
       <SceneTitleField title={scene.title} onEdit={onEditShowingFailure} />
 
       {confirmingDelete && (
@@ -483,6 +529,62 @@ function SceneEditor(props: EditorProps) {
         />
       </div>
     </section>
+  );
+}
+
+/**
+ * What can be undone and redone on the Selected Scene, read from the main process again
+ * whenever the Scene changes (an edit, an undo, a redo, a reload).
+ */
+function useUndoState(
+  control: ControlBridge | undefined,
+  campaignId: CampaignId,
+  scene: Scene | undefined,
+): UndoState {
+  // The state read for a Scene, so a Scene with no answer yet shows nothing to undo.
+  const [read, setRead] = useState<{ scene: Scene; state: UndoState }>();
+  useEffect(() => {
+    if (!control || !scene) return;
+    let cancelled = false;
+    control
+      .getUndoState(campaignId, scene.id)
+      .then((state) => {
+        if (!cancelled) setRead({ scene, state });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) showNotice(errorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [control, campaignId, scene]);
+  return read && read.scene.id === scene?.id ? read.state : NOTHING_TO_UNDO;
+}
+
+const NOTHING_TO_UNDO: UndoState = { undo: null, redo: null };
+
+/** The undo and redo buttons, each naming the edit it would undo or redo. */
+function UndoBar(props: { state: UndoState; onTravel: (shortcut: EditShortcut) => void }) {
+  const { undo, redo } = props.state;
+  return (
+    <div className="undo-bar" role="toolbar" aria-label="Historique de la scène">
+      <button
+        className="secondary-button"
+        disabled={undo === null}
+        title="Ctrl+Z"
+        onClick={() => props.onTravel('undo')}
+      >
+        <Undo2 size={14} aria-hidden /> {undo === null ? 'Rien à annuler' : `Annuler : ${undo}`}
+      </button>
+      <button
+        className="secondary-button"
+        disabled={redo === null}
+        title="Ctrl+Y"
+        onClick={() => props.onTravel('redo')}
+      >
+        <Redo2 size={14} aria-hidden /> {redo === null ? 'Rien à rétablir' : `Rétablir : ${redo}`}
+      </button>
+    </div>
   );
 }
 
