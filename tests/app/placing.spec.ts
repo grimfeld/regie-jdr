@@ -162,7 +162,9 @@ test('on the Active Scene, placements stay off the broadcast until shown; show, 
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
   await expect(broadcastScreen(broadcastWindow)).not.toHaveAttribute('data-active-scene-id', '');
 
+  // Each drop's row pushes the library (the drag source) down: wait for it before the next drag.
   await thumbnail(controlWindow).dragTo(dropZone(backgroundList(controlWindow)));
+  await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await expect(broadcastWindow.locator('.canvas-background, .canvas-overlay')).toHaveCount(0);
@@ -197,7 +199,9 @@ test('placing, showing and removing on a Scene that is not active leaves the bro
   const version = await broadcastScreen(broadcastWindow).getAttribute('data-version');
 
   await createScene(controlWindow, 'Hangar');
+  // Each drop's row pushes the library (the drag source) down: wait for it before the next drag.
   await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
+  await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await thumbnail(controlWindow).dragTo(dropZone(overlayList(controlWindow)));
   // The list reads front first: wait for the second Overlay's row before picking rows.
   await expect(overlayList(controlWindow).getByRole('listitem')).toHaveCount(2);
@@ -224,6 +228,8 @@ test('placements, their visibility and drop position survive a restart', async (
   await importImage(regie);
   await createScene(controlWindow, 'Cantina');
   await thumbnail(controlWindow).dragTo(dropZone(backgroundList(controlWindow)));
+  // The new row pushes the library (the drag source) down: wait for it before the next drag.
+  await expect(backgroundList(controlWindow).getByRole('listitem')).toHaveCount(1);
   await setCategory(controlWindow, 'Personnage');
   await dropOnCanvas(controlWindow, 0.25, 0.75);
   await toggle(overlayList(controlWindow)).check();
