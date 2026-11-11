@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type FormEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   Clapperboard,
@@ -65,6 +73,7 @@ import { SceneChapterField } from './SceneChapterField';
 import { activateNextTo, activateOptionsOf, activateScene } from './activate';
 import { SceneNotes, type NotesImageSource } from './SceneNotes';
 import { showNotice } from './notices';
+import { createOptimisticSaves } from './optimisticSaves';
 import { useOnAir } from './useOnAir';
 import { useBackgroundFraming } from './useBackgroundFraming';
 import { useOverlayTransforms } from './useOverlayTransforms';
@@ -431,6 +440,26 @@ export function ScenesPanel({
     }
   }
 
+  /**
+   * The running order commands shown at once: on a failed save, the list goes back to the order
+   * as saved, once every move on its way has settled (rapid Alt+Up/Down presses).
+   */
+  const runningOrderSaves = useMemo(
+    () =>
+      control &&
+      createOptimisticSaves({
+        reread: () => readOrder(control, campaignId),
+        show: setOrder,
+        onFailure: (error) => {
+          console.error('A running order change was not saved', error);
+          showNotice(
+            'L’ordre des scènes n’a pas pu être enregistré : la liste montre de nouveau l’ordre enregistré.',
+          );
+        },
+      }),
+    [control, campaignId],
+  );
+
   /** The Scenes and Chapters as saved, read again (after a failed change). */
   async function reload() {
     if (control) setOrder(await readOrder(control, campaignId));
@@ -453,13 +482,8 @@ export function ScenesPanel({
         }
       });
     }
-    if (!control) return;
-    try {
-      await control.editRunningOrder(campaignId, command);
-    } catch (error) {
-      showNotice(errorMessage(error));
-      await reload();
-    }
+    if (!control || !runningOrderSaves) return;
+    await runningOrderSaves.run(() => control.editRunningOrder(campaignId, command));
   }
 
   /**
