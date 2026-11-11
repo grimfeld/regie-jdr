@@ -1,14 +1,33 @@
-import { useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
+import {
+  KEY_MAP,
+  NAVIGATION_KEYS,
+  shortcutPressed,
+  type KeyMap,
+  type KeyPressFields,
+  type Shortcut,
+} from '../core/keyMap';
 
 /**
  * Keyboard shortcuts of the Control window. A shortcut never fires while the Game Master is
- * typing in a field: there the keys keep their text meaning (Ctrl+Z undoes typing), and never
- * in another window (only the focused window gets key presses).
+ * typing in a field: there the keys keep their text meaning (Ctrl+Z undoes typing), nor on a key
+ * the focused control or the canvas editor already answered (a slider's arrows, a list's letters,
+ * the selected Overlay's nudge), and never in another window (only the focused window gets key
+ * presses).
  *
- * Every shortcut is a row of `KEY_MAP`, read by `shortcutOf`; components react to them through
- * `useShortcuts`. A new shortcut is a new `Shortcut` and a new row; remapping (M4 #71) replaces
- * the rows of the remappable shortcuts.
+ * Every shortcut is a row of the key map (`core/keyMap.ts`), remapped by the Game Master on the
+ * shortcuts page; the keys in force reach components through `ShortcutsContext`, and
+ * components react to them through `useShortcuts`.
  */
+
+export {
+  ariaKeyShortcutsOf,
+  KEY_MAP,
+  keyLabelOf,
+  PAD_KEY_POSITIONS,
+  type KeyMap,
+  type Shortcut,
+} from '../core/keyMap';
 
 /** Input types that take no typed text: a shortcut may fire while one has focus. */
 const NON_TEXT_INPUTS = new Set([
@@ -37,152 +56,57 @@ export function isTypingIn(target: EventTarget | null): boolean {
   return false;
 }
 
-/** The Soundboard pads a number key plays: the first nine, 1 is the first. */
-export const PAD_KEY_POSITIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
-export type PadKeyPosition = (typeof PAD_KEY_POSITIONS)[number];
+/**
+ * Whether the control `target` (a key event's target) answers `key` itself: a drop-down list
+ * every key (it picks an option by its first letter), a slider the navigation keys, whatever
+ * modifier is held.
+ */
+export function handlesKey(target: EventTarget | null, key: string): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLSelectElement) return true;
+  const slider =
+    (target instanceof HTMLInputElement && target.type === 'range') ||
+    target.getAttribute('role') === 'slider';
+  return slider && NAVIGATION_KEYS.has(key.toLowerCase());
+}
 
 /** The Scene edit shortcuts: Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes. */
-export type EditShortcut = 'undo' | 'redo';
-
-/**
- * The Activate shortcuts: Activate the Selected Scene, or the Scene after or before the Active
- * Scene in the running order. Shift held as well forces a Cut, this once.
- */
-export type ActivateShortcut = 'activate' | 'activate-next' | 'activate-previous';
-
-/**
- * The running order shortcuts: move the Scene whose row has the focus one place up or down.
- * Alt, since Ctrl+Up and Ctrl+Down Activate.
- */
-export type RunningOrderShortcut = 'move-scene-up' | 'move-scene-down';
-
-/** Everything a key can do in the Control window. */
-export type Shortcut =
-  | EditShortcut
-  | ActivateShortcut
-  | RunningOrderShortcut
-  | 'blackout'
-  | 'silence'
-  | `pad-${PadKeyPosition}`;
-
-/**
- * One key press a shortcut answers to. `code` names a physical key, whatever the layout (the
- * number row gives "&é\"'…" on a French keyboard, still Digit1…); `key` names the character
- * typed, for a letter as printed on the key (Ctrl+Z on AZERTY). Modifiers must match exactly;
- * Ctrl also stands for Cmd.
- */
-export interface KeyBinding {
-  readonly code?: string;
-  readonly key?: string;
-  readonly ctrl?: boolean;
-  readonly shift?: boolean;
-  readonly alt?: boolean;
-  /** How the key is shown to the Game Master, on a button or pad. */
-  readonly label: string;
-}
-
-/** The keys of each shortcut; the first one is the one shown. */
-export type KeyMap = Readonly<Record<Shortcut, readonly KeyBinding[]>>;
-
-/** Shortcuts that fire again while their key is held; the others fire once per press. */
-const REPEATING: ReadonlySet<Shortcut> = new Set<Shortcut>([
-  'undo',
-  'redo',
-  'move-scene-up',
-  'move-scene-down',
-]);
-
-/**
- * Shortcuts whose keys answer with or without Shift, whatever their bindings say: Shift is not
- * part of the key but asks for a forced Cut, which the handler reads from the key press.
- */
-const SHIFT_FREE: ReadonlySet<Shortcut> = new Set<Shortcut>([
-  'activate',
-  'activate-next',
-  'activate-previous',
-]);
-
-function padBindings(position: PadKeyPosition): readonly KeyBinding[] {
-  const label = String(position);
-  return [
-    { code: `Digit${position}`, label },
-    { code: `Numpad${position}`, label },
-  ];
-}
-
-/** The Control window's keys. */
-export const KEY_MAP: KeyMap = {
-  undo: [{ key: 'z', ctrl: true, label: 'Ctrl+Z' }],
-  redo: [
-    { key: 'y', ctrl: true, label: 'Ctrl+Y' },
-    { key: 'z', ctrl: true, shift: true, label: 'Ctrl+Maj+Z' },
-  ],
-  activate: [{ key: 'enter', ctrl: true, label: 'Ctrl+Entrée' }],
-  'activate-next': [{ key: 'arrowdown', ctrl: true, label: 'Ctrl+↓' }],
-  'activate-previous': [{ key: 'arrowup', ctrl: true, label: 'Ctrl+↑' }],
-  'move-scene-up': [{ key: 'arrowup', alt: true, label: 'Alt+↑' }],
-  'move-scene-down': [{ key: 'arrowdown', alt: true, label: 'Alt+↓' }],
-  blackout: [{ key: 'b', label: 'B' }],
-  silence: [{ key: 's', label: 'S' }],
-  'pad-1': padBindings(1),
-  'pad-2': padBindings(2),
-  'pad-3': padBindings(3),
-  'pad-4': padBindings(4),
-  'pad-5': padBindings(5),
-  'pad-6': padBindings(6),
-  'pad-7': padBindings(7),
-  'pad-8': padBindings(8),
-  'pad-9': padBindings(9),
-};
+export type EditShortcut = Extract<Shortcut, 'undo' | 'redo'>;
 
 /** The key event fields a shortcut is read from. */
-export type KeyPress = Pick<
-  KeyboardEvent,
-  'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey' | 'repeat' | 'target'
->;
+export type KeyPress = KeyPressFields &
+  Pick<KeyboardEvent, 'repeat' | 'target'> &
+  Partial<Pick<KeyboardEvent, 'defaultPrevented'>>;
 
-function matches(binding: KeyBinding, press: KeyPress, shiftFree: boolean): boolean {
-  if (binding.code !== undefined && binding.code !== press.code) return false;
-  if (binding.key !== undefined && binding.key !== press.key.toLowerCase()) return false;
-  return (
-    (binding.ctrl ?? false) === (press.ctrlKey || press.metaKey) &&
-    (shiftFree || (binding.shift ?? false) === press.shiftKey) &&
-    (binding.alt ?? false) === press.altKey
-  );
-}
-
-/** Every shortcut, in the order a key press is looked up. */
-const SHORTCUTS: readonly Shortcut[] = [
-  'undo',
-  'redo',
-  'activate',
-  'activate-next',
-  'activate-previous',
-  'move-scene-up',
-  'move-scene-down',
-  'blackout',
-  'silence',
-  ...PAD_KEY_POSITIONS.map((position) => `pad-${position}` as const),
-];
-
-/** The shortcut a key press means in `keyMap`, if any; none while typing in a field. */
+/**
+ * The shortcut a key press means in `keyMap`, if any; none while typing in a field, on a key the
+ * focused control answers (`handlesKey`) or one already answered (`defaultPrevented`).
+ */
 export function shortcutOf(press: KeyPress, keyMap: KeyMap = KEY_MAP): Shortcut | undefined {
-  if (isTypingIn(press.target)) return undefined;
-  const shortcut = SHORTCUTS.find((candidate) =>
-    keyMap[candidate].some((binding) => matches(binding, press, SHIFT_FREE.has(candidate))),
-  );
-  if (shortcut === undefined || (press.repeat && !REPEATING.has(shortcut))) return undefined;
-  return shortcut;
+  if (press.defaultPrevented === true) return undefined;
+  if (isTypingIn(press.target) || handlesKey(press.target, press.key)) return undefined;
+  return shortcutPressed(press, keyMap);
 }
 
-/** How `shortcut`'s key is shown to the Game Master. */
-export function keyLabelOf(shortcut: Shortcut, keyMap: KeyMap = KEY_MAP): string | undefined {
-  return keyMap[shortcut][0]?.label;
+/** The keys in force in the Control window, and whether shortcuts are paused (being remapped). */
+export interface ShortcutsInForce {
+  readonly keyMap: KeyMap;
+  readonly paused: boolean;
+}
+
+export const ShortcutsContext = createContext<ShortcutsInForce>({
+  keyMap: KEY_MAP,
+  paused: false,
+});
+
+/** The keys in force: the Game Master's remapping, or the defaults until it is read. */
+export function useKeyMap(): KeyMap {
+  return useContext(ShortcutsContext).keyMap;
 }
 
 /**
  * What to do for each shortcut a component answers, given the key press (an Activate shortcut
- * reads Shift from it); the others pass through.
+ * reads the Cut modifier from it); the others pass through.
  */
 export type ShortcutHandlers = Partial<Record<Shortcut, (press: KeyPress) => void>>;
 
@@ -191,14 +115,17 @@ export type ShortcutHandlers = Partial<Record<Shortcut, (press: KeyPress) => voi
  * the key from doing anything else. The latest `handlers` are used; they need not be stable.
  */
 export function useShortcuts(handlers: ShortcutHandlers) {
-  const latest = useRef(handlers);
+  const inForce = useContext(ShortcutsContext);
+  const latest = useRef({ handlers, inForce });
   useEffect(() => {
-    latest.current = handlers;
+    latest.current = { handlers, inForce };
   });
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const shortcut = shortcutOf(event);
-      const handler = shortcut && latest.current[shortcut];
+      const { keyMap, paused } = latest.current.inForce;
+      if (paused) return;
+      const shortcut = shortcutOf(event, keyMap);
+      const handler = shortcut && latest.current.handlers[shortcut];
       if (!handler) return;
       event.preventDefault();
       handler(event);

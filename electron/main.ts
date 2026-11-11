@@ -1,11 +1,16 @@
-import { app, BrowserWindow, dialog, protocol, screen, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, protocol, screen, shell, type WebContents } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
-import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { CampaignError, createCampaignInHomeTheme, updateCampaign } from '../core/campaigns.js';
+import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
+import { EXPORT_FILE_FILTER, exportCampaign, exportFileName } from '../core/campaignExport.js';
+import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
+import { createCampaignTransfers, type ByteProgress } from '../core/campaignTransfer.js';
+import { createPartialFiles, type PartialFiles } from '../core/partialFiles.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
@@ -18,9 +23,10 @@ import { createPadVoices } from '../core/padVoices.js';
 import { createSoundboardStore, SoundboardError } from '../core/soundboard.js';
 import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
-import { openStorage } from '../core/storage/index.js';
+import { isSameCampaignId, openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
-import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
+import { openZipArchive, writeZipArchive } from './zipArchive.js';
+import type { CampaignImportResult, MediaImportKind, SoundboardEdit } from '../shared/contract.js';
 import type { OnAirState, PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
@@ -211,7 +217,8 @@ async function createBroadcastWindow() {
     return;
   }
   const placement = await savedPlacement('broadcast');
-  // A second click while the bounds were being read: the first one opened it.
+  const alwaysOnTop = await savedBroadcastAlwaysOnTop();
+  // A second click while the Settings were being read: the first one opened it.
   if (broadcastWindow && !broadcastWindow.isDestroyed()) {
     broadcastWindow.focus();
     return;
@@ -225,6 +232,7 @@ async function createBroadcastWindow() {
     // of the screen.
     backgroundColor: '#000000',
     autoHideMenuBar: true,
+    alwaysOnTop,
     webPreferences: secureWebPreferences('broadcast'),
   });
   rememberBounds(broadcastWindow, 'broadcast');
@@ -240,6 +248,27 @@ async function createBroadcastWindow() {
   broadcastWindow.on('closed', () => {
     broadcastWindow = null;
   });
+}
+
+/** Whether the Broadcast window should open on top; off when the Settings cannot be read. */
+async function savedBroadcastAlwaysOnTop(): Promise<boolean> {
+  if (!settings) return false;
+  try {
+    return (await settings.get()).broadcastAlwaysOnTop;
+  } catch (error) {
+    log.warn('Reading the Broadcast window always-on-top setting failed', error);
+    return false;
+  }
+}
+
+/**
+ * Keeps the open Broadcast window above other windows, or stops (ADR-0002: covered by another
+ * application, Discord streams it black and silent). Set from the Control window, like
+ * fullscreen; a Broadcast window opened later reads the saved Settings.
+ */
+function setBroadcastAlwaysOnTop(on: boolean) {
+  if (!broadcastWindow || broadcastWindow.isDestroyed()) return;
+  broadcastWindow.setAlwaysOnTop(on);
 }
 
 /**
@@ -277,6 +306,49 @@ async function pickMediaFiles(kind: MediaImportKind): Promise<string[]> {
   return result.canceled ? [] : result.filePaths;
 }
 
+/**
+ * The Windows Recycle Bin. `shell.trashItem` is looked up at each call, so whole-app tests can
+ * replace it and never reach the real Recycle Bin. A refusal is logged with its technical cause;
+ * the Game Master gets a French reason from the app core.
+ */
+const recycleBin: Trash = {
+  async moveToTrash(folder) {
+    try {
+      await shell.trashItem(folder);
+    } catch (error) {
+      log.warn(`The Recycle Bin refused ${folder}`, error);
+      throw error;
+    }
+  },
+};
+
+/** Where the Game Master saves an Export, from the native save dialog; undefined if cancelled. */
+async function pickExportFile(defaultName: string): Promise<string | undefined> {
+  const options: Electron.SaveDialogOptions = {
+    title: 'Exporter la campagne',
+    defaultPath: path.join(app.getPath('documents'), defaultName),
+    filters: [{ name: EXPORT_FILE_FILTER.name, extensions: [...EXPORT_FILE_FILTER.extensions] }],
+  };
+  const result = controlWindow
+    ? await dialog.showSaveDialog(controlWindow, options)
+    : await dialog.showSaveDialog(options);
+  return result.canceled || !result.filePath ? undefined : result.filePath;
+}
+
+/** The Export the Game Master picks to Import, from the native open dialog; undefined if cancelled. */
+async function pickImportFile(): Promise<string | undefined> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Importer une campagne',
+    defaultPath: app.getPath('documents'),
+    properties: ['openFile'],
+    filters: [{ name: EXPORT_FILE_FILTER.name, extensions: [...EXPORT_FILE_FILTER.extensions] }],
+  };
+  const result = controlWindow
+    ? await dialog.showOpenDialog(controlWindow, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? undefined : result.filePaths[0];
+}
+
 /** A second launch of the app brings the existing Control window forward. */
 function focusControlWindow() {
   if (!controlWindow || controlWindow.isDestroyed()) return;
@@ -293,12 +365,84 @@ function startApp() {
     log.warn(message);
   };
   const storage = openStorage(app.getPath('userData'), { notify });
+  // An Import interrupted by a crash leaves its staging folder; none runs yet, and the next one
+  // waits for this.
+  const importLeftoversCleared = clearImportLeftovers(storage.importsFolder).catch(
+    (error: unknown) => {
+      log.warn('Could not remove the folders left by an interrupted Import', error);
+    },
+  );
+  // An Export's zip is written as a partial file beside its target; one an app killed meanwhile
+  // left is deleted now. Recording them never fails an Export: a failure is only logged.
+  const partialExports = createPartialFiles(
+    storage.documents,
+    path.join(storage.root, 'partial-exports.json'),
+  );
+  partialExports.clear().catch((error: unknown) => {
+    log.warn('Could not remove the partial files left by an interrupted Export', error);
+  });
+  const trackedPartials: Pick<PartialFiles, 'add' | 'remove'> = {
+    add: (file) =>
+      partialExports.add(file).catch((error: unknown) => {
+        log.warn(`Could not record the partial file ${file}`, error);
+      }),
+    remove: (file) =>
+      partialExports.remove(file).catch((error: unknown) => {
+        log.warn(`Could not forget the partial file ${file}`, error);
+      }),
+  };
+  // One Export or Import at a time; its progress goes to the Control window, throttled.
+  const transfers = createCampaignTransfers({
+    send: (progress) =>
+      sendEvent(controlWindow?.webContents, 'campaigns:transfer-progress', progress),
+  });
+  // Always a new Campaign (ADR-0005); the zip is untrusted, core/campaignImport.ts checks it.
+  // A cancel or a failure leaves no staging folder and no Campaign (core/campaignImport.ts).
+  async function importCampaignFrom(
+    file: string,
+    signal: AbortSignal,
+    onProgress: (progress: ByteProgress) => void,
+  ): Promise<CampaignImportResult> {
+    await importLeftoversCleared;
+    // Once importCampaign returns, the Campaign is in place: nothing after it may fail the Import.
+    const { id, campaign } = await importCampaign({
+      openArchive: openZipArchive(file),
+      campaignsFolder: storage.campaignsFolder,
+      importsFolder: storage.importsFolder,
+      existingNames: (await storage.campaigns.list()).map((campaign) => campaign.name),
+      signal,
+      onProgress,
+    });
+    log.info(`Imported Campaign ${id}`);
+    return { imported: true, campaign };
+  }
+  /** Runs an Import as the transfer under way; `pick` names the zip, or nothing when cancelled. */
+  async function runImport(pick: () => Promise<string | undefined>): Promise<CampaignImportResult> {
+    const outcome = await transfers.run('import', async (signal, onProgress) => {
+      const file = await pick();
+      return file
+        ? importCampaignFrom(file, signal, onProgress)
+        : { imported: false as const, cancelled: false };
+    });
+    if (outcome.status === 'done') return outcome.value;
+    log.info('Import cancelled by the Game Master');
+    return { imported: false, cancelled: true };
+  }
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
   const scenes = createSceneLibrary(storage, { notify });
   const soundboards = createSoundboardStore({ storage, library });
   registerMediaProtocol(library);
+  const campaignDeletion = createCampaignDeletion({
+    storage,
+    countScenes: async (id) => (await scenes.list(id)).length,
+    countMedia: async (id) => (await library.list(id)).length,
+    settings: settingsStore,
+    trash: recycleBin,
+    openCampaignId: () => onAir.current().campaignId,
+    isTransferring: (id) => transfers.isRunningFor(id),
+  });
   const commands = createOnAirCommands({
     campaigns: storage.campaigns,
     library,
@@ -416,7 +560,8 @@ function startApp() {
       'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
       'onAir:toggle-blackout': () => commands.toggleBlackout(),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
-      'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
+      'scenes:create': ({ campaignId, name, selectedSceneId }) =>
+        scenes.create(campaignId, name, selectedSceneId),
       'scenes:edit': ({ campaignId, sceneId, edit }) =>
         commands.editScene(campaignId, sceneId, edit),
       'scenes:show-transient': ({ campaignId, sceneId, edit }) =>
@@ -428,8 +573,9 @@ function startApp() {
         await commands.deleteScene(campaignId, sceneId);
         saveSetting((store) => store.forgetScene(campaignId, sceneId));
       },
-      'scenes:move': ({ campaignId, sceneId, toIndex }) =>
-        scenes.move(campaignId, sceneId, toIndex),
+      'scenes:running-order': ({ campaignId }) => scenes.runningOrder(campaignId),
+      'scenes:edit-running-order': ({ campaignId, edit }) =>
+        scenes.editRunningOrder(campaignId, edit),
       'scenes:duplicate': ({ campaignId, sceneId }) => commands.duplicateScene(campaignId, sceneId),
       'broadcast:open': () => createBroadcastWindow(),
       'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
@@ -452,6 +598,8 @@ function startApp() {
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
+      'media:set-favourite': ({ campaignId, mediaId, favourite }) =>
+        library.setFavourite(campaignId, mediaId, favourite),
       'media:rename': async ({ campaignId, mediaId, name }) => {
         const renamed = await commands.renameMedia(campaignId, mediaId, name);
         await retunePads();
@@ -464,8 +612,60 @@ function startApp() {
         return deletion;
       },
       'campaigns:list': () => storage.campaigns.list(),
-      'campaigns:create': ({ name }) => createCampaign(storage.campaigns, name),
+      'campaigns:create': ({ name }) =>
+        createCampaignInHomeTheme(storage.campaigns, settingsStore, name),
       'campaigns:update': ({ id, changes }) => updateCampaign(storage.campaigns, id, changes),
+      'campaigns:deletion-summary': ({ id }) => campaignDeletion.summary(id),
+      'campaigns:move-to-trash': ({ id }) => campaignDeletion.moveToTrash(id),
+      'campaigns:delete-permanently': ({ id }) => campaignDeletion.deletePermanently(id),
+      // Offered on the Campaign list only (ADR-0005): the Campaign is closed, nothing writes to it.
+      'campaigns:export': async ({ id: campaignId }) => {
+        if (isSameCampaignId(onAir.current().campaignId, campaignId)) {
+          throw new CampaignError('Revenez à la liste des campagnes pour exporter celle-ci.');
+        }
+        const campaign = await storage.campaigns.get(campaignId);
+        if (!campaign) throw new CampaignError('Cette campagne n’existe plus.');
+        // A cancel or a failure leaves no file: the zip is renamed into place once complete.
+        const outcome = await transfers.run(
+          'export',
+          async (signal, onProgress) => {
+            const file = await pickExportFile(exportFileName(campaign.name, new Date()));
+            if (!file) return undefined;
+            return exportCampaign({
+              campaignFolder: storage.campaignFolder(campaignId),
+              campaignName: campaign.name,
+              media: await library.list(campaignId),
+              appVersion: app.getVersion(),
+              writeArchive: writeZipArchive(file, trackedPartials),
+              signal,
+              onProgress,
+            });
+          },
+          campaignId,
+        );
+        if (outcome.status === 'cancelled') {
+          log.info(`Export of Campaign ${campaignId} cancelled by the Game Master`);
+          return { saved: false, cancelled: true };
+        }
+        if (!outcome.value) return { saved: false, cancelled: false };
+        const { missingMedia } = outcome.value;
+        log.info(`Exported Campaign ${campaignId}, ${missingMedia} missing Media left out`);
+        return { saved: true, missingMedia };
+      },
+      // Picked in the native open dialog: the window never names a file.
+      'campaigns:import': () => runImport(pickImportFile),
+      // The path was checked like a dropped Media's (core/ipc.ts); then the same Import as above.
+      'campaigns:import-dropped': async ({ file }) => {
+        if (path.extname(file).toLowerCase() !== '.zip') {
+          throw new CampaignError(
+            `« ${path.basename(file)} » n’a pas été importé : ce n’est pas une campagne exportée (.zip).`,
+          );
+        }
+        return runImport(() => Promise.resolve(file));
+      },
+      'campaigns:cancel-transfer': () => {
+        transfers.cancel();
+      },
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
       'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),
@@ -492,6 +692,12 @@ function startApp() {
         await retunePads();
         return saved;
       },
+      'settings:set-broadcast-always-on-top': async ({ on }) => {
+        const saved = await settingsStore.setBroadcastAlwaysOnTop(on);
+        setBroadcastAlwaysOnTop(saved.broadcastAlwaysOnTop);
+        return saved;
+      },
+      'settings:set-shortcuts': ({ shortcuts }) => settingsStore.setShortcuts(shortcuts),
       // The engine reads the mix as it starts (or restarts, with the Control window): it is
       // told which Sound effects to keep decoded (its last report is forgotten on did-navigate).
       'audio:get-mix': () => {

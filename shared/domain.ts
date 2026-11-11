@@ -6,6 +6,7 @@
 export type CampaignId = string;
 export type MediaId = string;
 export type SceneId = string;
+export type ChapterId = string;
 
 /** Interface theme, chosen globally (home page) and per Campaign. */
 export type ThemeId = 'retro' | 'imperium' | 'fantasy';
@@ -46,6 +47,8 @@ interface MediaBase {
   name: string;
   /** Lower-case, with the dot: `.png`. */
   extension: string;
+  /** Starred by the Game Master, for the library's "Favoris" filter. False at import. */
+  favourite: boolean;
 }
 
 export interface ImageMedia extends MediaBase {
@@ -127,6 +130,19 @@ export interface SceneVolumes {
 }
 
 /** A reusable, saved audiovisual setup in a Campaign. */
+/**
+ * A named, collapsible group of Scenes in a Campaign's running order (one level only). Its
+ * Scenes, in running order, are `sceneIds`; a Scene belongs to at most one Chapter, and Scenes in
+ * none come after every Chapter. `collapsed` is saved with the Campaign. Not a Scene field: its
+ * changes are Campaign-level commands, outside every Scene's undo history.
+ */
+export interface Chapter {
+  id: ChapterId;
+  name: string;
+  collapsed: boolean;
+  sceneIds: SceneId[];
+}
+
 export interface Scene {
   id: SceneId;
   campaignId: CampaignId;
@@ -195,6 +211,46 @@ export interface Soundboard {
   volume: number;
 }
 
+/** The Soundboard pads a number key plays: the first nine, 1 is the first. */
+export type PadKeyPosition = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/** Everything a key can do in the Control window (the key map: core/keyMap.ts). */
+export type Shortcut =
+  | 'undo'
+  | 'redo'
+  | 'activate'
+  | 'activate-next'
+  | 'activate-previous'
+  | 'move-scene-up'
+  | 'move-scene-down'
+  | 'blackout'
+  | 'silence'
+  | `pad-${PadKeyPosition}`;
+
+/**
+ * One key with its modifiers. `code` names a physical key whatever the layout, for the number
+ * row and the numpad (Digit1 is "&" on a French keyboard); `key` names the character typed,
+ * lower case, for every other key (a letter as printed on the key: Ctrl+Z on AZERTY). Ctrl also
+ * stands for Cmd. A missing modifier is not held.
+ */
+export interface KeyChord {
+  code?: string;
+  key?: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}
+
+/** The modifier held with an Activate shortcut to force a Cut. */
+export type CutModifier = 'shift' | 'alt' | 'ctrl';
+
+/** The Game Master's shortcut keys: only what differs from the defaults is kept. */
+export interface ShortcutSettings {
+  /** The keys of each remapped shortcut, in place of its defaults; an empty list unbinds it. */
+  keys: Partial<Record<Shortcut, KeyChord[]>>;
+  cutModifier: CutModifier;
+}
+
 export interface WindowBounds {
   x: number;
   y: number;
@@ -229,6 +285,13 @@ export interface Settings {
    * Active Scene's Music list crossfades (bounds in core/fades.ts).
    */
   musicCrossfadeMs: number;
+  /**
+   * Keep the Broadcast window above other windows, so a single-monitor Game Master never covers
+   * what Discord streams (ADR-0002: covered by another application, it goes silent and black).
+   */
+  broadcastAlwaysOnTop: boolean;
+  /** The Control window's shortcut keys, remapped by the Game Master. */
+  shortcuts: ShortcutSettings;
 }
 
 /** A visible Background as the Broadcast window draws it. */

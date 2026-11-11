@@ -11,7 +11,7 @@ Integration checkout (MAIN below): the checkout that holds your milestone branch
 | `m3-transitions-closeout` | `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/m3-integration` (from 2026-11-12) |
 | `m4-campaign-themes-qol` | `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/m4-integration` (from 2026-11-12) |
 
-Wiki home: from 2026-11-12 (M2 closed as PR #75, merged forward at `m3-transitions-closeout@ea75a13`) the newest wiki is in the M3 checkout's `docs/wiki/`. Earlier: from 2026-11-11 (M1 closed as PR #74, merged forward at `m2-audio-mvp@6a66ecd`) the newest wiki is in the M2 checkout's `docs/wiki/`; read it there. Earlier the M1 checkout held it. Create slice worktrees with `git -C MAIN worktree add ...` (paths in step 2 are relative to MAIN of the repo root, `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n>`).
+Wiki home: from 2026-11-12 (M3 closed as PR #76, merged forward at `m4-campaign-themes-qol@7bf3e5f`) the newest wiki is in the M4 checkout's `docs/wiki/`. Earlier: from 2026-11-12 (M2 closed as PR #75, merged forward at `m3-transitions-closeout@ea75a13`) the newest wiki is in the M3 checkout's `docs/wiki/`. Earlier: from 2026-11-11 (M1 closed as PR #74, merged forward at `m2-audio-mvp@6a66ecd`) the newest wiki is in the M2 checkout's `docs/wiki/`; read it there. Earlier the M1 checkout held it. Create slice worktrees with `git -C MAIN worktree add ...` (paths in step 2 are relative to MAIN of the repo root, `F:/WORKPLACE/DEV/regie-jdr-prototype-0.2-windows11/regie-jdr/.claude/worktrees/<n>`).
 
 ## 1. Read first
 
@@ -59,3 +59,7 @@ Merged SHA; gate results; every deviation from the issue's acceptance criteria a
 
 
 Correction 2026-11-12 (#36 report): step 2 used a relative path, which put the worktree inside MAIN's own `.claude/worktrees` when MAIN is itself a worktree. Step 2 now gives the absolute repo-root path.
+
+Correction 2026-11-12 (#67 report: three ~7 min gate re-runs caused only by wiki-log commits): after a rebase, re-run the gates only if it brought in changes outside `docs/wiki/`. Check with `git diff --stat <old-base> <new-base> -- . ':!docs/wiki'`; empty output means the code is unchanged and the earlier green gates still hold. Any other change: re-run all six gates before the fast-forward.
+
+Correction 2026-11-12 (#66, #67): save screenshots and other evidence outside the worktree (Playwright wipes `test-results/` at every run, and the worktree is removed at the end): use the scratchpad `shots/` folder named in your prompt.

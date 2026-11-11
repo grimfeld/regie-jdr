@@ -16,6 +16,7 @@ const RENDERER_SAFE_CORE = [
   'audioMix',
   'notes',
   'runningOrder',
+  'keyMap',
 ];
 
 /**
@@ -198,6 +199,7 @@ export default tseslint.config(
                 '!./audioMix*',
                 '!./notes*',
                 '!./runningOrder*',
+                '!./keyMap*',
               ],
               allowTypeImports: true,
               message: 'The windows run this module: import only renderer-safe core modules.',

@@ -551,6 +551,7 @@ function image(category: ImageCategory): ImageMedia {
     originalName: category,
     name: category,
     extension: '.png',
+    favourite: false,
   };
 }
 

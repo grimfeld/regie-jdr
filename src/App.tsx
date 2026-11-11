@@ -1,24 +1,45 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from 'lucide-react';
-import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
-import type { CampaignChanges, ControlBridge } from '../shared/contract';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Aperture,
+  ArrowLeft,
+  Keyboard,
+  Maximize,
+  MonitorPlay,
+  Palette,
+  Settings2,
+} from 'lucide-react';
+import type { Campaign, CampaignId, ShortcutSettings, ThemeId } from '../shared/domain';
+import { DEFAULT_SHORTCUTS, keyMapOf } from '../core/keyMap';
+import type {
+  CampaignChanges,
+  CampaignImportResult,
+  CampaignTransferProgress,
+  ControlBridge,
+} from '../shared/contract';
 import BroadcastView from './BroadcastView';
-import { CampaignList, errorMessage } from './CampaignList';
+import { BroadcastOnTopToggle } from './BroadcastOnTop';
+import {
+  CampaignList,
+  errorMessage,
+  exportNotice,
+  type CampaignDeletionActions,
+} from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
-import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboard';
+import {
+  PAD_KEY_POSITIONS,
+  ShortcutsContext,
+  useShortcuts,
+  type ShortcutHandlers,
+} from './keyboard';
 import { useListening } from './Listening';
 import { NowPlaying, toggleSilence } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel, type NotesChange } from './ScenesPanel';
+import { ShortcutsPage } from './ShortcutsPage';
 import { SoundboardPanel, useSoundboard, type SoundboardControls } from './Soundboard';
 import { showNotice } from './notices';
-
-const themes: { id: ThemeId; label: string; subtitle: string }[] = [
-  { id: 'retro', label: 'Rétro SF', subtitle: 'Terminaux, phosphore et écrans CRT' },
-  { id: 'imperium', label: 'Imperium', subtitle: 'Gothique impérial, rouge, or et parchemin' },
-  { id: 'fantasy', label: 'Fantasy', subtitle: 'Bois, cuir, pierre et parchemin' },
-];
+import { ThemePicker, themeLabel } from './ThemePicker';
 
 /** Theme of the Campaign list home page until the global Settings are read. */
 const DEFAULT_HOME_THEME: ThemeId = 'imperium';
@@ -42,6 +63,9 @@ function byName(a: Campaign, b: Campaign) {
 function ControlApp({ control }: { control: ControlBridge | undefined }) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [openId, setOpenId] = useState<CampaignId | null>(null);
+  // The Export or Import under way, shown with its Cancel on the Campaign list.
+  const [transfer, setTransfer] = useState<CampaignTransferProgress | null>(null);
+  useEffect(() => control?.onCampaignTransferProgress(setTransfer), [control]);
   // Messages from the main process, e.g. a corrupt file recovered from its backup.
   const collectNotices = useCallback(async () => {
     if (!control) return;
@@ -104,13 +128,22 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
 
   // The global theme (Settings) dresses the home page; inside a Campaign, its own theme.
   const [homeTheme, setHomeTheme] = useState<ThemeId>(DEFAULT_HOME_THEME);
+  // The shortcut keys (Settings); shortcuts pause while the shortcuts page is open.
+  const [shortcuts, setShortcuts] = useState<ShortcutSettings>(DEFAULT_SHORTCUTS);
+  const [remapping, setRemapping] = useState(false);
+  const shortcutsInForce = useMemo(
+    () => ({ keyMap: keyMapOf(shortcuts), paused: remapping }),
+    [shortcuts, remapping],
+  );
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
     control
       .getSettings()
       .then((settings) => {
-        if (!cancelled) setHomeTheme(settings.theme);
+        if (cancelled) return;
+        setHomeTheme(settings.theme);
+        setShortcuts(settings.shortcuts);
       })
       .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
@@ -130,6 +163,19 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     }
   }
 
+  /** Saves the shortcut keys; they are in force at once, and back as saved if refused. */
+  async function changeShortcuts(next: ShortcutSettings) {
+    const before = shortcuts;
+    setShortcuts(next);
+    if (!control) return;
+    try {
+      setShortcuts((await control.setShortcuts(next)).shortcuts);
+    } catch (error) {
+      setShortcuts(before);
+      showNotice(errorMessage(error));
+    }
+  }
+
   const openCampaign = campaigns?.find((c) => c.id === openId);
   const theme = openCampaign?.theme ?? homeTheme;
 
@@ -144,6 +190,41 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     await enter(created.id);
   }
 
+  async function exportCampaign(id: CampaignId) {
+    if (!control) return;
+    try {
+      const result = await control.exportCampaign(id);
+      if (result.saved) showNotice(exportNotice(result.missingMedia));
+      else if (result.cancelled) showNotice('Export annulé : aucun fichier n’a été enregistré.');
+    } finally {
+      setTransfer(null);
+    }
+  }
+
+  /**
+   * Imports a Campaign, picked in the open dialog or `dropped` from Explorer; it joins the list,
+   * highlighted there, and is not opened (ADR-0005).
+   */
+  async function importCampaign(dropped?: File): Promise<CampaignId | undefined> {
+    if (!control) return undefined;
+    let result: CampaignImportResult;
+    try {
+      result = dropped
+        ? await control.importDroppedCampaign(dropped)
+        : await control.importCampaign();
+    } finally {
+      setTransfer(null);
+    }
+    if (!result.imported) {
+      if (result.cancelled) showNotice('Import annulé : aucune campagne n’a été ajoutée.');
+      return undefined;
+    }
+    const { campaign } = result;
+    setCampaigns((current) => [...(current ?? []), campaign].sort(byName));
+    showNotice(`Campagne « ${campaign.name} » importée.`);
+    return campaign.id;
+  }
+
   async function update(id: CampaignId, changes: CampaignChanges) {
     if (!control) return;
     try {
@@ -156,93 +237,116 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     }
   }
 
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">
-            <Aperture size={19} />
-          </div>
-          <div>
-            <strong>RÉGIE JDR</strong>
-            <small>POSTE DU MAÎTRE DU JEU</small>
-          </div>
-        </div>
-        <div className="topbar-right">
-          {openCampaign ? (
-            <button className="secondary-button" onClick={() => void enter(null)}>
-              <ArrowLeft size={14} /> Campagnes
-            </button>
-          ) : (
-            <HomeThemePicker theme={homeTheme} onChange={(next) => void changeHomeTheme(next)} />
-          )}
-          <button className="primary-button" onClick={() => void control?.openBroadcast()}>
-            <MonitorPlay size={16} /> Ouvrir la diffusion
-          </button>
-          {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
-          <button
-            className="secondary-button"
-            onClick={() => void control?.toggleBroadcastFullscreen()}
-            title="Mettre la diffusion en plein écran, ou l’en sortir"
-          >
-            <Maximize size={14} /> Plein écran
-          </button>
-        </div>
-      </header>
-      {openCampaign ? (
-        <CampaignScreen
-          key={openCampaign.id}
-          campaign={openCampaign}
-          control={control}
-          onThemeChange={(next) =>
-            void update(openCampaign.id, { theme: next }).catch((error: unknown) => {
-              showNotice(errorMessage(error));
-            })
-          }
-        />
-      ) : (
-        campaigns && (
-          <CampaignList
-            campaigns={campaigns}
-            onOpen={(id) => void enter(id)}
-            onCreate={create}
-            onRename={(id, name) => update(id, { name })}
-          />
-        )
-      )}
-      <footer className="footer">
-        <span>
-          RÉGIE JDR <span className="footer-muted">· Prototype 0.1</span>
-        </span>
-        <span>Fonctionnement local · Aucun compte requis</span>
-      </footer>
-    </main>
-  );
-}
+  /** A deleted Campaign leaves the list; the Game Master stays on it, even with one left. */
+  function forget(id: CampaignId) {
+    setCampaigns((current) => (current ?? []).filter((c) => c.id !== id));
+  }
 
-/** Minimal picker for the home page theme (finished themes and their picker come later). */
-function HomeThemePicker({
-  theme,
-  onChange,
-}: {
-  theme: ThemeId;
-  onChange: (theme: ThemeId) => void;
-}) {
+  const deletion: CampaignDeletionActions | undefined = control && {
+    describe: (id) => control.getCampaignDeletionSummary(id),
+    moveToTrash: async (id) => {
+      const outcome = await control.moveCampaignToTrash(id);
+      if (outcome.deleted) forget(id);
+      return outcome;
+    },
+    deletePermanently: async (id) => {
+      await control.deleteCampaignPermanently(id);
+      forget(id);
+    },
+  };
+
   return (
-    <label className="home-theme">
-      <Palette size={14} />
-      <select
-        aria-label="Thème de l’accueil"
-        value={theme}
-        onChange={(e) => onChange(e.target.value as ThemeId)}
-      >
-        {themes.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <ShortcutsContext.Provider value={shortcutsInForce}>
+      <main className="app-shell">
+        <header className="topbar">
+          <div className="brand">
+            <div className="brand-mark">
+              <Aperture size={19} />
+            </div>
+            <div>
+              <strong>RÉGIE JDR</strong>
+              <small>POSTE DU MAÎTRE DU JEU</small>
+            </div>
+          </div>
+          <div className="topbar-right">
+            {openCampaign && (
+              <button className="secondary-button" onClick={() => void enter(null)}>
+                <ArrowLeft size={14} /> Campagnes
+              </button>
+            )}
+            <button className="primary-button" onClick={() => void control?.openBroadcast()}>
+              <MonitorPlay size={16} /> Ouvrir la diffusion
+            </button>
+            {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
+            <button
+              className="secondary-button"
+              onClick={() => void control?.toggleBroadcastFullscreen()}
+              title="Mettre la diffusion en plein écran, ou l’en sortir"
+            >
+              <Maximize size={14} /> Plein écran
+            </button>
+            <BroadcastOnTopToggle control={control} />
+            <button className="secondary-button" onClick={() => setRemapping(true)}>
+              <Keyboard size={14} /> Raccourcis
+            </button>
+          </div>
+        </header>
+        {remapping && (
+          <ShortcutsPage
+            shortcuts={shortcuts}
+            onChange={(next) => void changeShortcuts(next)}
+            onClose={() => setRemapping(false)}
+          />
+        )}
+        {openCampaign ? (
+          <CampaignScreen
+            key={openCampaign.id}
+            campaign={openCampaign}
+            control={control}
+            onThemeChange={(next) =>
+              void update(openCampaign.id, { theme: next }).catch((error: unknown) => {
+                showNotice(errorMessage(error));
+              })
+            }
+          />
+        ) : (
+          campaigns && (
+            <CampaignList
+              campaigns={campaigns}
+              onOpen={(id) => void enter(id)}
+              onCreate={create}
+              onRename={(id, name) => update(id, { name })}
+              deletion={deletion}
+              onExport={exportCampaign}
+              onImport={control && importCampaign}
+              transfer={transfer}
+              onCancelTransfer={() => void control?.cancelCampaignTransfer()}
+            >
+              <section className="panel home-theme">
+                <div className="panel-heading">
+                  <div>
+                    <span className="eyebrow">APPARENCE</span>
+                    <h2>
+                      <Palette size={18} /> Thème de l’accueil
+                    </h2>
+                  </div>
+                </div>
+                <ThemePicker
+                  label="Thème de l’accueil"
+                  theme={homeTheme}
+                  onChange={(next) => void changeHomeTheme(next)}
+                />
+                <p className="theme-footnote">Les nouvelles campagnes prennent ce thème.</p>
+              </section>
+            </CampaignList>
+          )
+        )}
+        <footer className="footer">
+          <span>RÉGIE JDR · Prototype 0.1</span>
+          <span>Fonctionnement local · Aucun compte requis</span>
+        </footer>
+      </main>
+    </ShortcutsContext.Provider>
   );
 }
 
@@ -279,7 +383,6 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
   // Where the Scenes panel shows the Selected Scene's Notes.
   const [notesSlot, setNotesSlot] = useState<HTMLElement | null>(null);
 
-  const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
   // Per Campaign, whichever Scene is active. Read again when a Media is deleted (its pads go).
   const soundboard = useSoundboard(control, campaign.id, mediaRevision);
   useAudioShortcuts(control, soundboard);
@@ -294,8 +397,11 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
           <h1>{campaign.name}</h1>
         </div>
         <div className="topbar-right">
-          <span className="status-dot" /> SESSION LOCALE <span className="top-separator">|</span>
-          <span className="theme-name">{themeLabel}</span>
+          <span className="status-dot" /> SESSION LOCALE{' '}
+          <span className="top-separator" aria-hidden="true">
+            |
+          </span>
+          <span className="theme-name">{themeLabel(theme)}</span>
         </div>
       </div>
 
@@ -349,22 +455,7 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
               </div>
               <Settings2 size={17} />
             </div>
-            <div className="theme-options">
-              {themes.map((item) => (
-                <button
-                  key={item.id}
-                  className={`theme-option ${theme === item.id ? 'selected' : ''}`}
-                  onClick={() => onThemeChange(item.id)}
-                >
-                  <span className={`theme-swatch ${item.id}`}></span>
-                  <span>
-                    <strong>{item.label}</strong>
-                    <small>{item.subtitle}</small>
-                  </span>
-                  <span className="radio-indicator" />
-                </button>
-              ))}
-            </div>
+            <ThemePicker label="Thème de la campagne" theme={theme} onChange={onThemeChange} />
             {theme === 'imperium' && (
               <p className="theme-footnote">
                 Esthétique impériale uniquement : gothique monumental, héraldique, rouge et or.

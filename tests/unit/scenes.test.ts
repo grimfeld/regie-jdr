@@ -3,7 +3,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CampaignError, createCampaign } from '../../core/campaigns';
 import { emptyNotes, notesFromPlainText } from '../../core/notes';
-import { copyOfScene, createSceneLibrary, parseScene, SceneError } from '../../core/scenes';
+import {
+  copyOfScene,
+  createSceneLibrary,
+  parseScene,
+  RECOVERED_FOLDER,
+  SceneError,
+  type SceneLibrary,
+} from '../../core/scenes';
 import { MAX_SCENE_NAME_LENGTH } from '../../core/sceneEdits';
 import { openStorage } from '../../core/storage';
 import type { Scene } from '../../shared/domain';
@@ -339,22 +346,42 @@ describe('scene library', () => {
       expect(await scenes.list(campaign.id)).toEqual([{ ...cantina, notes: emptyNotes() }, hangar]);
     });
 
-    it('keeps the unreadable Notes in a file of the Campaign folder, and says where, once', async () => {
+    it('keeps the unreadable Notes in a file of the Campaign’s recovered folder, and says where, once', async () => {
       const { campaign, scenes, notices, folder, badNotes, cantina } = await damaged();
 
       await scenes.list(campaign.id);
       await scenes.list(campaign.id);
 
-      const kept = (await fs.readdir(folder)).filter((name) => name.startsWith('notes-illisibles'));
-      expect(kept).toHaveLength(1);
-      expect(JSON.parse(await fs.readFile(path.join(folder, kept[0]), 'utf8'))).toEqual({
+      const recovered = path.join(folder, RECOVERED_FOLDER);
+      const kept = await fs.readdir(recovered);
+      expect(kept).toEqual([expect.stringMatching(/^notes-illisibles-.*\.json$/)]);
+      expect(JSON.parse(await fs.readFile(path.join(recovered, kept[0]), 'utf8'))).toEqual({
         sceneId: cantina.id,
         sceneName: 'Cantina',
         notes: badNotes,
       });
       expect(notices).toEqual([
-        `Les notes de la scène « Cantina » étaient illisibles : elles sont vides. Leur contenu d’origine est gardé dans ${path.join(folder, kept[0])}.`,
+        `Les notes de la scène « Cantina » étaient illisibles : elles sont vides. Leur contenu d’origine est gardé dans ${path.join(recovered, kept[0])}.`,
       ]);
+      // Never at the top of the Campaign folder, where the Campaign's documents are.
+      expect((await fs.readdir(folder)).filter((name) => name.startsWith('notes-'))).toEqual([
+        RECOVERED_FOLDER,
+      ]);
+    });
+
+    it('moves Notes kept at the top of the Campaign folder by an older version into the recovered folder', async () => {
+      const { campaign, scenes, storage } = await setup();
+      const folder = storage.campaignFolder(campaign.id);
+      const old = 'notes-illisibles-cantina-1762000000000.json';
+      await fs.writeFile(path.join(folder, old), '{"sceneName":"Cantina"}');
+
+      await scenes.list(campaign.id);
+
+      expect(await fs.readdir(path.join(folder, RECOVERED_FOLDER))).toEqual([old]);
+      expect(await fs.readFile(path.join(folder, RECOVERED_FOLDER, old), 'utf8')).toBe(
+        '{"sceneName":"Cantina"}',
+      );
+      expect((await fs.readdir(folder)).includes(old)).toBe(false);
     });
   });
 
@@ -370,12 +397,19 @@ describe('scene library', () => {
 
   describe('running order', () => {
     const names = (list: Scene[]) => list.map((scene) => scene.name);
+    const moveScene = (
+      scenes: SceneLibrary,
+      campaignId: string,
+      sceneId: string,
+      toIndex: number,
+      chapterId: string | null = null,
+    ) => scenes.editRunningOrder(campaignId, { kind: 'move-scene', sceneId, chapterId, toIndex });
 
     it('adds a new Scene at the end', async () => {
       const { campaign, scenes } = await setup();
       const first = await scenes.create(campaign.id, 'A');
       await scenes.create(campaign.id, 'B');
-      await scenes.move(campaign.id, first.id, 1);
+      await moveScene(scenes, campaign.id, first.id, 1);
 
       await scenes.create(campaign.id, 'C');
 
@@ -384,14 +418,15 @@ describe('scene library', () => {
 
     it('moves a Scene and keeps the order after the storage is reopened (restart)', async () => {
       const { campaign, scenes } = await setup();
-      const [a, , c] = [
+      const [a, b, c] = [
         await scenes.create(campaign.id, 'A'),
         await scenes.create(campaign.id, 'B'),
         await scenes.create(campaign.id, 'C'),
       ];
 
-      expect(names(await scenes.move(campaign.id, c.id, 0))).toEqual(['C', 'A', 'B']);
-      expect(names(await scenes.move(campaign.id, a.id, 2))).toEqual(['C', 'B', 'A']);
+      expect((await moveScene(scenes, campaign.id, c.id, 0)).sceneIds).toEqual([c.id, a.id, b.id]);
+      await moveScene(scenes, campaign.id, a.id, 2);
+      expect(names(await scenes.list(campaign.id))).toEqual(['C', 'B', 'A']);
 
       const reopened = createSceneLibrary(openStorage(root()));
       expect(names(await reopened.list(campaign.id))).toEqual(['C', 'B', 'A']);
@@ -401,7 +436,7 @@ describe('scene library', () => {
       const { campaign, scenes } = await setup();
       const a = await scenes.create(campaign.id, 'A');
       const b = await scenes.create(campaign.id, 'B');
-      await scenes.move(campaign.id, b.id, 0);
+      await moveScene(scenes, campaign.id, b.id, 0);
 
       await scenes.save({ ...a, title: 'Le vieux moulin' });
 
@@ -411,7 +446,7 @@ describe('scene library', () => {
     it('refuses to move a Scene that no longer exists', async () => {
       const { campaign, scenes } = await setup();
       await scenes.create(campaign.id, 'A');
-      await expect(scenes.move(campaign.id, 'inconnue', 0)).rejects.toThrow(SceneError);
+      await expect(moveScene(scenes, campaign.id, 'inconnue', 0)).rejects.toThrow(SceneError);
     });
 
     it('starts as the list order of a Campaign saved before running orders (version 2)', async () => {
@@ -431,6 +466,192 @@ describe('scene library', () => {
       );
 
       expect(names(await scenes.list(campaign.id))).toEqual(['Zéro', 'Alpha', 'Milieu']);
+    });
+  });
+
+  describe('Chapters', () => {
+    const names = (list: Scene[]) => list.map((scene) => scene.name);
+
+    /** A Campaign with Scenes A, B, C, D, Chapters "Un" (A, B) and "Deux" (C), D in none. */
+    async function withChapters() {
+      const ctx = await setup();
+      const { campaign, scenes } = ctx;
+      const [a, b, c, d] = [
+        await scenes.create(campaign.id, 'A'),
+        await scenes.create(campaign.id, 'B'),
+        await scenes.create(campaign.id, 'C'),
+        await scenes.create(campaign.id, 'D'),
+      ];
+      const one = (
+        await scenes.editRunningOrder(campaign.id, { kind: 'create-chapter', name: 'Un' })
+      ).chapters[0];
+      const two = (
+        await scenes.editRunningOrder(campaign.id, { kind: 'create-chapter', name: ' Deux ' })
+      ).chapters[1];
+      for (const [scene, chapter] of [
+        [a, one],
+        [b, one],
+        [c, two],
+      ] as const) {
+        await scenes.editRunningOrder(campaign.id, {
+          kind: 'move-scene',
+          sceneId: scene.id,
+          chapterId: chapter.id,
+          toIndex: 99,
+        });
+      }
+      return { ...ctx, a, b, c, d, one, two };
+    }
+
+    it('starts with none in a new Campaign', async () => {
+      const { campaign, scenes } = await setup();
+      const a = await scenes.create(campaign.id, 'A');
+
+      expect(await scenes.runningOrder(campaign.id)).toEqual({ sceneIds: [a.id], chapters: [] });
+    });
+
+    it('keeps Chapters, their Scenes and their collapsed state after a restart', async () => {
+      const { campaign, scenes, a, b, c, d, one, two } = await withChapters();
+      await scenes.editRunningOrder(campaign.id, {
+        kind: 'set-chapter-collapsed',
+        chapterId: one.id,
+        collapsed: true,
+      });
+
+      const reopened = createSceneLibrary(openStorage(root()));
+
+      expect(await reopened.runningOrder(campaign.id)).toEqual({
+        sceneIds: [a.id, b.id, c.id, d.id],
+        chapters: [
+          { id: one.id, name: 'Un', collapsed: true, sceneIds: [a.id, b.id] },
+          { id: two.id, name: 'Deux', collapsed: false, sceneIds: [c.id] },
+        ],
+      });
+      expect(names(await reopened.list(campaign.id))).toEqual(['A', 'B', 'C', 'D']);
+    });
+
+    it('lists the Scenes of a reordered Chapter in their new running order', async () => {
+      const { campaign, scenes, two } = await withChapters();
+
+      await scenes.editRunningOrder(campaign.id, {
+        kind: 'move-chapter',
+        chapterId: two.id,
+        toIndex: 0,
+      });
+
+      expect(names(await scenes.list(campaign.id))).toEqual(['C', 'A', 'B', 'D']);
+    });
+
+    it('deleting a Chapter keeps every Scene', async () => {
+      const { campaign, scenes, one } = await withChapters();
+
+      await scenes.editRunningOrder(campaign.id, { kind: 'delete-chapter', chapterId: one.id });
+
+      expect(names(await scenes.list(campaign.id))).toEqual(['C', 'A', 'B', 'D']);
+      expect((await scenes.runningOrder(campaign.id)).chapters.map((c) => c.name)).toEqual([
+        'Deux',
+      ]);
+    });
+
+    it('a deleted Scene leaves its Chapter', async () => {
+      const { campaign, scenes, a, b, one } = await withChapters();
+
+      await scenes.delete(campaign.id, a.id);
+
+      const { chapters } = await scenes.runningOrder(campaign.id);
+      expect(chapters.find((chapter) => chapter.id === one.id)?.sceneIds).toEqual([b.id]);
+    });
+
+    it('puts a new Scene last in the Chapter of the Selected Scene, or last in none', async () => {
+      const { campaign, scenes, a, d } = await withChapters();
+
+      await scenes.create(campaign.id, 'E', a.id);
+      await scenes.create(campaign.id, 'F', d.id);
+      await scenes.create(campaign.id, 'G');
+
+      expect(names(await scenes.list(campaign.id))).toEqual(['A', 'B', 'E', 'C', 'D', 'F', 'G']);
+    });
+
+    it('puts a copy right after its source, in its Chapter', async () => {
+      const { campaign, scenes, a, one } = await withChapters();
+
+      const copy = await scenes.duplicate(campaign.id, a.id);
+
+      expect(names(await scenes.list(campaign.id))).toEqual(['A', 'A (copie)', 'B', 'C', 'D']);
+      const { chapters } = await scenes.runningOrder(campaign.id);
+      expect(chapters.find((chapter) => chapter.id === one.id)?.sceneIds).toContain(copy.id);
+    });
+
+    it('changes no Scene: a Scene saved after a Chapter change keeps its Chapter', async () => {
+      const { campaign, scenes, a, one } = await withChapters();
+      const before = await scenes.get(campaign.id, a.id);
+
+      await scenes.editRunningOrder(campaign.id, {
+        kind: 'rename-chapter',
+        chapterId: one.id,
+        name: 'Prologue',
+      });
+      await scenes.save({ ...a, title: 'Le vieux moulin' });
+
+      expect(await scenes.get(campaign.id, a.id)).toEqual({ ...before, title: 'Le vieux moulin' });
+      const { chapters } = await scenes.runningOrder(campaign.id);
+      expect(chapters[0]).toMatchObject({ name: 'Prologue', sceneIds: [a.id, expect.any(String)] });
+    });
+
+    it('refuses a Chapter that no longer exists, and an empty name', async () => {
+      const { campaign, scenes } = await withChapters();
+
+      await expect(
+        scenes.editRunningOrder(campaign.id, { kind: 'delete-chapter', chapterId: 'inconnu' }),
+      ).rejects.toThrow(SceneError);
+      await expect(
+        scenes.editRunningOrder(campaign.id, { kind: 'create-chapter', name: '  ' }),
+      ).rejects.toThrow(SceneError);
+    });
+
+    it('gives a Campaign saved before Chapters (version 4) none, its order unchanged', async () => {
+      const { storage, campaign, scenes } = await setup();
+      const { campaignId: _campaignId, ...stored } = await scenes.create(campaign.id, 'x');
+      const file = path.join(storage.campaignFolder(campaign.id), 'scenes.json');
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          schemaVersion: 4,
+          scenes: ['Zéro', 'Alpha'].map((name, i) => ({ ...stored, id: `s${i}`, name })),
+        }),
+      );
+
+      expect(await scenes.runningOrder(campaign.id)).toEqual({
+        sceneIds: ['s0', 's1'],
+        chapters: [],
+      });
+      await scenes.create(campaign.id, 'Milieu');
+      const saved = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+      expect(saved).toMatchObject({ schemaVersion: 5, chapters: [] });
+    });
+
+    it('reads stored Scenes in the order of their Chapters, dropping unknown Scenes from Chapters', async () => {
+      const { storage, campaign, scenes } = await setup();
+      const { campaignId: _campaignId, ...stored } = await scenes.create(campaign.id, 'x');
+      await fs.writeFile(
+        path.join(storage.campaignFolder(campaign.id), 'scenes.json'),
+        JSON.stringify({
+          schemaVersion: 5,
+          scenes: ['A', 'B', 'C'].map((name) => ({ ...stored, id: name, name })),
+          chapters: [
+            { id: 'un', name: 'Un', collapsed: false, sceneIds: ['C', 'disparue'] },
+            { id: 'deux', name: 'Deux', collapsed: true, sceneIds: ['C', 'A'] },
+          ],
+        }),
+      );
+
+      expect(await scenes.runningOrder(campaign.id)).toEqual({
+        sceneIds: ['C', 'A', 'B'],
+        chapters: [
+          { id: 'un', name: 'Un', collapsed: false, sceneIds: ['C'] },
+          { id: 'deux', name: 'Deux', collapsed: true, sceneIds: ['A'] },
+        ],
+      });
     });
   });
 

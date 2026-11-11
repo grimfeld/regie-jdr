@@ -2,13 +2,14 @@ import fs from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { openStorage } from '../../core/storage';
 import { createSettingsStore } from '../../core/settings';
+import type { ShortcutSettings } from '../../shared/domain';
 import { useTempDir } from './tempDir';
 
 describe('settings', () => {
   const dir = useTempDir();
   const reopen = () => createSettingsStore(openStorage(dir.path));
 
-  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade, a full Master volume, a 1.5 s Activate and a 2 s Music crossfade', async () => {
+  it('start with the imperium home theme, no window bounds, no last Active Scene, a 0.6 s fade, a full Master volume, a 1.5 s Activate, a 2 s Music crossfade, the Broadcast window not on top and no shortcut remapped', async () => {
     expect(await reopen().get()).toEqual({
       theme: 'imperium',
       windowBounds: {},
@@ -17,6 +18,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -51,6 +54,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -74,6 +79,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -97,6 +104,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -153,6 +162,8 @@ describe('settings', () => {
       masterVolume: 0.4,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -212,6 +223,160 @@ describe('settings', () => {
     });
   });
 
+  describe('bring version 4 Settings to the current version, whichever milestone wrote them', () => {
+    const version4 = (fields: object) => ({
+      schemaVersion: 4,
+      theme: 'retro',
+      windowBounds: {},
+      lastActiveSceneByCampaign: {},
+      fadeDurationMs: 900,
+      masterVolume: 0.4,
+      ...fields,
+    });
+    const migrated = async (fields: object) => {
+      const storage = openStorage(dir.path);
+      await fs.writeFile(storage.settingsFile, JSON.stringify(version4(fields)));
+      const settings = await reopen().setTheme('retro');
+      const stored: unknown = JSON.parse(await fs.readFile(storage.settingsFile, 'utf8'));
+      return { settings, stored };
+    };
+
+    it('Milestone 3 (the durations): keeps them, the Broadcast window not on top', async () => {
+      const { settings, stored } = await migrated({
+        activateDurationMs: 3000,
+        musicCrossfadeMs: 5000,
+      });
+      expect(settings).toEqual({
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        fadeDurationMs: 900,
+        masterVolume: 0.4,
+        activateDurationMs: 3000,
+        musicCrossfadeMs: 5000,
+        broadcastAlwaysOnTop: false,
+        shortcuts: { keys: {}, cutModifier: 'shift' },
+      });
+      expect(stored).toMatchObject({ schemaVersion: 6, broadcastAlwaysOnTop: false });
+    });
+
+    it('an early Milestone 4 build (always on top only): keeps it, default durations', async () => {
+      const { settings, stored } = await migrated({ broadcastAlwaysOnTop: true });
+      expect(settings).toMatchObject({
+        activateDurationMs: 1500,
+        musicCrossfadeMs: 2000,
+        broadcastAlwaysOnTop: true,
+      });
+      expect(stored).toMatchObject({
+        schemaVersion: 6,
+        activateDurationMs: 1500,
+        musicCrossfadeMs: 2000,
+        broadcastAlwaysOnTop: true,
+      });
+    });
+  });
+
+  it('keep a stored Broadcast always-on-top choice and drop an unusable one', async () => {
+    const storage = openStorage(dir.path);
+    const write = (broadcastAlwaysOnTop: unknown) =>
+      fs.writeFile(
+        storage.settingsFile,
+        JSON.stringify({
+          schemaVersion: 5,
+          theme: 'imperium',
+          windowBounds: {},
+          lastActiveSceneByCampaign: {},
+          fadeDurationMs: 600,
+          masterVolume: 1,
+          activateDurationMs: 1500,
+          musicCrossfadeMs: 2000,
+          broadcastAlwaysOnTop,
+        }),
+      );
+    await write(true);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(true);
+    for (const unusable of ['yes', 1, null]) {
+      await write(unusable);
+      expect((await reopen().get()).broadcastAlwaysOnTop).toBe(false);
+    }
+  });
+
+  it('remember the Broadcast always-on-top choice across a restart', async () => {
+    expect((await reopen().setBroadcastAlwaysOnTop(true)).broadcastAlwaysOnTop).toBe(true);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(true);
+    expect((await reopen().setBroadcastAlwaysOnTop(false)).broadcastAlwaysOnTop).toBe(false);
+    expect((await reopen().get()).broadcastAlwaysOnTop).toBe(false);
+  });
+
+  it('give Settings saved before Milestone 4 remapping the default shortcut keys', async () => {
+    const storage = openStorage(dir.path);
+    await fs.writeFile(
+      storage.settingsFile,
+      JSON.stringify({
+        schemaVersion: 5,
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        fadeDurationMs: 900,
+        masterVolume: 0.4,
+        activateDurationMs: 1500,
+        musicCrossfadeMs: 2000,
+        broadcastAlwaysOnTop: true,
+      }),
+    );
+    expect(await reopen().get()).toMatchObject({
+      broadcastAlwaysOnTop: true,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
+    });
+    await reopen().setTheme('fantasy');
+    const stored: unknown = JSON.parse(await fs.readFile(storage.settingsFile, 'utf8'));
+    expect(stored).toMatchObject({
+      schemaVersion: 6,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
+    });
+  });
+
+  it('remember remapped shortcut keys across a restart', async () => {
+    const shortcuts: ShortcutSettings = {
+      keys: { silence: [{ key: 'f9' }], blackout: [] },
+      cutModifier: 'alt',
+    };
+    expect((await reopen().setShortcuts(shortcuts)).shortcuts).toEqual(shortcuts);
+    expect((await reopen().get()).shortcuts).toEqual(shortcuts);
+  });
+
+  it('refuse shortcut keys that are reserved or taken twice, keeping the saved ones', async () => {
+    await reopen().setShortcuts({ keys: { silence: [{ key: 'f9' }] }, cutModifier: 'shift' });
+    await expect(
+      reopen().setShortcuts({ keys: { silence: [{ key: 'escape' }] }, cutModifier: 'shift' }),
+    ).rejects.toThrow('Ces raccourcis ne peuvent pas être enregistrés');
+    await expect(
+      reopen().setShortcuts({
+        keys: { silence: [{ key: 'q' }], blackout: [{ key: 'q' }] },
+        cutModifier: 'shift',
+      }),
+    ).rejects.toThrow();
+    expect((await reopen().get()).shortcuts.keys).toEqual({ silence: [{ key: 'f9' }] });
+  });
+
+  it('keep stored shortcut keys that can be read and drop the rest', async () => {
+    const storage = openStorage(dir.path);
+    await fs.writeFile(
+      storage.settingsFile,
+      JSON.stringify({
+        schemaVersion: 6,
+        theme: 'retro',
+        windowBounds: {},
+        lastActiveSceneByCampaign: {},
+        shortcuts: { keys: { silence: [{ key: 'f9' }, 'nope'], undo: [] }, cutModifier: 'nope' },
+      }),
+    );
+    expect((await reopen().get()).shortcuts).toEqual({
+      keys: { silence: [{ key: 'f9' }] },
+      cutModifier: 'shift',
+    });
+  });
+
   it('remember the global theme across a restart', async () => {
     await reopen().setTheme('fantasy');
     expect((await reopen().get()).theme).toBe('fantasy');
@@ -236,6 +401,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -255,6 +422,27 @@ describe('settings', () => {
     expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
   });
 
+  it('forget a deleted Campaign entirely, keeping the other Campaigns', async () => {
+    const settings = reopen();
+    await settings.setLastActiveScene('star-wars', 'cantina');
+    await settings.setLastActiveScene('warhammer', 'cathedral');
+
+    await settings.forgetCampaign('star-wars');
+    await settings.forgetCampaign('never-seen');
+
+    expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
+  });
+
+  it('forget a Campaign named with other letter cases (one folder on Windows)', async () => {
+    const settings = reopen();
+    await settings.setLastActiveScene('star-wars', 'cantina');
+    await settings.setLastActiveScene('warhammer', 'cathedral');
+
+    await settings.forgetCampaign('Star-Wars');
+
+    expect((await reopen().get()).lastActiveSceneByCampaign).toEqual({ warhammer: 'cathedral' });
+  });
+
   it('lose no change made at the same time', async () => {
     const settings = reopen();
     await Promise.all([
@@ -271,6 +459,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 
@@ -293,6 +483,8 @@ describe('settings', () => {
       masterVolume: 1,
       activateDurationMs: 1500,
       musicCrossfadeMs: 2000,
+      broadcastAlwaysOnTop: false,
+      shortcuts: { keys: {}, cutModifier: 'shift' },
     });
   });
 });

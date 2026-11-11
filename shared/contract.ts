@@ -13,6 +13,8 @@ import type {
   BackgroundFit,
   Campaign,
   CampaignId,
+  Chapter,
+  ChapterId,
   ImageCategory,
   Media,
   MediaId,
@@ -25,6 +27,7 @@ import type {
   Scene,
   SceneId,
   Settings,
+  ShortcutSettings,
   Soundboard,
   ThemeId,
   TransitionKind,
@@ -37,6 +40,34 @@ import type {
 export interface ActivateOptions {
   forceCut?: boolean;
 }
+
+/**
+ * A Campaign's running order: every Scene id in order (the Scenes of each Chapter, Chapter by
+ * Chapter, then the Scenes in no Chapter), and its Chapters.
+ */
+export interface RunningOrder {
+  sceneIds: SceneId[];
+  chapters: Chapter[];
+}
+
+/**
+ * One Campaign-level command on the running order (core/runningOrder.ts). Never in any Scene's
+ * undo history: it changes no Scene.
+ */
+export type RunningOrderEdit =
+  /** Adds an empty, expanded Chapter after the others. */
+  | { kind: 'create-chapter'; name: string }
+  | { kind: 'rename-chapter'; chapterId: ChapterId; name: string }
+  /** Moves a Chapter to `toIndex` among the Chapters (past the end means last). */
+  | { kind: 'move-chapter'; chapterId: ChapterId; toIndex: number }
+  /** Deletes a Chapter; its Scenes, in their order, become the first Scenes in no Chapter. */
+  | { kind: 'delete-chapter'; chapterId: ChapterId }
+  | { kind: 'set-chapter-collapsed'; chapterId: ChapterId; collapsed: boolean }
+  /**
+   * Moves a Scene into the Chapter `chapterId` (null: into no Chapter), at `toIndex` among that
+   * group's Scenes: it takes the place of the Scene there (past the end means last).
+   */
+  | { kind: 'move-scene'; sceneId: SceneId; chapterId: ChapterId | null; toIndex: number };
 
 /** A way through the running order: towards its end (`next`) or its start (`previous`). */
 export type SceneDirection = 'next' | 'previous';
@@ -231,11 +262,50 @@ export interface MediaDeletion {
   affectedNotes: { id: SceneId; name: string }[];
 }
 
+/**
+ * What an Export did: nothing when the Game Master cancelled the save dialog, or `cancelled`
+ * when they cancelled the Export itself (no file left); else the number of Media left out
+ * because their file is missing on disk.
+ */
+export type CampaignExportResult =
+  { saved: false; cancelled: boolean } | { saved: true; missingMedia: number };
+
+/**
+ * What an Import did: nothing when the Game Master cancelled the file dialog, or `cancelled` when
+ * they cancelled the Import itself (no Campaign added); else the new Campaign.
+ */
+export type CampaignImportResult =
+  { imported: false; cancelled: boolean } | { imported: true; campaign: Campaign };
+
+/** An Export or Import under way, in bytes; `totalBytes` is 0 when there is nothing to count. */
+export interface CampaignTransferProgress {
+  kind: 'export' | 'import';
+  doneBytes: number;
+  totalBytes: number;
+}
+
 /** What can be changed on a Campaign; absent fields are left as they are. */
 export interface CampaignChanges {
   name?: string;
   theme?: ThemeId;
 }
+
+/** What deleting a Campaign takes away, for the Game Master's confirmation. */
+export interface CampaignDeletionSummary {
+  id: CampaignId;
+  name: string;
+  sceneCount: number;
+  mediaCount: number;
+  /** Size of the Campaign's folder on disk, in bytes. */
+  sizeBytes: number;
+}
+
+/**
+ * Outcome of moving a Campaign to the Recycle Bin. When the Recycle Bin refuses it (network
+ * drive, locked file), nothing is deleted and `reason` says why, in French; only then may the
+ * Game Master ask for a permanent delete.
+ */
+export type CampaignTrashing = { deleted: true } | { deleted: false; reason: string };
 
 /**
  * Request/response channels (`ipcRenderer.invoke`). `payload: void` means the call takes no
@@ -278,8 +348,14 @@ export interface InvokeChannels {
   'onAir:toggle-blackout': { payload: void; result: OnAirState };
   /** The Scenes of a Campaign, in running order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
-  /** Create an empty Scene, last in the running order; fails with a French message for an empty name. */
-  'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
+  /**
+   * Create an empty Scene, last in the Chapter of `selectedSceneId` (the Selected Scene), or last
+   * in no Chapter when it has none; fails with a French message for an empty name.
+   */
+  'scenes:create': {
+    payload: { campaignId: CampaignId; name: string; selectedSceneId?: SceneId };
+    result: Scene;
+  };
   /**
    * Apply one edit command to a Scene (core/sceneEdits.ts) and get the Scene as saved. On the
    * Active Scene the edit goes on air at once; any other Scene stays private.
@@ -312,18 +388,20 @@ export interface InvokeChannels {
    * stays on air. The window asks the Game Master to confirm first.
    */
   'scenes:delete': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: void };
+  /** The Campaign's running order: its Scene ids in order and its Chapters. */
+  'scenes:running-order': { payload: { campaignId: CampaignId }; result: RunningOrder };
   /**
-   * Move a Scene to `toIndex` in the Campaign's running order (past the end means last) and get
-   * the Scenes in their new order. A Campaign-level command: it changes no Scene and is not in
-   * any Scene's undo history.
+   * Apply one command to the Campaign's running order (Chapters, a Scene's place) and get the
+   * running order as saved. A Campaign-level command: it changes no Scene and is not in any
+   * Scene's undo history.
    */
-  'scenes:move': {
-    payload: { campaignId: CampaignId; sceneId: SceneId; toIndex: number };
-    result: Scene[];
+  'scenes:edit-running-order': {
+    payload: { campaignId: CampaignId; edit: RunningOrderEdit };
+    result: RunningOrder;
   };
   /**
    * Save an independent copy of a Scene, named "<name> (copie)", right after it in the running
-   * order, and get the copy. It reuses the same Media, never goes on air by itself, and is not
+   * order (in its Chapter), and get the copy. It reuses the same Media, never goes on air by itself, and is not
    * an undo step (the copy starts with an empty undo history).
    */
   'scenes:duplicate': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
@@ -369,6 +447,11 @@ export interface InvokeChannels {
     payload: { campaignId: CampaignId; mediaId: MediaId; category: ImageCategory };
     result: Media;
   };
+  /** Star (`favourite` true) or unstar an image or a sound, for the library's "Favoris" filter. */
+  'media:set-favourite': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; favourite: boolean };
+    result: Media;
+  };
   /**
    * Rename a Media: changes the name it is shown under; its original file name is kept. Fails
    * with a French message for an empty or too long name.
@@ -392,6 +475,43 @@ export interface InvokeChannels {
   'campaigns:create': { payload: { name: string }; result: Campaign };
   /** Rename a Campaign or change its theme. */
   'campaigns:update': { payload: { id: CampaignId; changes: CampaignChanges }; result: Campaign };
+  /**
+   * What deleting a closed Campaign would take away: its name, Scene and Media counts and size on
+   * disk. Fails for the open Campaign or anything that is not a Campaign.
+   */
+  'campaigns:deletion-summary': { payload: { id: CampaignId }; result: CampaignDeletionSummary };
+  /**
+   * Move a closed Campaign's folder to the Windows Recycle Bin and forget its Settings entries.
+   * The window asks the Game Master to confirm first. Never deletes permanently by itself.
+   */
+  'campaigns:move-to-trash': { payload: { id: CampaignId }; result: CampaignTrashing };
+  /**
+   * Delete a closed Campaign's folder for good, after the Recycle Bin refused it and the Game
+   * Master confirmed a second time. Fails unless the Recycle Bin refused that Campaign.
+   */
+  'campaigns:delete-permanently': { payload: { id: CampaignId }; result: void };
+  /**
+   * Export a closed Campaign to a `.zip` (ADR-0005), saved where the Game Master picks in the
+   * native save dialog (the window never names files). Fails for the open Campaign.
+   */
+  'campaigns:export': { payload: { id: CampaignId }; result: CampaignExportResult };
+  /**
+   * Import a Campaign from a `.zip` Export (ADR-0005), picked in the native open dialog (the
+   * window never names files). Always a new Campaign; fails, leaving nothing behind, for a zip
+   * that is refused.
+   */
+  'campaigns:import': { payload: void; result: CampaignImportResult };
+  /**
+   * Import a Campaign from an Export the Game Master dropped from Windows Explorer, like
+   * `campaigns:import`. The path comes from the dropped file (the page never names one); the main
+   * process treats it as untrusted, refusing network shares, device paths and non-zip files.
+   */
+  'campaigns:import-dropped': { payload: { file: string }; result: CampaignImportResult };
+  /**
+   * Cancel the Export or Import under way, if any: it stops and leaves nothing behind, and its
+   * own call resolves as cancelled.
+   */
+  'campaigns:cancel-transfer': { payload: void; result: void };
   /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
@@ -422,6 +542,17 @@ export interface InvokeChannels {
    * picked crossfades over it.
    */
   'settings:set-music-crossfade': { payload: { musicCrossfadeMs: number }; result: Settings };
+  /**
+   * Keep the Broadcast window above other windows, or stop: saved, and applied to the open
+   * Broadcast window and to every one opened later. Set from the Control window only: the
+   * Broadcast window has no controls.
+   */
+  'settings:set-broadcast-always-on-top': { payload: { on: boolean }; result: Settings };
+  /**
+   * Save the Game Master's shortcut keys (core/keyMap.ts), all of them at once. Refused if a
+   * key is reserved or does two things.
+   */
+  'settings:set-shortcuts': { payload: { shortcuts: ShortcutSettings }; result: Settings };
   /**
    * The current mix, for the audio engine (on start and on every reload of the Control window,
    * when the main process forgets what the old engine reported).
@@ -486,6 +617,8 @@ export interface EventChannels {
   'audio:pad-command': PadCommand;
   /** What is sounding changed (a new mix, or an engine report), for the "En cours" strip. */
   'audio:sounding-changed': AudioSounding;
+  /** Progress of the Export or Import under way, a few times a second at most. */
+  'campaigns:transfer-progress': CampaignTransferProgress;
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -547,14 +680,15 @@ export interface ControlBridge extends BroadcastBridge {
   setBlackout(on: boolean): Promise<OnAirState>;
   toggleBlackout(): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
-  createScene(campaignId: CampaignId, name: string): Promise<Scene>;
+  createScene(campaignId: CampaignId, name: string, selectedSceneId?: SceneId): Promise<Scene>;
   editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
   showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
   getUndoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
   undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
-  moveScene(campaignId: CampaignId, sceneId: SceneId, toIndex: number): Promise<Scene[]>;
+  getRunningOrder(campaignId: CampaignId): Promise<RunningOrder>;
+  editRunningOrder(campaignId: CampaignId, edit: RunningOrderEdit): Promise<RunningOrder>;
   duplicateScene(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
   openBroadcast(): Promise<void>;
   toggleBroadcastFullscreen(): Promise<boolean>;
@@ -580,10 +714,21 @@ export interface ControlBridge extends BroadcastBridge {
     category: ImageCategory,
   ): Promise<Media>;
   renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  setMediaFavourite(campaignId: CampaignId, mediaId: MediaId, favourite: boolean): Promise<Media>;
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;
   updateCampaign(id: CampaignId, changes: CampaignChanges): Promise<Campaign>;
+  getCampaignDeletionSummary(id: CampaignId): Promise<CampaignDeletionSummary>;
+  moveCampaignToTrash(id: CampaignId): Promise<CampaignTrashing>;
+  deleteCampaignPermanently(id: CampaignId): Promise<void>;
+  exportCampaign(id: CampaignId): Promise<CampaignExportResult>;
+  importCampaign(): Promise<CampaignImportResult>;
+  /** Imports the Export `file` dropped from Windows Explorer; its path is read in the bridge. */
+  importDroppedCampaign(file: File): Promise<CampaignImportResult>;
+  /** Cancels the Export or Import under way; its call then resolves as cancelled. */
+  cancelCampaignTransfer(): Promise<void>;
+  onCampaignTransferProgress(listener: (progress: CampaignTransferProgress) => void): Unsubscribe;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;
@@ -591,6 +736,8 @@ export interface ControlBridge extends BroadcastBridge {
   setMasterVolume(masterVolume: number): Promise<Settings>;
   setActivateDuration(activateDurationMs: number): Promise<Settings>;
   setMusicCrossfade(musicCrossfadeMs: number): Promise<Settings>;
+  setBroadcastAlwaysOnTop(on: boolean): Promise<Settings>;
+  setShortcuts(shortcuts: ShortcutSettings): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
   setSilence(on: boolean): Promise<AudioSounding>;
   toggleSilence(): Promise<AudioSounding>;

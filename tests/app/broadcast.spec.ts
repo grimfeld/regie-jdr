@@ -130,6 +130,8 @@ test('the letterbox bars are black whatever the theme', async ({ regie }) => {
       }),
     );
     expect(backgrounds).toEqual(Array(4).fill('rgb(0, 0, 0)'));
+    // No theme reaches it: theme tokens apply only under data-theme (src/themes/).
+    await expect(broadcastWindow.locator('[data-theme]')).toHaveCount(0);
     await (
       await broadcastBrowserWindow(app, broadcastWindow)
     ).evaluate((w: BrowserWindow) => {

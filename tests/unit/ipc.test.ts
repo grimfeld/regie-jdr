@@ -55,6 +55,22 @@ describe('sender policy', () => {
     }
   });
 
+  it('lets only the Control window set the Broadcast window on top, with an on/off flag', () => {
+    const channel = 'settings:set-broadcast-always-on-top';
+    expect(checkInvoke(channel, 'broadcast', [{ on: true }])).toMatchObject({ ok: false });
+    expect(checkInvoke(channel, 'control', [{ on: true, x: 1 }])).toEqual({
+      ok: true,
+      payload: { on: true },
+    });
+    expect(checkInvoke(channel, 'control', [{ on: false }])).toEqual({
+      ok: true,
+      payload: { on: false },
+    });
+    for (const args of [[{ on: 'yes' }], [{}], [], [{ on: true }, { on: false }]]) {
+      expect(checkInvoke(channel, 'control', args)).toMatchObject({ ok: false });
+    }
+  });
+
   it('rejects messages from a window that is neither the Control nor the Broadcast window', () => {
     expect(checkInvoke('onAir:get', undefined, [])).toMatchObject({ ok: false });
   });
@@ -127,6 +143,12 @@ describe('Campaign channels', () => {
       ['campaigns:list', []],
       ['campaigns:create', [{ name: 'Star Wars' }]],
       ['campaigns:update', [{ id, changes: { name: 'Star Wars' } }]],
+      ['campaigns:deletion-summary', [{ id }]],
+      ['campaigns:move-to-trash', [{ id }]],
+      ['campaigns:delete-permanently', [{ id }]],
+      ['campaigns:export', [{ id }]],
+      ['campaigns:import', []],
+      ['campaigns:import-dropped', [{ file: path.resolve('Les Ombres.zip') }]],
       ['notices:take', []],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -152,14 +174,61 @@ describe('Campaign channels', () => {
     ).toEqual({ ok: true, payload: { id, changes: { theme: 'fantasy' } } });
   });
 
+  it('accept a Campaign id to delete, keeping only that field', () => {
+    for (const channel of [
+      'campaigns:deletion-summary',
+      'campaigns:move-to-trash',
+      'campaigns:delete-permanently',
+    ] as const) {
+      expect(checkInvoke(channel, 'control', [{ id, permanently: true }])).toEqual({
+        ok: true,
+        payload: { id },
+      });
+    }
+  });
+
+  it('accept a dropped Export as an absolute path, keeping only that field', () => {
+    const file = path.resolve('Les Ombres.zip');
+    expect(checkInvoke('campaigns:import-dropped', 'control', [{ file, id }])).toEqual({
+      ok: true,
+      payload: { file },
+    });
+  });
+
   it.each([
     ['no name', 'campaigns:create', [{}]],
     ['a name that is not text', 'campaigns:create', [{ name: 42 }]],
     ['a huge name', 'campaigns:create', [{ name: 'x'.repeat(10_000) }]],
     ['an id that is a path', 'campaigns:update', [{ id: '../..', changes: { name: 'X' } }]],
+    ['an exported id that is a path', 'campaigns:export', [{ id: '../..' }]],
     ['an unknown theme', 'campaigns:update', [{ id, changes: { theme: 'neon' } }]],
     ['no changes object', 'campaigns:update', [{ id }]],
     ['a name of the wrong type', 'campaigns:update', [{ id, changes: { name: null } }]],
+    ['a path to move to the Recycle Bin', 'campaigns:move-to-trash', [{ id: '..' }]],
+    ['an absolute path to delete', 'campaigns:delete-permanently', [{ id: 'C:\\Windows' }]],
+    ['a nested path to summarise', 'campaigns:deletion-summary', [{ id: 'a/../b' }]],
+    ['no id to delete', 'campaigns:move-to-trash', [{}]],
+    ['two payloads to delete', 'campaigns:move-to-trash', [{ id }, { id }]],
+    ['no dropped Export', 'campaigns:import-dropped', [{}]],
+    ['a dropped Export that is not text', 'campaigns:import-dropped', [{ file: 7 }]],
+    ['a dropped Export with an empty path', 'campaigns:import-dropped', [{ file: '' }]],
+    ['a dropped Export with a relative path', 'campaigns:import-dropped', [{ file: 'x.zip' }]],
+    [
+      'a dropped Export on a network share',
+      'campaigns:import-dropped',
+      [{ file: '\\\\serveur\\partage\\x.zip' }],
+    ],
+    ['a dropped Export on a device path', 'campaigns:import-dropped', [{ file: '\\\\.\\COM1' }]],
+    [
+      'a dropped Export with a NUL character',
+      'campaigns:import-dropped',
+      [{ file: `${path.resolve('x.zip')}\0.txt` }],
+    ],
+    [
+      'several dropped Exports',
+      'campaigns:import-dropped',
+      [{ file: [path.resolve('a.zip'), path.resolve('b.zip')] }],
+    ],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });
@@ -177,6 +246,7 @@ describe('Media channels', () => {
       ['media:import-pasted', [{ campaignId, data: new Uint8Array([1]), name: 'capture.png' }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
       ['media:rename', [{ campaignId, mediaId, name: 'Port de nuit' }]],
+      ['media:set-favourite', [{ campaignId, mediaId, favourite: true }]],
       ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -249,6 +319,17 @@ describe('Media channels', () => {
         { campaignId, mediaId, category: 'scenery', role: 'music' },
       ]),
     ).toEqual({ ok: true, payload: { campaignId, mediaId, category: 'scenery' } });
+  });
+
+  it('accept starring and unstarring, keeping only contract fields', () => {
+    expect(
+      checkInvoke('media:set-favourite', 'control', [
+        { campaignId, mediaId, favourite: true, name: 'x' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, favourite: true } });
+    expect(
+      checkInvoke('media:set-favourite', 'control', [{ campaignId, mediaId, favourite: false }]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, favourite: false } });
   });
 
   it('accept a rename, keeping only contract fields', () => {
@@ -396,6 +477,13 @@ describe('Media channels', () => {
     ],
     ['an unknown category', 'media:set-category', [{ campaignId, mediaId, category: 'creature' }]],
     ['no Media id', 'media:set-category', [{ campaignId, category: 'scenery' }]],
+    ['a favourite with no flag', 'media:set-favourite', [{ campaignId, mediaId }]],
+    [
+      'a favourite flag that is not a boolean',
+      'media:set-favourite',
+      [{ campaignId, mediaId, favourite: 'true' }],
+    ],
+    ['a favourite with no Media id', 'media:set-favourite', [{ campaignId, favourite: true }]],
     ['a rename with no name', 'media:rename', [{ campaignId, mediaId }]],
     ['a rename with a name that is not text', 'media:rename', [{ campaignId, mediaId, name: 7 }]],
     ['a rename with no Media id', 'media:rename', [{ campaignId, name: 'Orc' }]],
@@ -422,13 +510,16 @@ describe('Scene channels', () => {
     edit: { kind: 'transform-overlay', placementId: 'o1', position: { x: 0.2, y: 0.3 } },
   };
 
+  const moveEdit = { kind: 'move-scene', sceneId: 'cantina', chapterId: null, toIndex: 0 };
+
   it('are for the Control window only', () => {
     for (const [channel, args] of [
       ['scenes:list', [{ campaignId }]],
       ['scenes:create', [{ campaignId, name: 'X' }]],
       ['scenes:edit', [edit]],
       ['scenes:delete', [{ campaignId, sceneId: 'cantina' }]],
-      ['scenes:move', [{ campaignId, sceneId: 'cantina', toIndex: 0 }]],
+      ['scenes:running-order', [{ campaignId }]],
+      ['scenes:edit-running-order', [{ campaignId, edit: moveEdit }]],
       ['scenes:duplicate', [{ campaignId, sceneId: 'cantina' }]],
       ['scenes:show-transient', [transient]],
       ['scenes:undo-state', [{ campaignId, sceneId: 'cantina' }]],
@@ -484,6 +575,11 @@ describe('Scene channels', () => {
       ok: true,
       payload: { campaignId, name: 'X' },
     });
+    const beside = { campaignId, name: 'X', selectedSceneId: 'cantina' };
+    expect(checkInvoke('scenes:create', 'control', [beside])).toEqual({
+      ok: true,
+      payload: beside,
+    });
   });
 
   it('accept a Scene to delete, keeping only contract fields', () => {
@@ -494,9 +590,10 @@ describe('Scene channels', () => {
     });
   });
 
-  it('accept a Scene to move in the running order, keeping only contract fields', () => {
-    const move = { campaignId, sceneId: 'cantina', toIndex: 2 };
-    expect(checkInvoke('scenes:move', 'control', [{ ...move, order: [] }])).toEqual({
+  it('accept a running order command, keeping only contract fields', () => {
+    const move = { campaignId, edit: { ...moveEdit, chapterId: 'prologue', toIndex: 2 } };
+    const padded = { ...move, order: [], edit: { ...move.edit, scenes: [] } };
+    expect(checkInvoke('scenes:edit-running-order', 'control', [padded])).toEqual({
       ok: true,
       payload: move,
     });
@@ -525,18 +622,19 @@ describe('Scene channels', () => {
     ['a delete with no Scene', 'scenes:delete', [{ campaignId }]],
     ['a delete with no Campaign', 'scenes:delete', [{ sceneId: 'cantina' }]],
     ['no name', 'scenes:create', [{ campaignId }]],
-    ['a move with no place', 'scenes:move', [{ campaignId, sceneId: 'cantina' }]],
+    [
+      'a create beside an empty Scene id',
+      'scenes:create',
+      [{ campaignId, name: 'X', selectedSceneId: '' }],
+    ],
     [
       'a move to a negative place',
-      'scenes:move',
-      [{ campaignId, sceneId: 'cantina', toIndex: -1 }],
+      'scenes:edit-running-order',
+      [{ campaignId, edit: { ...moveEdit, toIndex: -1 } }],
     ],
-    [
-      'a move to a fractional place',
-      'scenes:move',
-      [{ campaignId, sceneId: 'cantina', toIndex: 0.5 }],
-    ],
-    ['a move with no Scene', 'scenes:move', [{ campaignId, toIndex: 0 }]],
+    ['an unknown running order command', 'scenes:edit-running-order', [{ campaignId, edit: {} }]],
+    ['a running order command with no Campaign', 'scenes:edit-running-order', [{ edit: moveEdit }]],
+    ['a running order with no Campaign', 'scenes:running-order', [{}]],
     ['a duplicate with no Scene', 'scenes:duplicate', [{ campaignId }]],
     ['an edit with no Scene', 'scenes:edit', [{ ...edit, sceneId: undefined }]],
     ['an edit with no Campaign', 'scenes:edit', [{ ...edit, campaignId: undefined }]],

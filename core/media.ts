@@ -4,7 +4,8 @@
  *
  * On disk, in the Campaign's folder:
  *   media/<sha256><extension>   the files, named by content hash (one copy per content)
- *   media.json                  the Media index ({ media: Media[] }, versioned document)
+ *   media.json                  the Media index ({ media: Media[] }, versioned document; it
+ *                               holds each Media's favourite flag too, so an Export carries it)
  *   thumbnails/<sha256>.png     library thumbnails of the images (core/thumbnails.ts)
  *
  * Deduplication is per Campaign: the same file imported into two Campaigns is stored in both.
@@ -71,6 +72,8 @@ export interface MediaLibrary {
    * French message for an empty or too long name.
    */
   rename(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  /** Stars (`favourite` true) or unstars an image or a sound, for the "Favoris" filter. */
+  setFavourite(campaignId: CampaignId, mediaId: MediaId, favourite: boolean): Promise<Media>;
   /**
    * Removes a Media from the library and deletes its file and thumbnail. Scenes are not touched: removing
    * their placements first is the caller's job (core/onAirCommands.ts).
@@ -190,12 +193,13 @@ const INDEX_FILE = 'media.json';
 
 function parseMedia(value: unknown, campaignId: CampaignId): Media | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, contentHash, originalName, name, extension, kind } = value;
+  const { id, contentHash, originalName, name, extension, favourite, kind } = value;
   if (typeof id !== 'string' || typeof contentHash !== 'string') return undefined;
   if (!/^[0-9a-f]{64}$/.test(contentHash)) return undefined;
   if (typeof originalName !== 'string' || typeof name !== 'string') return undefined;
   if (typeof extension !== 'string' || !isMediaExtension(extension)) return undefined;
-  const base = { id, campaignId, contentHash, originalName, name, extension };
+  if (typeof favourite !== 'boolean') return undefined;
+  const base = { id, campaignId, contentHash, originalName, name, extension, favourite };
   if (kind === 'image' && isImageCategory(value.category)) {
     return { ...base, kind, category: value.category };
   }
@@ -229,13 +233,25 @@ function migrateMediaIndexV2(fields: Record<string, unknown>): Record<string, un
   return fields;
 }
 
+/**
+ * Version 3 to 4 (Milestone 4): Media gain a favourite flag. Nothing was starred before, so every
+ * Media gets none.
+ */
+function migrateMediaIndexV3(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(fields.media)) return fields;
+  const media = fields.media.map((item: unknown) =>
+    isRecord(item) ? { ...item, favourite: false } : item,
+  );
+  return { ...fields, media };
+}
+
 /** The index stores Media without their Campaign id: it is the folder's. */
 type StoredMedia = Omit<Media, 'campaignId'>;
 
-const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
+export const mediaIndexDocument: DocumentType<{ media: StoredMedia[] }> = {
   name: 'media',
-  version: 3,
-  migrations: { 1: migrateMediaIndexV1, 2: migrateMediaIndexV2 },
+  version: 4,
+  migrations: { 1: migrateMediaIndexV1, 2: migrateMediaIndexV2, 3: migrateMediaIndexV3 },
   parse({ media }) {
     if (!Array.isArray(media)) return undefined;
     const parsed = media.map((item) => parseMedia(item, ''));
@@ -314,6 +330,27 @@ export function createMediaLibrary(
     });
   }
 
+  /**
+   * Changes one Media of the index and saves it; fails with a French message when the Media no
+   * longer exists, or with what `change` throws.
+   */
+  function updateMedia(
+    campaignId: CampaignId,
+    mediaId: MediaId,
+    change: (media: Media) => Media,
+  ): Promise<Media> {
+    return serialized(campaignId, async () => {
+      const folder = await campaignFolder(campaignId);
+      const library = await readIndex(folder, campaignId);
+      const index = library.findIndex((media) => media.id === mediaId);
+      if (index < 0) throw new MediaError('Ce média n’existe plus.');
+      const updated = change(library[index]);
+      library[index] = updated;
+      await writeIndex(folder, library);
+      return updated;
+    });
+  }
+
   /** A file to import: where it is, what the Game Master knows it as, what its Media is named. */
   interface Source {
     file: string;
@@ -378,6 +415,7 @@ export function createMediaLibrary(
           originalName,
           name: originalName,
           extension,
+          favourite: false,
         };
         const media = { ...base, ...(await rules.defaults(kind, source)) } as Media;
         await storeFile(source, mediaFolder, media);
@@ -432,36 +470,25 @@ export function createMediaLibrary(
     },
 
     setImageCategory(campaignId, mediaId, category) {
-      return serialized(campaignId, async () => {
-        const folder = await campaignFolder(campaignId);
-        const library = await readIndex(folder, campaignId);
-        const index = library.findIndex((media) => media.id === mediaId);
-        if (index < 0) throw new MediaError('Ce média n’existe plus.');
-        const media = library[index];
+      return updateMedia(campaignId, mediaId, (media) => {
         if (media.kind !== 'image') {
           throw new MediaError(
             'Seules les images ont une catégorie ; le rôle d’un son ne change pas.',
           );
         }
-        const updated: Media = { ...media, category };
-        library[index] = updated;
-        await writeIndex(folder, library);
-        return updated;
+        return { ...media, category };
       });
     },
 
     rename(campaignId, mediaId, name) {
-      return serialized(campaignId, async () => {
-        const validName = validateMediaName(name);
-        const folder = await campaignFolder(campaignId);
-        const library = await readIndex(folder, campaignId);
-        const index = library.findIndex((media) => media.id === mediaId);
-        if (index < 0) throw new MediaError('Ce média n’existe plus.');
-        const updated: Media = { ...library[index], name: validName };
-        library[index] = updated;
-        await writeIndex(folder, library);
-        return updated;
-      });
+      return updateMedia(campaignId, mediaId, (media) => ({
+        ...media,
+        name: validateMediaName(name),
+      }));
+    },
+
+    setFavourite(campaignId, mediaId, favourite) {
+      return updateMedia(campaignId, mediaId, (media) => ({ ...media, favourite }));
     },
 
     delete(campaignId, mediaId) {

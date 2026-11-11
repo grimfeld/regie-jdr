@@ -1,9 +1,29 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type FormEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
-import { Clapperboard, Copy, Pencil, Plus, Radio, Redo2, Trash2, Undo2 } from 'lucide-react';
+import {
+  Clapperboard,
+  Copy,
+  FolderPlus,
+  Pencil,
+  Plus,
+  Radio,
+  Redo2,
+  Trash2,
+  Undo2,
+} from 'lucide-react';
 import type {
   AudioMedia,
   CampaignId,
+  Chapter,
+  ChapterId,
   ImageMedia,
   MediaId,
   NormalizedPoint,
@@ -14,6 +34,7 @@ import type {
   ActivateOptions,
   ControlBridge,
   MediaImportResult,
+  RunningOrderEdit,
   SceneDirection,
   SceneEdit,
   TransientEdit,
@@ -22,10 +43,24 @@ import type {
 import { layOutCanvas } from '../core/canvas';
 import { MAX_PASTED_IMAGE_BYTES } from '../core/mediaAddress';
 import { editorPictureOf } from '../core/onAir';
-import { moveInRunningOrder } from '../core/runningOrder';
+import {
+  applyRunningOrderEdit,
+  withCopy,
+  withNewScene,
+  withRunningOrder,
+  type ScenesInOrder,
+} from '../core/runningOrder';
 import { applySceneEdit, placementEdit, type PlacementTarget } from '../core/sceneEdits';
 import { errorMessage } from './CampaignList';
-import { keyLabelOf, useShortcuts, type EditShortcut, type KeyPress } from './keyboard';
+import { modifierLabel } from '../core/keyMap';
+import {
+  ariaKeyShortcutsOf,
+  keyLabelOf,
+  useKeyMap,
+  useShortcuts,
+  type EditShortcut,
+  type KeyPress,
+} from './keyboard';
 import { droppedFiles, droppedMediaId } from './mediaDrag';
 import { BackgroundList, OverlayList, useDropTarget } from './PlacementLists';
 import { SceneCanvas } from './SceneCanvas';
@@ -34,9 +69,11 @@ import { SceneAmbienceList } from './SceneAmbienceList';
 import { SceneMusicList } from './SceneMusicList';
 import { SceneTitleField } from './PlayerTextFields';
 import { SceneTransitionField } from './SceneTransitionField';
+import { SceneChapterField } from './SceneChapterField';
 import { activateNextTo, activateOptionsOf, activateScene } from './activate';
 import { SceneNotes, type NotesImageSource } from './SceneNotes';
 import { showNotice } from './notices';
+import { createOptimisticSaves } from './optimisticSaves';
 import { useOnAir } from './useOnAir';
 import { useBackgroundFraming } from './useBackgroundFraming';
 import { useOverlayTransforms } from './useOverlayTransforms';
@@ -74,9 +111,22 @@ interface Props {
   notesSlot: HTMLElement | null;
 }
 
+/** The Campaign's Scenes in running order, and its Chapters, as saved. */
+async function readOrder(
+  control: ControlBridge,
+  campaignId: CampaignId,
+): Promise<ScenesInOrder<Scene>> {
+  const [scenes, saved] = await Promise.all([
+    control.listScenes(campaignId),
+    control.getRunningOrder(campaignId),
+  ]);
+  return withRunningOrder(scenes, saved);
+}
+
 /**
- * The open Campaign's Scenes: create a Scene (last in the running order), drag them into their
- * running order, open one as the Selected Scene, and the editor of the Selected Scene (rename,
+ * The open Campaign's Scenes: create a Scene (last in the Selected Scene's Chapter, or last in
+ * no Chapter), drag them into their running order and their Chapters, create Chapters, open a
+ * Scene as the Selected Scene, and the editor of the Selected Scene (rename,
  * delete, Activate, its canvas, its Backgrounds). Each change is a
  * command the main process applies and saves; it goes on air only on the Active Scene.
  *
@@ -91,7 +141,12 @@ export function ScenesPanel({
   onMediaImported,
   notesSlot,
 }: Props) {
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  /** The Campaign's Scenes in running order, and its Chapters. */
+  const [order, setOrder] = useState<ScenesInOrder<Scene>>({ scenes: [], chapters: [] });
+  const { scenes } = order;
+  /** Changes the Scenes, the Chapters as they are. */
+  const setScenes = (update: (current: Scene[]) => Scene[]) =>
+    setOrder((current) => ({ ...current, scenes: update(current.scenes) }));
   /**
    * The Notes change the Scenes were last read for, and the Notes editor's key, which changes
    * only when that change touched the open Scene's Notes.
@@ -108,17 +163,18 @@ export function ScenesPanel({
   const [imagesRead, setImagesRead] = useState(false);
   const [sounds, setSounds] = useState<AudioMedia[]>([]);
   const [newName, setNewName] = useState('');
+  /** The name typed for a new Chapter; null while its form is closed. */
+  const [newChapterName, setNewChapterName] = useState<string | null>(null);
   const nameField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
-    control
-      .listScenes(campaignId)
-      .then((list) => {
+    readOrder(control, campaignId)
+      .then((loaded) => {
         if (cancelled) return;
         // Together, so the Notes editor starts again on the Notes just read, never older ones.
-        setScenes(list);
+        setOrder(loaded);
         setNotesRead((read) => {
           if (read.revision === notesChange.revision) return read;
           const opened = openedNow.current;
@@ -188,14 +244,18 @@ export function ScenesPanel({
   const hasActive = onAir?.campaignId === campaignId && onAir.activeSceneId !== null;
   const isLastActive = (scene: Scene) => !hasActive && scene.id === lastActiveId;
 
+  const { cutModifier } = useKeyMap();
   /** Activates the Scene after or before the Active Scene; the Selected Scene stays as it is. */
   function activateNext(direction: SceneDirection, press: KeyPress) {
-    if (control) void activateNextTo(control, direction, activateOptionsOf(press));
+    if (control) void activateNextTo(control, direction, activateOptionsOf(press, cutModifier));
   }
-  // The Activate shortcuts, anywhere in the window except while typing; Shift forces a Cut.
+  // The Activate shortcuts, anywhere in the window except while typing; the Cut modifier
+  // forces a Cut.
   useShortcuts({
     activate: (press) => {
-      if (control && selected) void activateScene(control, selected.id, activateOptionsOf(press));
+      if (control && selected) {
+        void activateScene(control, selected.id, activateOptionsOf(press, cutModifier));
+      }
     },
     'activate-next': (press) => activateNext('next', press),
     'activate-previous': (press) => activateNext('previous', press),
@@ -205,8 +265,9 @@ export function ScenesPanel({
     event.preventDefault();
     if (!control) return;
     try {
-      const scene = await control.createScene(campaignId, newName);
-      setScenes((current) => [...current, scene]);
+      // Last in the Chapter of the Selected Scene, as the main process saves it.
+      const scene = await control.createScene(campaignId, newName, openedId);
+      setOrder((current) => withNewScene(current, scene, openedId));
       setSelectedId(scene.id);
       setNewName('');
     } catch (error) {
@@ -233,7 +294,7 @@ export function ScenesPanel({
       const saved = await control.editScene(campaignId, scene.id, command);
       setScenes((current) => current.map((item) => (item.id === saved.id ? saved : item)));
     } catch (error) {
-      setScenes(await control.listScenes(campaignId));
+      await reload();
       throw error;
     }
   }
@@ -359,23 +420,70 @@ export function ScenesPanel({
       setScenes((current) => current.map((item) => (item.id === saved.id ? saved : item)));
     } catch (error) {
       showNotice(errorMessage(error));
-      setScenes(await control.listScenes(campaignId));
+      await reload();
+    }
+  }
+
+  /** Creates a Chapter, empty and expanded, after the others. */
+  async function createChapter(event: FormEvent) {
+    event.preventDefault();
+    if (!control) return;
+    try {
+      const saved = await control.editRunningOrder(campaignId, {
+        kind: 'create-chapter',
+        name: newChapterName ?? '',
+      });
+      setOrder((current) => withRunningOrder(current.scenes, saved));
+      setNewChapterName(null);
+    } catch (error) {
+      showNotice(errorMessage(error));
     }
   }
 
   /**
-   * Moves a Scene in the running order: shown at once, then saved. A Campaign-level command, not
-   * a Scene edit: no Scene's undo history records it.
+   * The running order commands shown at once: on a failed save, the list goes back to the order
+   * as saved, once every move on its way has settled (rapid Alt+Up/Down presses).
    */
-  async function reorder(sceneId: SceneId, toIndex: number) {
-    setScenes((current) => moveInRunningOrder(current, sceneId, toIndex));
-    if (!control) return;
-    try {
-      await control.moveScene(campaignId, sceneId, toIndex);
-    } catch (error) {
-      showNotice(errorMessage(error));
-      setScenes(await control.listScenes(campaignId));
+  const runningOrderSaves = useMemo(
+    () =>
+      control &&
+      createOptimisticSaves({
+        reread: () => readOrder(control, campaignId),
+        show: setOrder,
+        onFailure: (error) => {
+          console.error('A running order change was not saved', error);
+          showNotice(
+            'L’ordre des scènes n’a pas pu être enregistré : la liste montre de nouveau l’ordre enregistré.',
+          );
+        },
+      }),
+    [control, campaignId],
+  );
+
+  /** The Scenes and Chapters as saved, read again (after a failed change). */
+  async function reload() {
+    if (control) setOrder(await readOrder(control, campaignId));
+  }
+
+  /**
+   * Applies a running order command (a Scene's place, a Chapter change): shown at once, then
+   * saved. A Campaign-level command, not a Scene edit: no Scene's undo history records it.
+   */
+  async function editRunningOrder(command: RunningOrderEdit) {
+    // A new Chapter needs its id from the main process: `createChapter` shows it once saved.
+    // Any other command shows at once, from the same rules the main process applies; its answer
+    // is not shown, or an older answer could undo a quicker key press already shown.
+    if (command.kind !== 'create-chapter') {
+      setOrder((current) => {
+        try {
+          return applyRunningOrderEdit(current, command, () => '');
+        } catch {
+          return current; // Refused: the main process says why, below.
+        }
+      });
     }
+    if (!control || !runningOrderSaves) return;
+    await runningOrderSaves.run(() => control.editRunningOrder(campaignId, command));
   }
 
   /**
@@ -386,14 +494,11 @@ export function ScenesPanel({
     if (!control) return;
     try {
       const copy = await control.duplicateScene(campaignId, scene.id);
-      setScenes((current) => {
-        const index = current.findIndex((item) => item.id === scene.id);
-        return [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
-      });
+      setOrder((current) => withCopy(current, copy, scene.id));
       setSelectedId(copy.id);
     } catch (error) {
       showNotice(errorMessage(error));
-      setScenes(await control.listScenes(campaignId));
+      await reload();
     }
   }
 
@@ -405,7 +510,7 @@ export function ScenesPanel({
       if (selectedId === scene.id) setSelectedId(undefined);
     } catch (error) {
       showNotice(errorMessage(error));
-      setScenes(await control.listScenes(campaignId));
+      await reload();
     }
   }
 
@@ -418,6 +523,13 @@ export function ScenesPanel({
             <Clapperboard size={18} /> Scènes
           </h2>
         </div>
+        <button
+          className="secondary-button"
+          aria-expanded={newChapterName !== null}
+          onClick={() => setNewChapterName((name) => (name === null ? '' : null))}
+        >
+          <FolderPlus size={14} /> Nouveau chapitre
+        </button>
       </div>
 
       <form className="campaign-form" onSubmit={(event) => void create(event)}>
@@ -436,13 +548,40 @@ export function ScenesPanel({
       </form>
 
       <SceneList
-        scenes={scenes}
+        order={order}
         openedId={openedId}
         isActive={isActive}
         isLastActive={isLastActive}
         onOpen={(scene) => setSelectedId(scene.id)}
-        onMove={(sceneId, toIndex) => void reorder(sceneId, toIndex)}
+        onEdit={(command) => void editRunningOrder(command)}
       />
+
+      {newChapterName !== null && (
+        <form className="campaign-form" onSubmit={(event) => void createChapter(event)}>
+          <label>
+            NOM DU CHAPITRE
+            <input
+              autoFocus
+              aria-label="Nom du chapitre"
+              value={newChapterName}
+              onChange={(e) => setNewChapterName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setNewChapterName(null);
+              }}
+            />
+          </label>
+          <button className="primary-button" type="submit">
+            <FolderPlus size={14} /> Créer le chapitre
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setNewChapterName(null)}
+          >
+            Annuler
+          </button>
+        </form>
+      )}
 
       {selected ? (
         <SceneEditor
@@ -477,6 +616,12 @@ export function ScenesPanel({
           }}
           onDuplicate={() => void duplicate(selected)}
           onDelete={() => void remove(selected)}
+          chapters={order.chapters}
+          onMoveToChapter={(chapterId) => {
+            const chapter = order.chapters.find((item) => item.id === chapterId);
+            const toIndex = chapter ? chapter.sceneIds.length : order.scenes.length;
+            void editRunningOrder({ kind: 'move-scene', sceneId: selected.id, chapterId, toIndex });
+          }}
         />
       ) : (
         scenes.length === 0 &&
@@ -533,6 +678,10 @@ interface EditorProps {
   onDuplicate: () => void;
   /** Deletes the Scene, once the Game Master has confirmed. */
   onDelete: () => void;
+  /** The Campaign's Chapters. */
+  chapters: readonly Chapter[];
+  /** Moves the Scene last into a Chapter, or last into no Chapter (null). */
+  onMoveToChapter: (chapterId: ChapterId | null) => void;
 }
 
 /**
@@ -574,9 +723,11 @@ function SceneEditor(props: EditorProps) {
   }
   // Ctrl+Z / Ctrl+Y anywhere in the window, except while typing in a field.
   useShortcuts({ undo: () => travel('undo'), redo: () => travel('redo') });
-  const activateKey = keyLabelOf('activate');
-  const nextKey = keyLabelOf('activate-next');
-  const previousKey = keyLabelOf('activate-previous');
+  const keyMap = useKeyMap();
+  const activateKey = keyLabelOf('activate', keyMap);
+  const nextKey = keyLabelOf('activate-next', keyMap) ?? 'aucune touche';
+  const previousKey = keyLabelOf('activate-previous', keyMap) ?? 'aucune touche';
+  const cutKey = modifierLabel(keyMap.cutModifier);
 
   async function submitRename(event: FormEvent) {
     event.preventDefault();
@@ -618,11 +769,11 @@ function SceneEditor(props: EditorProps) {
           </button>
           <button
             className="primary-button"
-            title={`Activer cette scène (${activateKey}). ${nextKey} / ${previousKey} : activer la scène suivante / précédente. Avec Maj : en Cut`}
-            aria-keyshortcuts={activateKey}
-            onClick={(event) => props.onActivate(activateOptionsOf(event))}
+            title={`Activer cette scène (${activateKey ?? 'aucune touche'}). ${nextKey} / ${previousKey} : activer la scène suivante / précédente. Avec ${cutKey} : en Cut`}
+            aria-keyshortcuts={ariaKeyShortcutsOf('activate', keyMap)}
+            onClick={(event) => props.onActivate(activateOptionsOf(event, keyMap.cutModifier))}
           >
-            Activer <kbd aria-hidden>{activateKey}</kbd>
+            Activer {activateKey && <kbd aria-hidden>{activateKey}</kbd>}
           </button>
         </div>
       ) : (
@@ -652,6 +803,11 @@ function SceneEditor(props: EditorProps) {
       <UndoBar state={props.undoState} onTravel={travel} />
       <SceneTitleField title={scene.title} onEdit={onEditShowingFailure} />
       <SceneTransitionField transition={scene.transition} onEdit={onEditShowingFailure} />
+      <SceneChapterField
+        sceneId={scene.id}
+        chapters={props.chapters}
+        onMove={props.onMoveToChapter}
+      />
 
       {confirmingDelete && (
         <div

@@ -1,7 +1,14 @@
-import { useState, type FormEvent } from 'react';
-import { FolderOpen, Pencil, Plus } from 'lucide-react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Download, FolderOpen, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import type {
+  CampaignDeletionSummary,
+  CampaignTransferProgress,
+  CampaignTrashing,
+} from '../shared/contract';
 import type { Campaign, CampaignId } from '../shared/domain';
+import { carriesFiles, droppedFiles } from './mediaDrag';
 import { isIpcFailure, noticeFor } from './notices';
+import { useDropTarget } from './PlacementLists';
 
 /**
  * The Game Master's wording for a failed bridge call: the French message thrown by the app core
@@ -14,20 +21,121 @@ export function errorMessage(error: unknown): string {
   return thrown ? thrown[1] : noticeFor(error);
 }
 
+const sizeFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
+
+/** A size on disk the way Windows Explorer shows it in French: "12,3 Mo". */
+export function formatSize(bytes: number): string {
+  const units = ['octets', 'Ko', 'Mo', 'Go', 'To'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${sizeFormat.format(value)} ${units[unit]}`;
+}
+
+function countOf(count: number, one: string, many: string): string {
+  return `${count} ${count > 1 ? many : one}`;
+}
+
+/** What deleting a Campaign takes away, for its confirmation: "2 scènes et 1 média, 3 Mo". */
+export function deletionContents({
+  sceneCount,
+  mediaCount,
+  sizeBytes,
+}: CampaignDeletionSummary): string {
+  const scenes = countOf(sceneCount, 'scène', 'scènes');
+  const media = countOf(mediaCount, 'média', 'médias');
+  return `${scenes} et ${media}, ${formatSize(sizeBytes)}`;
+}
+
+/** Deleting a Campaign, through the main process (ADR-0005). */
+export interface CampaignDeletionActions {
+  describe: (id: CampaignId) => Promise<CampaignDeletionSummary>;
+  moveToTrash: (id: CampaignId) => Promise<CampaignTrashing>;
+  deletePermanently: (id: CampaignId) => Promise<void>;
+}
+
+/**
+ * A delete waiting for the Game Master: first the confirmation, then, only when the Recycle Bin
+ * refused the Campaign, a second confirmation for a permanent delete.
+ */
+type PendingDeletion =
+  | { step: 'confirm'; summary: CampaignDeletionSummary }
+  | { step: 'permanent'; summary: CampaignDeletionSummary; reason: string };
+
 interface Props {
   campaigns: Campaign[];
   onOpen: (id: CampaignId) => void;
   onCreate: (name: string) => Promise<void>;
   onRename: (id: CampaignId, name: string) => Promise<void>;
+  /** Absent without a main process: nothing can be deleted. */
+  deletion?: CampaignDeletionActions;
+  /** Exports the Campaign to a zip; it is closed, as on this page every Campaign is. */
+  onExport: (id: CampaignId) => Promise<void>;
+  /**
+   * Imports a Campaign from an Export zip the Game Master picks, or the one `dropped` from
+   * Explorer; resolves to the new Campaign's id, or undefined when nothing was picked. Absent
+   * without a main process.
+   */
+  onImport?: (dropped?: File) => Promise<CampaignId | undefined>;
+  /** Progress of the Export or Import under way, once it has started reading; null otherwise. */
+  transfer?: CampaignTransferProgress | null;
+  /** Cancels the Export or Import under way; its call then resolves as cancelled. */
+  onCancelTransfer?: () => void;
+  /** Shown under the list: the home page's theme picker. */
+  children?: ReactNode;
 }
 
-/** The Campaign list home page: pick, create or rename a Campaign. */
-export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
+/** How far an Export or Import is, for its progress bar: "1,2 Go sur 3,4 Go (35 %)". */
+export function transferText({ doneBytes, totalBytes }: CampaignTransferProgress): string {
+  if (totalBytes === 0) return '';
+  const percent = Math.min(100, Math.floor((doneBytes / totalBytes) * 100));
+  return `${formatSize(doneBytes)} sur ${formatSize(totalBytes)} (${percent} %)`;
+}
+
+/** The Game Master's notice after an Export, naming how many missing Media were left out. */
+export function exportNotice(missingMedia: number): string {
+  if (missingMedia === 0) return 'Campagne exportée.';
+  if (missingMedia === 1) return 'Campagne exportée. 1 média introuvable n’a pas été inclus.';
+  return `Campagne exportée. ${missingMedia} médias introuvables n’ont pas été inclus.`;
+}
+
+/**
+ * The Campaign list home page: pick, create, rename, export, import or delete a Campaign. Export,
+ * Import and delete are offered only here, where every Campaign is closed. An imported Campaign
+ * is highlighted, not opened.
+ */
+export function CampaignList({
+  campaigns,
+  onOpen,
+  onCreate,
+  onRename,
+  deletion,
+  onExport,
+  onImport,
+  transfer = null,
+  onCancelTransfer,
+  children,
+}: Props) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<CampaignId | null>(null);
   const [renameTo, setRenameTo] = useState('');
   const [error, setError] = useState('');
+  const [pending, setPending] = useState<PendingDeletion | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState<CampaignId | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState<CampaignId | null>(null);
+  // One Export or Import at a time: the main process refuses a second one too.
+  const transferring = exporting !== null || importing;
+
+  useEffect(() => {
+    if (imported)
+      document.getElementById(campaignItemId(imported))?.scrollIntoView({ block: 'nearest' });
+  }, [imported]);
 
   async function attempt(action: () => Promise<void>) {
     setError('');
@@ -53,32 +161,119 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
     if (renaming && (await attempt(() => onRename(renaming, renameTo)))) setRenaming(null);
   }
 
+  async function startDelete(campaign: Campaign) {
+    if (!deletion) return;
+    setCreating(false);
+    setRenaming(null);
+    setPending(null);
+    await attempt(async () => {
+      setPending({ step: 'confirm', summary: await deletion.describe(campaign.id) });
+    });
+  }
+
+  /** Runs a confirmed delete step; the buttons stay disabled until it answers. */
+  async function deleteStep(step: () => Promise<void>) {
+    setDeleting(true);
+    try {
+      if (!(await attempt(step))) setPending(null);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function confirm(pendingDeletion: PendingDeletion) {
+    if (!deletion) return;
+    const { summary } = pendingDeletion;
+    if (pendingDeletion.step === 'permanent') {
+      await deleteStep(async () => {
+        await deletion.deletePermanently(summary.id);
+        setPending(null);
+      });
+      return;
+    }
+    await deleteStep(async () => {
+      const outcome = await deletion.moveToTrash(summary.id);
+      setPending(outcome.deleted ? null : { step: 'permanent', summary, reason: outcome.reason });
+    });
+  }
+
+  async function exportCampaign(id: CampaignId) {
+    setExporting(id);
+    try {
+      await attempt(() => onExport(id));
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function importCampaign(dropped?: File) {
+    if (!onImport) return;
+    setCreating(false);
+    setRenaming(null);
+    setPending(null);
+    setImporting(true);
+    try {
+      await attempt(async () => {
+        const id = await onImport(dropped);
+        if (id) setImported(id);
+      });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /** Files dropped from Explorer: one Export is imported as if picked; the main process checks it. */
+  function importDropped(files: readonly File[]) {
+    if (files.length === 0) return;
+    if (files.length > 1) {
+      setError('Déposez une seule campagne exportée à la fois : rien n’a été importé.');
+      return;
+    }
+    if (!transferring) void importCampaign(files[0]);
+  }
+  const drop = useDropTarget(
+    (event) => importDropped(droppedFiles(event)),
+    (event) => onImport !== undefined && carriesFiles(event),
+  );
+
   function startRename(campaign: Campaign) {
     setError('');
     setCreating(false);
+    setPending(null);
     setRenaming(campaign.id);
     setRenameTo(campaign.name);
   }
 
   return (
-    <section className="campaign-home">
+    <section className={`campaign-home${drop.over ? ' drop-ready' : ''}`} {...drop.props}>
       <div className="section-heading">
         <div>
           <span className="eyebrow">VOS PARTIES</span>
           <h1>Vos campagnes</h1>
         </div>
-        {!creating && (
-          <button
-            className="primary-button"
-            onClick={() => {
-              setError('');
-              setRenaming(null);
-              setCreating(true);
-            }}
-          >
-            <Plus size={16} /> Créer une campagne
-          </button>
-        )}
+        <div className="campaign-home-actions">
+          {onImport && (
+            <button
+              className="secondary-button"
+              disabled={transferring}
+              onClick={() => void importCampaign()}
+            >
+              <Upload size={16} aria-hidden /> Importer une campagne
+            </button>
+          )}
+          {!creating && (
+            <button
+              className="primary-button"
+              onClick={() => {
+                setError('');
+                setRenaming(null);
+                setCreating(true);
+              }}
+            >
+              <Plus size={16} /> Créer une campagne
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && (
@@ -96,6 +291,10 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
         </form>
       )}
 
+      {transfer && onCancelTransfer && (
+        <TransferProgress progress={transfer} onCancel={onCancelTransfer} />
+      )}
+
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -106,7 +305,11 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
 
       <ul className="campaign-list" aria-label="Campagnes">
         {campaigns.map((campaign) => (
-          <li key={campaign.id} className="campaign-item panel">
+          <li
+            key={campaign.id}
+            id={campaignItemId(campaign.id)}
+            className={`campaign-item panel${imported === campaign.id ? ' campaign-item-imported' : ''}`}
+          >
             {renaming === campaign.id ? (
               <form className="campaign-form" onSubmit={(event) => void submitRename(event)}>
                 <label>
@@ -129,6 +332,7 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
                 <button className="campaign-open" onClick={() => onOpen(campaign.id)}>
                   <FolderOpen size={18} />
                   <strong>{campaign.name}</strong>
+                  {imported === campaign.id && <span className="campaign-badge">Importée</span>}
                 </button>
                 <button
                   className="secondary-button"
@@ -138,11 +342,124 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
                 >
                   <Pencil size={14} /> Renommer
                 </button>
+                <button
+                  className="secondary-button"
+                  aria-label={`Exporter ${campaign.name}`}
+                  title="Exporter"
+                  disabled={transferring}
+                  onClick={() => void exportCampaign(campaign.id)}
+                >
+                  <Download size={14} /> Exporter
+                </button>
+                {deletion && (
+                  <button
+                    className="secondary-button"
+                    aria-label={`Supprimer ${campaign.name}`}
+                    title="Supprimer"
+                    disabled={exporting === campaign.id}
+                    onClick={() => void startDelete(campaign)}
+                  >
+                    <Trash2 size={14} aria-hidden /> Supprimer
+                  </button>
+                )}
               </>
+            )}
+            {pending?.summary.id === campaign.id && (
+              <DeletionConfirmation
+                pending={pending}
+                busy={deleting || exporting === campaign.id}
+                onCancel={() => setPending(null)}
+                onConfirm={() => void confirm(pending)}
+              />
             )}
           </li>
         ))}
       </ul>
+      {children}
     </section>
+  );
+}
+
+/** The Export or Import under way: its progress bar and its Cancel. */
+function TransferProgress({
+  progress,
+  onCancel,
+}: {
+  progress: CampaignTransferProgress;
+  onCancel: () => void;
+}) {
+  const [cancelling, setCancelling] = useState(false);
+  const exporting = progress.kind === 'export';
+  const label = exporting ? 'Export de la campagne' : 'Import de la campagne';
+  return (
+    <div className="campaign-transfer panel" role="group" aria-label={label}>
+      <span>{exporting ? 'Export en cours…' : 'Import en cours…'}</span>
+      <progress
+        aria-label={`Progression : ${label.toLowerCase()}`}
+        max={progress.totalBytes || undefined}
+        value={progress.totalBytes ? progress.doneBytes : undefined}
+      />
+      <span className="campaign-transfer-amount">{transferText(progress)}</span>
+      <button
+        className="secondary-button"
+        aria-label={exporting ? 'Annuler l’export' : 'Annuler l’import'}
+        disabled={cancelling}
+        onClick={() => {
+          setCancelling(true);
+          onCancel();
+        }}
+      >
+        <X size={14} aria-hidden /> {cancelling ? 'Annulation…' : 'Annuler'}
+      </button>
+    </div>
+  );
+}
+
+/** Id of a Campaign's item on the list, to bring an imported one into view. */
+function campaignItemId(id: CampaignId): string {
+  return `campaign-${id}`;
+}
+
+/** The confirmation of a delete: to the Recycle Bin first, permanent only once it refused. */
+function DeletionConfirmation({
+  pending,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  pending: PendingDeletion;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { summary } = pending;
+  const permanent = pending.step === 'permanent';
+  return (
+    <div
+      className="media-delete-confirm campaign-delete-confirm"
+      role="alertdialog"
+      aria-label={permanent ? 'Supprimer définitivement la campagne' : 'Supprimer la campagne'}
+      aria-describedby="campaign-delete-message"
+    >
+      {permanent ? (
+        <p id="campaign-delete-message">
+          {pending.reason} Supprimer définitivement « {summary.name} » ({deletionContents(summary)})
+          ? Elle ne pourra pas être récupérée.
+        </p>
+      ) : (
+        <p id="campaign-delete-message">
+          Supprimer la campagne « {summary.name} » ? Elle contient {deletionContents(summary)}. Elle
+          ira dans la corbeille de Windows, d’où vous pourrez la restaurer.
+        </p>
+      )}
+      <div className="media-delete-actions">
+        <button className="secondary-button" autoFocus disabled={busy} onClick={onCancel}>
+          Annuler
+        </button>
+        <button className="primary-button" disabled={busy} onClick={onConfirm}>
+          <Trash2 size={14} aria-hidden /> {permanent ? 'Supprimer définitivement' : 'Supprimer'}
+        </button>
+      </div>
+    </div>
   );
 }

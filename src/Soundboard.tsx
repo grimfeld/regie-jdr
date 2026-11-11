@@ -4,7 +4,13 @@ import type { ControlBridge, SoundboardEdit, SoundboardLevel } from '../shared/c
 import type { AudioMedia, CampaignId, Soundboard, SoundboardPad } from '../shared/domain';
 import { errorMessage } from './CampaignList';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
-import { keyLabelOf, PAD_KEY_POSITIONS } from './keyboard';
+import {
+  ariaKeyShortcutsOf,
+  keyLabelOf,
+  PAD_KEY_POSITIONS,
+  useKeyMap,
+  type Shortcut,
+} from './keyboard';
 import { useSounding } from './NowPlaying';
 import { showNotice } from './notices';
 import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
@@ -150,6 +156,7 @@ export function SoundboardPanel(props: {
   );
   const missing = useMissingMedia(padSounds);
   const level = useLevel(props.soundboard);
+  const keyMap = useKeyMap();
 
   return (
     <section
@@ -169,7 +176,8 @@ export function SoundboardPanel(props: {
         {pads.map((pad, index) => {
           const name = nameOf(pad);
           const isLit = lit.has(pad.id);
-          const key = padKeyLabel(index);
+          const shortcut = padShortcut(index);
+          const key = shortcut && keyLabelOf(shortcut, keyMap);
           return (
             <li key={pad.id} data-sounding={isLit}>
               <button
@@ -177,7 +185,7 @@ export function SoundboardPanel(props: {
                 aria-label={`Jouer ${name}`}
                 aria-pressed={isLit}
                 title={key === undefined ? undefined : `Touche ${key}`}
-                aria-keyshortcuts={key}
+                aria-keyshortcuts={shortcut && ariaKeyShortcutsOf(shortcut, keyMap)}
                 onClick={() => press(pad.id)}
               >
                 {key !== undefined && <kbd>{key}</kbd>}
@@ -211,10 +219,10 @@ export function SoundboardPanel(props: {
   );
 }
 
-/** The key that plays the pad at `index` (0 is the first), if one does. */
-function padKeyLabel(index: number): string | undefined {
+/** The shortcut that plays the pad at `index` (0 is the first), if one does. */
+function padShortcut(index: number): Shortcut | undefined {
   const position = PAD_KEY_POSITIONS.find((candidate) => candidate === index + 1);
-  return position === undefined ? undefined : keyLabelOf(`pad-${position}`);
+  return position === undefined ? undefined : `pad-${position}`;
 }
 
 /** A slider's handlers for a Soundboard level: heard on the pads sounding while dragged, saved once released. */

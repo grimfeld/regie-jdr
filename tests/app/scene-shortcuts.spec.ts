@@ -72,7 +72,7 @@ test('Ctrl+Enter, Ctrl+Down and Ctrl+Up Activate Scenes in running order, keys s
 
   const activate = editor(page).getByRole('button', { name: 'Activer', exact: true });
   await expect(activate.locator('kbd')).toHaveText('Ctrl+Entrée');
-  await expect(activate).toHaveAttribute('aria-keyshortcuts', 'Ctrl+Entrée');
+  await expect(activate).toHaveAttribute('aria-keyshortcuts', 'Control+Enter');
   await expect(activate).toHaveAttribute('title', /Ctrl\+↓ \/ Ctrl\+↑/);
 
   // Nothing on air: Ctrl+Up goes to the first Scene, whichever is Selected (Trône).

@@ -22,5 +22,16 @@ Read first: ADR-0005 (Campaign export as plain zip), [carry-forward](carry-forwa
 
 ## Follow-ups to clear before the M4 PR
 
+- (Done 2026-11-12, `2491f70`.) The three "Fondus" duration fields render as light, unthemed boxes (seen in `imperium-campaign-after.png`, 2026-11-12); they became text fields in M3 closeout and likely lost the input styling. Check all three themes; add a test that every text field uses themed tokens. Source: chief of staff screenshot review.
+- Manual check: Broadcast always on top on one monitor while sharing in Discord. Source: #72.
+
 - `.campaign-badge` (from #61) uses `var(--accent2)`, not a theme token; the raw-colour test missed it. Use a token and make the test catch unknown `var(--…)` names. Source: #63 report.
 - Manual check: Export/Import of a multi-gigabyte real Campaign with progress and Cancel. Source: #63 report.
+- 2026-11-12: M3 merged forward at `7bf3e5f` (real merges `0a86ca2`, `5b9b63d`, `7bf3e5f`; 193 app tests). Final schemas: scenes 4, Settings 5 (3→4 M3 durations, 4→5 always on top; dev-only M4 v4 files handled), Media index 4, campaign 1, soundboard 1. Import accepts every migratable version; refuses a `scenes.json` with unreadable Notes as damaged. Wiki home moves to the M4 branch.
+- 2026-11-12: #66 Rétro SF merged at `6521557` (1392 unit, 196 app tests).
+- 2026-11-12: #68 Fantasy merged at `73e7ea8` (1392 unit, 199 app tests).
+- 2026-11-12: #67 Imperium merged at `870eec4` (201 app tests). All three themes done.
+- 2026-11-12: #70 Chapters merged at `ff0a117` (1426 unit, 204 app tests).
+- 2026-11-12: #71 remapping merged at `e4c0257` (1471 unit, 206 app tests). Every M4 agent slice done; closeout and review running.
+- 2026-11-12: M4 closeout merged at `2491f70` (1480 unit, 214 app tests). Fields: one zero-specificity base rule in `src/styles.css` themes every field (Fondus, Scene title, Label, Transition were system grey); `tests/app/theme-fields.spec.ts` checks every visible field in all three themes. Top bar fits at 1080 px with ~60 px spare (`tests/app/topbar.spec.ts`). Chapters: `src/optimisticSaves.ts` shows one French notice per failure burst and re-reads the saved order once in-flight moves settle. Import refuses with sizes in French when free space (`fs.statfs`) is short.
+- 2026-11-12: M4 review fixes merged at `b171400`. M4 complete; PR next.

@@ -22,6 +22,7 @@ function sound(id: string, role: AudioMedia['role'] = 'soundEffect'): AudioMedia
     originalName: id,
     name: `Nom ${id}`,
     extension: '.wav',
+    favourite: false,
     kind: 'audio',
     role,
     durationSeconds: 1,
@@ -35,6 +36,7 @@ const image: ImageMedia = {
   originalName: 'i1',
   name: 'Carte',
   extension: '.png',
+  favourite: false,
   kind: 'image',
   category: 'scenery',
 };

@@ -58,7 +58,8 @@ const bridge: ControlBridge = {
   setBlackout: (on) => invoke('onAir:set-blackout', { on }),
   toggleBlackout: () => invoke('onAir:toggle-blackout'),
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
-  createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
+  createScene: (campaignId, name, selectedSceneId) =>
+    invoke('scenes:create', { campaignId, name, ...(selectedSceneId && { selectedSceneId }) }),
   editScene: (campaignId, sceneId, edit) => invoke('scenes:edit', { campaignId, sceneId, edit }),
   showTransientEdit: (campaignId, sceneId, edit) =>
     invoke('scenes:show-transient', { campaignId, sceneId, edit }),
@@ -66,8 +67,8 @@ const bridge: ControlBridge = {
   undoSceneEdit: (campaignId, sceneId) => invoke('scenes:undo', { campaignId, sceneId }),
   redoSceneEdit: (campaignId, sceneId) => invoke('scenes:redo', { campaignId, sceneId }),
   deleteScene: (campaignId, sceneId) => invoke('scenes:delete', { campaignId, sceneId }),
-  moveScene: (campaignId, sceneId, toIndex) =>
-    invoke('scenes:move', { campaignId, sceneId, toIndex }),
+  getRunningOrder: (campaignId) => invoke('scenes:running-order', { campaignId }),
+  editRunningOrder: (campaignId, edit) => invoke('scenes:edit-running-order', { campaignId, edit }),
   duplicateScene: (campaignId, sceneId) => invoke('scenes:duplicate', { campaignId, sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
   toggleBroadcastFullscreen: () => invoke('broadcast:toggle-fullscreen'),
@@ -90,11 +91,23 @@ const bridge: ControlBridge = {
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),
   renameMedia: (campaignId, mediaId, name) => invoke('media:rename', { campaignId, mediaId, name }),
+  setMediaFavourite: (campaignId, mediaId, favourite) =>
+    invoke('media:set-favourite', { campaignId, mediaId, favourite }),
   deleteMedia: (campaignId, mediaId, confirmed) =>
     invoke('media:delete', { campaignId, mediaId, confirmed }),
   listCampaigns: () => invoke('campaigns:list'),
   createCampaign: (name) => invoke('campaigns:create', { name }),
   updateCampaign: (id, changes) => invoke('campaigns:update', { id, changes }),
+  getCampaignDeletionSummary: (id) => invoke('campaigns:deletion-summary', { id }),
+  moveCampaignToTrash: (id) => invoke('campaigns:move-to-trash', { id }),
+  deleteCampaignPermanently: (id) => invoke('campaigns:delete-permanently', { id }),
+  exportCampaign: (id) => invoke('campaigns:export', { id }),
+  importCampaign: () => invoke('campaigns:import'),
+  // As for dropped Media: only a file really dropped has a path (empty otherwise, then refused).
+  importDroppedCampaign: (file) =>
+    invoke('campaigns:import-dropped', { file: webUtils.getPathForFile(file) }),
+  cancelCampaignTransfer: () => invoke('campaigns:cancel-transfer'),
+  onCampaignTransferProgress: (listener) => subscribe('campaigns:transfer-progress', listener),
   takeNotices: () => invoke('notices:take'),
   getSettings: () => invoke('settings:get'),
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
@@ -104,6 +117,8 @@ const bridge: ControlBridge = {
     invoke('settings:set-activate-duration', { activateDurationMs }),
   setMusicCrossfade: (musicCrossfadeMs) =>
     invoke('settings:set-music-crossfade', { musicCrossfadeMs }),
+  setBroadcastAlwaysOnTop: (on) => invoke('settings:set-broadcast-always-on-top', { on }),
+  setShortcuts: (shortcuts) => invoke('settings:set-shortcuts', { shortcuts }),
   getSounding: () => invoke('audio:get-sounding'),
   setSilence: (on) => invoke('audio:set-silence', { on }),
   toggleSilence: () => invoke('audio:toggle-silence'),
