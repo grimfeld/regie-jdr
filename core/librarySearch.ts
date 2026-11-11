@@ -1,6 +1,7 @@
 /**
  * What the library shows: the images, filtered by Image category, and the sounds, filtered by
- * audio role, both searched by Media name; and how a sound's duration reads. Pure (no Node or
+ * audio role, both searched by Media name and optionally narrowed to favourites; and how a
+ * sound's duration reads. Pure (no Node or
  * Electron import): the Control window imports it.
  */
 import type { AudioMedia, AudioRole, ImageCategory, ImageMedia, Media } from '../shared/domain.js';
@@ -27,22 +28,45 @@ export function matchesSearch(name: string, query: string): boolean {
   return searchKey(name).includes(searchKey(query));
 }
 
-/** The images the library shows for a filter and a search, in library order. */
-export function imageLibrary(media: readonly Media[], filter: LibraryFilter, query: string) {
+/** Whether a Media passes the "Favoris" filter: any Media when it is off, favourites when on. */
+function passesFavourites(item: Media, favouritesOnly: boolean): boolean {
+  return !favouritesOnly || item.favourite;
+}
+
+/**
+ * The images the library shows for a filter and a search, in library order; only favourites
+ * when `favouritesOnly`.
+ */
+export function imageLibrary(
+  media: readonly Media[],
+  filter: LibraryFilter,
+  query: string,
+  favouritesOnly = false,
+) {
   return media.filter(
     (item): item is ImageMedia =>
       item.kind === 'image' &&
       (filter === 'all' || item.category === filter) &&
+      passesFavourites(item, favouritesOnly) &&
       matchesSearch(item.name, query),
   );
 }
 
-/** The sounds the library shows for a filter and a search, in library order. */
-export function audioLibrary(media: readonly Media[], filter: AudioFilter, query: string) {
+/**
+ * The sounds the library shows for a filter and a search, in library order; only favourites
+ * when `favouritesOnly`.
+ */
+export function audioLibrary(
+  media: readonly Media[],
+  filter: AudioFilter,
+  query: string,
+  favouritesOnly = false,
+) {
   return media.filter(
     (item): item is AudioMedia =>
       item.kind === 'audio' &&
       (filter === 'all' || item.role === filter) &&
+      passesFavourites(item, favouritesOnly) &&
       matchesSearch(item.name, query),
   );
 }

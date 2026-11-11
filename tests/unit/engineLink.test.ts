@@ -13,6 +13,7 @@ function sound(id: string, role: AudioMedia['role']): AudioMedia {
     originalName: id,
     name: `Nom ${id}`,
     extension: '.ogg',
+    favourite: false,
     kind: 'audio',
     role,
     durationSeconds: 60,

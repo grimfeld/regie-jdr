@@ -220,6 +220,7 @@ describe('Media channels', () => {
       ['media:import-pasted', [{ campaignId, data: new Uint8Array([1]), name: 'capture.png' }]],
       ['media:set-category', [{ campaignId, mediaId, category: 'character' }]],
       ['media:rename', [{ campaignId, mediaId, name: 'Port de nuit' }]],
+      ['media:set-favourite', [{ campaignId, mediaId, favourite: true }]],
       ['media:delete', [{ campaignId, mediaId, confirmed: false }]],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -292,6 +293,17 @@ describe('Media channels', () => {
         { campaignId, mediaId, category: 'scenery', role: 'music' },
       ]),
     ).toEqual({ ok: true, payload: { campaignId, mediaId, category: 'scenery' } });
+  });
+
+  it('accept starring and unstarring, keeping only contract fields', () => {
+    expect(
+      checkInvoke('media:set-favourite', 'control', [
+        { campaignId, mediaId, favourite: true, name: 'x' },
+      ]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, favourite: true } });
+    expect(
+      checkInvoke('media:set-favourite', 'control', [{ campaignId, mediaId, favourite: false }]),
+    ).toEqual({ ok: true, payload: { campaignId, mediaId, favourite: false } });
   });
 
   it('accept a rename, keeping only contract fields', () => {
@@ -439,6 +451,13 @@ describe('Media channels', () => {
     ],
     ['an unknown category', 'media:set-category', [{ campaignId, mediaId, category: 'creature' }]],
     ['no Media id', 'media:set-category', [{ campaignId, category: 'scenery' }]],
+    ['a favourite with no flag', 'media:set-favourite', [{ campaignId, mediaId }]],
+    [
+      'a favourite flag that is not a boolean',
+      'media:set-favourite',
+      [{ campaignId, mediaId, favourite: 'true' }],
+    ],
+    ['a favourite with no Media id', 'media:set-favourite', [{ campaignId, favourite: true }]],
     ['a rename with no name', 'media:rename', [{ campaignId, mediaId }]],
     ['a rename with a name that is not text', 'media:rename', [{ campaignId, mediaId, name: 7 }]],
     ['a rename with no Media id', 'media:rename', [{ campaignId, name: 'Orc' }]],

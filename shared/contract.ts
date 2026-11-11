@@ -360,6 +360,11 @@ export interface InvokeChannels {
     payload: { campaignId: CampaignId; mediaId: MediaId; category: ImageCategory };
     result: Media;
   };
+  /** Star (`favourite` true) or unstar an image or a sound, for the library's "Favoris" filter. */
+  'media:set-favourite': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; favourite: boolean };
+    result: Media;
+  };
   /**
    * Rename a Media: changes the name it is shown under; its original file name is kept. Fails
    * with a French message for an empty or too long name.
@@ -590,6 +595,7 @@ export interface ControlBridge extends BroadcastBridge {
     category: ImageCategory,
   ): Promise<Media>;
   renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
+  setMediaFavourite(campaignId: CampaignId, mediaId: MediaId, favourite: boolean): Promise<Media>;
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;

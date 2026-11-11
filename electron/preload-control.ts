@@ -86,6 +86,8 @@ const bridge: ControlBridge = {
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),
   renameMedia: (campaignId, mediaId, name) => invoke('media:rename', { campaignId, mediaId, name }),
+  setMediaFavourite: (campaignId, mediaId, favourite) =>
+    invoke('media:set-favourite', { campaignId, mediaId, favourite }),
   deleteMedia: (campaignId, mediaId, confirmed) =>
     invoke('media:delete', { campaignId, mediaId, confirmed }),
   listCampaigns: () => invoke('campaigns:list'),

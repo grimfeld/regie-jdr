@@ -46,6 +46,8 @@ interface MediaBase {
   name: string;
   /** Lower-case, with the dot: `.png`. */
   extension: string;
+  /** Starred by the Game Master, for the library's "Favoris" filter. False at import. */
+  favourite: boolean;
 }
 
 export interface ImageMedia extends MediaBase {

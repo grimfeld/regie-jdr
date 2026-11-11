@@ -512,6 +512,8 @@ function startApp() {
       },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
+      'media:set-favourite': ({ campaignId, mediaId, favourite }) =>
+        library.setFavourite(campaignId, mediaId, favourite),
       'media:rename': async ({ campaignId, mediaId, name }) => {
         const renamed = await commands.renameMedia(campaignId, mediaId, name);
         await retunePads();

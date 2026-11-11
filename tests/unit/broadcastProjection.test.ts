@@ -99,6 +99,7 @@ describe('the broadcast projection allow-list', () => {
       originalName: 'original',
       name: 'named',
       extension: '.png',
+      favourite: false,
     },
   ];
   // Everything shown and set, so every optional on-air field is present.

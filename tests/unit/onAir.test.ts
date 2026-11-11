@@ -336,6 +336,7 @@ describe('what of a Scene goes on air', () => {
     originalName: id,
     name: id,
     extension: '.png',
+    favourite: false,
   });
   const hashA = 'a'.repeat(64);
   const hashB = 'b'.repeat(64);
@@ -483,6 +484,7 @@ describe('what of a Scene the editor draws', () => {
     originalName: id,
     name: id,
     extension: '.png',
+    favourite: false,
   });
   const hash = 'a'.repeat(64);
   const src = `regie-media://media/c1/${hash}.png`;

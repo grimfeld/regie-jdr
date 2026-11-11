@@ -282,6 +282,18 @@ function mediaRename(
   return { ...campaign, mediaId, name };
 }
 
+function favouriteChange(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; mediaId: MediaId; favourite: boolean }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { mediaId, favourite } = value;
+  if (typeof mediaId !== 'string' || mediaId === '' || typeof favourite !== 'boolean') {
+    return INVALID;
+  }
+  return { ...campaign, mediaId, favourite };
+}
+
 function mediaDelete(
   value: unknown,
 ): Parsed<{ campaignId: CampaignId; mediaId: MediaId; confirmed: boolean }> {
@@ -370,6 +382,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'media:import-pasted': { from: controlOnly, parse: onePayload(pastedImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
   'media:rename': { from: controlOnly, parse: onePayload(mediaRename) },
+  'media:set-favourite': { from: controlOnly, parse: onePayload(favouriteChange) },
   'media:delete': { from: controlOnly, parse: onePayload(mediaDelete) },
   'campaigns:list': { from: controlOnly, parse: noPayload },
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },

@@ -40,7 +40,7 @@ const campaignText = (name = 'Les Ombres') =>
     updatedAt: '2026-01-02T00:00:00.000Z',
   });
 
-const mediaIndexText = (schemaVersion = 3) =>
+const mediaIndexText = (schemaVersion = 4) =>
   JSON.stringify({
     schemaVersion,
     media: [
@@ -52,6 +52,7 @@ const mediaIndexText = (schemaVersion = 3) =>
         extension: '.png',
         kind: 'image',
         category: 'scenery',
+        ...(schemaVersion >= 4 && { favourite: true }),
       },
       {
         id: 'sound-1',
@@ -62,6 +63,7 @@ const mediaIndexText = (schemaVersion = 3) =>
         kind: 'audio',
         role: 'ambience',
         ...(schemaVersion >= 2 && { durationSeconds: 12 }),
+        ...(schemaVersion >= 4 && { favourite: false }),
       },
     ],
   });
@@ -75,7 +77,7 @@ function manifest(overrides: Partial<ExportManifest> = {}): ExportManifest {
     campaignName: 'Les Ombres',
     documents: [
       { path: 'campaign.json', schemaVersion: 1 },
-      { path: 'media.json', schemaVersion: 3 },
+      { path: 'media.json', schemaVersion: 4 },
       { path: 'scenes.json', schemaVersion: 3 },
     ],
     media: [{ path: MEDIA_PATH, size: PIXELS.byteLength }],
@@ -313,7 +315,7 @@ describe('createEntryChecker', () => {
 });
 
 describe('admitDocument', () => {
-  const media = { path: 'media.json', schemaVersion: 3 };
+  const media = { path: 'media.json', schemaVersion: 4 };
 
   it('keeps a document at the current version', () => {
     expect(JSON.parse(admitDocument(media, mediaIndexText()))).toEqual(
@@ -326,8 +328,24 @@ describe('admitDocument', () => {
       admitDocument({ path: 'media.json', schemaVersion: 1 }, mediaIndexText(1)),
     );
     expect(stored).toMatchObject({
-      schemaVersion: 3,
-      media: [{ id: 'image-1' }, { id: 'sound-1', durationSeconds: null }],
+      schemaVersion: 4,
+      media: [
+        { id: 'image-1', favourite: false },
+        { id: 'sound-1', durationSeconds: null, favourite: false },
+      ],
+    });
+  });
+
+  it('gives the Media of an Export from before favourites no favourite', () => {
+    const stored: unknown = JSON.parse(
+      admitDocument({ path: 'media.json', schemaVersion: 3 }, mediaIndexText(3)),
+    );
+    expect(stored).toMatchObject({
+      schemaVersion: 4,
+      media: [
+        { id: 'image-1', favourite: false },
+        { id: 'sound-1', durationSeconds: 12, favourite: false },
+      ],
     });
   });
 
@@ -337,13 +355,13 @@ describe('admitDocument', () => {
   });
 
   it.each([
-    ['unreadable JSON', '{"schemaVersion":3,'],
+    ['unreadable JSON', '{"schemaVersion":4,'],
     ['no schema version', '{"media":[]}'],
-    ['a field of the wrong type', '{"schemaVersion":3,"media":{}}'],
+    ['a field of the wrong type', '{"schemaVersion":4,"media":{}}'],
     [
       'a Media with a path for a hash',
       JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 4,
         media: [
           {
             id: 'x',
@@ -353,17 +371,19 @@ describe('admitDocument', () => {
             extension: '.png',
             kind: 'image',
             category: 'scenery',
+            favourite: false,
           },
         ],
       }),
     ],
     ['a disallowed Media type', mediaIndexText().replace('".png"', '".exe"')],
+    ['a favourite that is not a boolean', mediaIndexText().replace('true', '"oui"')],
   ])('refuses a document with %s', (_case, text) => {
     expect(() => admitDocument(media, text)).toThrow(DAMAGED);
   });
 
   it('refuses a document whose version is not the one the manifest lists', () => {
-    expect(() => admitDocument({ path: 'media.json', schemaVersion: 2 }, mediaIndexText())).toThrow(
+    expect(() => admitDocument({ path: 'media.json', schemaVersion: 3 }, mediaIndexText())).toThrow(
       DAMAGED,
     );
   });
@@ -483,7 +503,10 @@ describe('importCampaign', () => {
     const stored: unknown = JSON.parse(
       await fs.readFile(path.join(folders().campaignsFolder, id, 'media.json'), 'utf8'),
     );
-    expect(stored).toMatchObject({ schemaVersion: 3, media: [{}, { durationSeconds: null }] });
+    expect(stored).toMatchObject({
+      schemaVersion: 4,
+      media: [{ favourite: false }, { durationSeconds: null, favourite: false }],
+    });
   });
 
   it('imports a Campaign whose Media the zip lacks, so they show as missing', async () => {

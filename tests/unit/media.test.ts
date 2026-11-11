@@ -49,6 +49,7 @@ describe('media library', () => {
         originalName: 'Cantina',
         name: 'Cantina',
         extension: '.png',
+        favourite: false,
       }),
     ]);
     const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
@@ -464,7 +465,90 @@ describe('media library', () => {
       JSON.stringify({ schemaVersion: 2, media: [stored] }),
     );
 
-    expect(await library.list(campaign.id)).toEqual([{ ...stored, campaignId: campaign.id }]);
+    expect(await library.list(campaign.id)).toEqual([
+      { ...stored, campaignId: campaign.id, favourite: false },
+    ]);
+  });
+
+  it('stars and unstars an image or a sound, and keeps its favourite after a restart', async () => {
+    const { campaign, library } = await setup();
+    const [image] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+    const [sound] = (
+      await library.import(campaign.id, [await sourceFile('pluie.mp3', 'pluie')], {
+        accept: 'audio',
+        role: 'ambience',
+      })
+    ).imported;
+    expect([image.favourite, sound.favourite]).toEqual([false, false]);
+
+    const starredImage = await library.setFavourite(campaign.id, image.id, true);
+    const starredSound = await library.setFavourite(campaign.id, sound.id, true);
+    expect(starredImage).toEqual({ ...image, favourite: true });
+    expect(starredSound).toEqual({ ...sound, favourite: true });
+
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
+    expect(await reopened.list(campaign.id)).toEqual([starredImage, starredSound]);
+    expect(await reopened.setFavourite(campaign.id, image.id, false)).toEqual(image);
+    expect(await reopened.list(campaign.id)).toEqual([image, starredSound]);
+  });
+
+  it('keeps a favourite when its content is imported again', async () => {
+    const { campaign, library } = await setup();
+    const [image] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+    const starred = await library.setFavourite(campaign.id, image.id, true);
+
+    const { imported } = await library.import(campaign.id, [await sourceFile('copie.png')], {
+      accept: 'image',
+    });
+
+    expect(imported).toEqual([starred]);
+  });
+
+  it('refuses to star a Media that no longer exists', async () => {
+    const { campaign, library } = await setup();
+
+    await expect(library.setFavourite(campaign.id, 'gone', true)).rejects.toThrow(
+      'Ce média n’existe plus.',
+    );
+  });
+
+  it('gives Media from before favourites no favourite', async () => {
+    const { storage, campaign, library } = await setup();
+    const image = {
+      id: 'port',
+      contentHash: ABC_SHA256,
+      originalName: 'Port',
+      name: 'Port',
+      extension: '.png',
+      kind: 'image',
+      category: 'reference',
+    };
+    const sound = {
+      id: 'pluie',
+      contentHash: ABC_SHA256,
+      originalName: 'Pluie',
+      name: 'Pluie',
+      extension: '.mp3',
+      kind: 'audio',
+      role: 'ambience',
+      durationSeconds: 12,
+    };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'media.json'),
+      JSON.stringify({ schemaVersion: 3, media: [image, sound] }),
+    );
+
+    expect(await library.list(campaign.id)).toEqual([
+      { ...image, campaignId: campaign.id, favourite: false },
+      { ...sound, campaignId: campaign.id, favourite: false },
+    ]);
   });
 
   describe('pasted images', () => {
