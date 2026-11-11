@@ -119,3 +119,9 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - `transitionOnActivate` (`core/onAir.ts`) decides; Cut goes on air with duration 0 (renderer unchanged). Cut audio uses `AUDIO_FADE_MS.cut` (100 ms); Crossfade audio keeps the Activate duration.
 - Shared activation path for button and shortcuts: `activateScene` + `activateOptionsOf(event)` in `src/activate.ts`; Shift forces Cut.
 - UI: "TRANSITION" menu (Fondu enchaîné / Cut) under the Scene title; Activer hints "Maj+clic : activer en Cut".
+
+## Activate and Music crossfade durations (#50, 2026-11-12, `4d2d082`)
+
+- Settings schema 4: `activateDurationMs` (default 1500, 0.1–5 s) and `musicCrossfadeMs` (default 2000, 0.1–10 s); bounds are the agent's choice (0.1 s minimum avoids clicks). Control-only `settings:set-activate-duration`, `settings:set-music-crossfade`. Not on air (the Transition carries `durationMs`).
+- `OnAirCommands.setPlayDurations` sets picture and audio together (startup and both channels). `audioFadeMs(change, durations)` replaces `AUDIO_FADE_MS.activate`/`crossfade`; `ACTIVATE_DURATION_MS` is `{default, min, max}`. Cut stays 0 ms picture / 100 ms audio.
+- UI: "Durée d’activation" and "Fondu entre musiques" number fields (seconds) under "Fondus".

@@ -17,6 +17,10 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 
 ## Follow-ups to clear before the M3 PR
 
+- Number fields refuse a French decimal comma ("4,5"); #50's test switched to "4.5". A French Game Master types a comma: accept both in "Fondus", "Durée d’activation", "Fondu entre musiques". Source: #50 report.
+- Run the full app suite (#50 merged with only `fades.spec` re-run). Source: #50 report.
+- Manual check: long Activate and Music crossfade sound right; 0.1 s Cut audio does not click.
+
 - Notes editor restarts (losing Notes undo) after any Media delete touching Notes, even when the open Scene was untouched; restart only when the open Scene changed. Source: #54 report.
 
 - A Notes save pending under 500 ms is lost if the app quits then; flush on quit. Source: #51 report.
@@ -33,3 +37,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: #55 merged at `d19af19` (941 unit, 158 app tests): no app change needed, M1 #24 already met it; added a three-Campaign + restart whole-app test (proven to fail when the stored Scene is ignored).
 - 2026-11-12: #49 Cut and forced Cut merged at `7924e22` (964 unit, 160 app tests). scenes.json now v4 (Crossfade migration). #56 must call `src/activate.ts`. Manual check: no click on a Cut's 0.1 s audio switch.
 - 2026-11-12: #49 Cut merged at `d30b310` (964 unit, 159 app tests). Manual check: 0.1 s audio switch on a Cut does not click.
+- 2026-11-12: #50 duration settings merged at `4d2d082` (983 unit tests; full app suite not re-run after its last test change).
