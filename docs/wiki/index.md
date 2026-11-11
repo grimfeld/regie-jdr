@@ -28,6 +28,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [Piped merge hides a failed fast-forward](problem-piped-merge-hides-failure.md)
 - [Flaky whole-app tests](problem-flaky-app-tests.md)
 - [Usage limit stops every agent at once](problem-usage-limit.md)
+- [Session interrupted mid-work](problem-session-interrupted.md)
 
 ## Process
 
