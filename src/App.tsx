@@ -153,6 +153,17 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     if (result.saved) showNotice(exportNotice(result.missingMedia));
   }
 
+  /** Imports a Campaign; it joins the list, highlighted there, and is not opened (ADR-0005). */
+  async function importCampaign(): Promise<CampaignId | undefined> {
+    if (!control) return undefined;
+    const result = await control.importCampaign();
+    if (!result.imported) return undefined;
+    const { campaign } = result;
+    setCampaigns((current) => [...(current ?? []), campaign].sort(byName));
+    showNotice(`Campagne « ${campaign.name} » importée.`);
+    return campaign.id;
+  }
+
   async function update(id: CampaignId, changes: CampaignChanges) {
     if (!control) return;
     try {
@@ -236,6 +247,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
             onRename={(id, name) => update(id, { name })}
             deletion={deletion}
             onExport={exportCampaign}
+            onImport={control && importCampaign}
           />
         )
       )}

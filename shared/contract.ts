@@ -223,6 +223,9 @@ export interface MediaDeletion {
  */
 export type CampaignExportResult = { saved: false } | { saved: true; missingMedia: number };
 
+/** What an Import did: nothing when the Game Master cancelled the file dialog; else the new Campaign. */
+export type CampaignImportResult = { imported: false } | { imported: true; campaign: Campaign };
+
 /** What can be changed on a Campaign; absent fields are left as they are. */
 export interface CampaignChanges {
   name?: string;
@@ -400,6 +403,12 @@ export interface InvokeChannels {
    * native save dialog (the window never names files). Fails for the open Campaign.
    */
   'campaigns:export': { payload: { id: CampaignId }; result: CampaignExportResult };
+  /**
+   * Import a Campaign from a `.zip` Export (ADR-0005), picked in the native open dialog (the
+   * window never names files). Always a new Campaign; fails, leaving nothing behind, for a zip
+   * that is refused.
+   */
+  'campaigns:import': { payload: void; result: CampaignImportResult };
   /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
@@ -583,6 +592,7 @@ export interface ControlBridge extends BroadcastBridge {
   moveCampaignToTrash(id: CampaignId): Promise<CampaignTrashing>;
   deleteCampaignPermanently(id: CampaignId): Promise<void>;
   exportCampaign(id: CampaignId): Promise<CampaignExportResult>;
+  importCampaign(): Promise<CampaignImportResult>;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;

@@ -8,6 +8,7 @@ import type { WindowRole } from '../core/ipc.js';
 import { CampaignError, createCampaign, updateCampaign } from '../core/campaigns.js';
 import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
 import { exportCampaign, exportFileName } from '../core/campaignExport.js';
+import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
@@ -22,7 +23,7 @@ import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
-import { writeZipArchive } from './zipArchive.js';
+import { openZipArchive, writeZipArchive } from './zipArchive.js';
 import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
 import type { PadCommand } from '../shared/domain.js';
 
@@ -304,6 +305,20 @@ async function pickExportFile(defaultName: string): Promise<string | undefined> 
   return result.canceled || !result.filePath ? undefined : result.filePath;
 }
 
+/** The Export the Game Master picks to Import, from the native open dialog; undefined if cancelled. */
+async function pickImportFile(): Promise<string | undefined> {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Importer une campagne',
+    defaultPath: app.getPath('documents'),
+    properties: ['openFile'],
+    filters: [{ name: 'Archive zip', extensions: ['zip'] }],
+  };
+  const result = controlWindow
+    ? await dialog.showOpenDialog(controlWindow, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? undefined : result.filePaths[0];
+}
+
 /** A second launch of the app brings the existing Control window forward. */
 function focusControlWindow() {
   if (!controlWindow || controlWindow.isDestroyed()) return;
@@ -321,6 +336,13 @@ function startApp() {
       log.warn(message);
     },
   });
+  // An Import interrupted by a crash leaves its staging folder; none runs yet, and the next one
+  // waits for this.
+  const importLeftoversCleared = clearImportLeftovers(storage.importsFolder).catch(
+    (error: unknown) => {
+      log.warn('Could not remove the folders left by an interrupted Import', error);
+    },
+  );
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
@@ -511,6 +533,22 @@ function startApp() {
         });
         log.info(`Exported Campaign ${campaignId}, ${missingMedia} missing Media left out`);
         return { saved: true, missingMedia };
+      },
+      // Always a new Campaign (ADR-0005); the zip is untrusted, core/campaignImport.ts checks it.
+      'campaigns:import': async () => {
+        const file = await pickImportFile();
+        if (!file) return { imported: false };
+        await importLeftoversCleared;
+        const { id } = await importCampaign({
+          openArchive: openZipArchive(file),
+          campaignsFolder: storage.campaignsFolder,
+          importsFolder: storage.importsFolder,
+          existingNames: (await storage.campaigns.list()).map((campaign) => campaign.name),
+        });
+        const campaign = await storage.campaigns.get(id);
+        if (!campaign) throw new CampaignError('La campagne importée est illisible.');
+        log.info(`Imported Campaign ${id}`);
+        return { imported: true, campaign };
       },
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),

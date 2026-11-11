@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Download, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import type { CampaignDeletionSummary, CampaignTrashing } from '../shared/contract';
 import type { Campaign, CampaignId } from '../shared/domain';
 import { isIpcFailure, noticeFor } from './notices';
@@ -68,6 +68,11 @@ interface Props {
   deletion?: CampaignDeletionActions;
   /** Exports the Campaign to a zip; it is closed, as on this page every Campaign is. */
   onExport: (id: CampaignId) => Promise<void>;
+  /**
+   * Imports a Campaign from an Export zip the Game Master picks; resolves to the new Campaign's
+   * id, or undefined when nothing was picked. Absent without a main process.
+   */
+  onImport?: () => Promise<CampaignId | undefined>;
 }
 
 /** The Game Master's notice after an Export, naming how many missing Media were left out. */
@@ -78,10 +83,19 @@ export function exportNotice(missingMedia: number): string {
 }
 
 /**
- * The Campaign list home page: pick, create, rename, export or delete a Campaign. Export and
- * delete are offered only here, where every Campaign is closed.
+ * The Campaign list home page: pick, create, rename, export, import or delete a Campaign. Export,
+ * Import and delete are offered only here, where every Campaign is closed. An imported Campaign
+ * is highlighted, not opened.
  */
-export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, onExport }: Props) {
+export function CampaignList({
+  campaigns,
+  onOpen,
+  onCreate,
+  onRename,
+  deletion,
+  onExport,
+  onImport,
+}: Props) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<CampaignId | null>(null);
@@ -90,6 +104,13 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, 
   const [pending, setPending] = useState<PendingDeletion | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState<CampaignId | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState<CampaignId | null>(null);
+
+  useEffect(() => {
+    if (imported)
+      document.getElementById(campaignItemId(imported))?.scrollIntoView({ block: 'nearest' });
+  }, [imported]);
 
   async function attempt(action: () => Promise<void>) {
     setError('');
@@ -160,6 +181,22 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, 
     }
   }
 
+  async function importCampaign() {
+    if (!onImport) return;
+    setCreating(false);
+    setRenaming(null);
+    setPending(null);
+    setImporting(true);
+    try {
+      await attempt(async () => {
+        const id = await onImport();
+        if (id) setImported(id);
+      });
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function startRename(campaign: Campaign) {
     setError('');
     setCreating(false);
@@ -175,18 +212,29 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, 
           <span className="eyebrow">VOS PARTIES</span>
           <h1>Vos campagnes</h1>
         </div>
-        {!creating && (
-          <button
-            className="primary-button"
-            onClick={() => {
-              setError('');
-              setRenaming(null);
-              setCreating(true);
-            }}
-          >
-            <Plus size={16} /> Créer une campagne
-          </button>
-        )}
+        <div className="campaign-home-actions">
+          {onImport && (
+            <button
+              className="secondary-button"
+              disabled={importing}
+              onClick={() => void importCampaign()}
+            >
+              <Upload size={16} aria-hidden /> Importer une campagne
+            </button>
+          )}
+          {!creating && (
+            <button
+              className="primary-button"
+              onClick={() => {
+                setError('');
+                setRenaming(null);
+                setCreating(true);
+              }}
+            >
+              <Plus size={16} /> Créer une campagne
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && (
@@ -214,7 +262,11 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, 
 
       <ul className="campaign-list" aria-label="Campagnes">
         {campaigns.map((campaign) => (
-          <li key={campaign.id} className="campaign-item panel">
+          <li
+            key={campaign.id}
+            id={campaignItemId(campaign.id)}
+            className={`campaign-item panel${imported === campaign.id ? ' campaign-item-imported' : ''}`}
+          >
             {renaming === campaign.id ? (
               <form className="campaign-form" onSubmit={(event) => void submitRename(event)}>
                 <label>
@@ -237,6 +289,7 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, 
                 <button className="campaign-open" onClick={() => onOpen(campaign.id)}>
                   <FolderOpen size={18} />
                   <strong>{campaign.name}</strong>
+                  {imported === campaign.id && <span className="campaign-badge">Importée</span>}
                 </button>
                 <button
                   className="secondary-button"
@@ -280,6 +333,11 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, 
       </ul>
     </section>
   );
+}
+
+/** Id of a Campaign's item on the list, to bring an imported one into view. */
+function campaignItemId(id: CampaignId): string {
+  return `campaign-${id}`;
 }
 
 /** The confirmation of a delete: to the Recycle Bin first, permanent only once it refused. */

@@ -634,6 +634,25 @@ button {
 .campaign-open strong {
   font: 600 20px var(--display);
 }
+.campaign-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+/* An imported Campaign: outlined and labelled "Importée", never opened for the Game Master. */
+.campaign-item-imported {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.campaign-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .campaign-delete-confirm {
   flex-basis: 100%;
   margin-top: 0;

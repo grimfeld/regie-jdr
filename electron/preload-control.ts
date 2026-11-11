@@ -95,6 +95,7 @@ const bridge: ControlBridge = {
   moveCampaignToTrash: (id) => invoke('campaigns:move-to-trash', { id }),
   deleteCampaignPermanently: (id) => invoke('campaigns:delete-permanently', { id }),
   exportCampaign: (id) => invoke('campaigns:export', { id }),
+  importCampaign: () => invoke('campaigns:import'),
   takeNotices: () => invoke('notices:take'),
   getSettings: () => invoke('settings:get'),
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),

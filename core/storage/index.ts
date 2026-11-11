@@ -10,6 +10,7 @@
  *   <root>/campaigns/<campaignId>/scenes.json     Scenes (core/scenes.ts)
  *   <root>/campaigns/<campaignId>/soundboard.json Soundboard (core/soundboard.ts)
  *   <root>/settings.json                          global Settings (core/settings.ts)
+ *   <root>/imports/                               Imports being checked (core/campaignImport.ts)
  * Every document has a `<file>.bak` (previous good version) next to it once rewritten.
  */
 import path from 'node:path';
@@ -38,6 +39,8 @@ export interface Storage {
   campaignFolder(id: CampaignId): string;
   /** File of the global settings document. */
   settingsFile: string;
+  /** Where an Import unpacks and checks a zip, beside the campaigns folder (same disk). */
+  importsFolder: string;
 }
 
 /** Campaign ids are folder names: letters, digits, `-` and `_` only (never `..` or a path). */
@@ -64,5 +67,6 @@ export function openStorage(root: string, options: StorageOptions = {}): Storage
     campaignsFolder,
     campaignFolder,
     settingsFile: path.join(root, 'settings.json'),
+    importsFolder: path.join(root, 'imports'),
   };
 }

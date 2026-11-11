@@ -121,6 +121,7 @@ describe('Campaign channels', () => {
       ['campaigns:move-to-trash', [{ id }]],
       ['campaigns:delete-permanently', [{ id }]],
       ['campaigns:export', [{ id }]],
+      ['campaigns:import', []],
       ['notices:take', []],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
