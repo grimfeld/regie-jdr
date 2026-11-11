@@ -29,3 +29,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: #48 Crossfade merged at `5258baf` (930 unit, 155 app tests). Manual check: how the dissolve feels, large-image frames.
 - 2026-11-12: M2 CI fixed at `65e6049` (real slider-draft race; see [flaky tests](problem-flaky-app-tests.md)); #75 CI green. Backport to M1 #74 and merge-forward to M3 in progress.
 - 2026-11-12: #54 Notes images as uses merged at `6701986` (941 unit, 157 app tests). Gap: Notes undo lost for untouched open Scene after a delete touching other Notes.
+- 2026-11-12: slider-draft fix backported to M1 (`7fbc29f`, #74 CI green), merged into M2 (`3f6b9bc`, #75 CI green) and M3 (`16e5e3c`).

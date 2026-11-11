@@ -41,6 +41,7 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 - [M1 log](milestone-m1.md): slice order and outcomes for #21.
 - [M2 log](milestone-m2.md): slice order and outcomes for #33.
 - [M3 log](milestone-m3.md): slice order and outcomes for #45.
+- [M4 log](milestone-m4.md): slice order and outcomes for #58.
 
 ## Cross-milestone
 
