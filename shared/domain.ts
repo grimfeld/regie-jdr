@@ -283,12 +283,23 @@ export interface AudioVoice {
  */
 export interface AudioMix {
   voices: AudioVoice[];
+  /**
+   * Voices left out because their Media's file is missing (deleted or moved outside the app,
+   * its address answers 404): never played, shown as missing so the Game Master knows.
+   */
+  missing: MissingVoice[];
   fadeMs: number;
   version: number;
 }
 
+/** A voice the mix would play but leaves out: its Media's file is missing. */
+export type MissingVoice = Pick<AudioVoice, 'mediaId' | 'role' | 'name'>;
+
 /** What the audio engine says a voice is doing: what is actually sounding, not what was asked. */
 export type VoiceState = 'loading' | 'playing' | 'paused' | 'failed';
+
+/** A voice's state in the "En cours" strip: as the engine reports it, or missing (never played). */
+export type SoundingState = VoiceState | 'missing';
 
 /** The audio engine's report: the state of each voice it holds. */
 export interface AudioEngineReport {
@@ -300,8 +311,8 @@ export interface SoundingVoice {
   mediaId: MediaId;
   role: AudioVoice['role'];
   name: string;
-  /** Loading until the engine reports it. */
-  state: VoiceState;
+  /** Loading until the engine reports it; missing when its file is (AudioMix `missing`). */
+  state: SoundingState;
 }
 
 /**

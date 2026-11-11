@@ -6,13 +6,14 @@ import {
   mixOf,
   musicAfterEdit,
   musicWithPlayback,
+  newlyUnplayable,
   parseAudioEngineReport,
   pickedMusic,
   soundingOf,
 } from '../../core/audioMix';
 import { AUDIO_FADE_MS } from '../../core/fades';
 import type { SceneEdit } from '../../shared/contract';
-import type { AudioMedia, AudioMix, Media, Scene } from '../../shared/domain';
+import type { AudioMedia, AudioMix, Media, Scene, SoundingState } from '../../shared/domain';
 
 function audio(id: string, role: AudioMedia['role']): AudioMedia {
   return {
@@ -67,6 +68,7 @@ describe('the mix', () => {
 
     expect(mix).toEqual({
       fadeMs: AUDIO_FADE_MS.activate,
+      missing: [],
       voices: [
         {
           mediaId: 'm1',
@@ -137,6 +139,47 @@ describe('the mix', () => {
     );
 
     expect(mix.voices).toEqual([]);
+  });
+
+  it('leaves Media whose file is missing out of the mix, listed as missing; the others play on', () => {
+    const mix = mixOf(
+      {
+        scene: scene({
+          ambiences: [
+            { mediaId: 'a1', on: true, volume: 1 },
+            { mediaId: 'a2', on: true, volume: 1 },
+          ],
+        }),
+        library,
+        masterVolume: 1,
+        audio: playingM1,
+        missing: new Set(['m1', 'a2']),
+      },
+      'activate',
+    );
+
+    expect(mix.voices).toEqual([
+      expect.objectContaining({ mediaId: 'a1', role: 'ambience', gain: 1, playing: true }),
+    ]);
+    expect(mix.missing).toEqual([
+      { mediaId: 'm1', role: 'music', name: 'Nom m1' },
+      { mediaId: 'a2', role: 'ambience', name: 'Nom a2' },
+    ]);
+  });
+
+  it('lists as missing only what would be heard: not a switched-off Ambience', () => {
+    const mix = mixOf(
+      {
+        scene: scene({ music: [], ambiences: [{ mediaId: 'a1', on: false, volume: 1 }] }),
+        library,
+        masterVolume: 1,
+        audio: { music: null },
+        missing: new Set(['a1', 'm1']),
+      },
+      'activate',
+    );
+
+    expect(mix).toMatchObject({ voices: [], missing: [] });
   });
 
   it('applies the Master volume to every voice', () => {
@@ -246,6 +289,7 @@ describe('what is sounding', () => {
   const mix: AudioMix = {
     version: 3,
     fadeMs: 0,
+    missing: [],
     voices: [
       { mediaId: 'm1', role: 'music', name: 'Nom m1', src: 'x', gain: 1, playing: true },
       { mediaId: 'a1', role: 'ambience', name: 'Nom a1', src: 'y', gain: 1, playing: true },
@@ -267,10 +311,52 @@ describe('what is sounding', () => {
     expect(soundingOf({ ...mix, voices: [] }, { voices: [] }, pads)).toEqual({ voices: [], pads });
   });
 
+  it('shows the voices left out for a missing file after the others, as missing', () => {
+    const withMissing: AudioMix = {
+      ...mix,
+      missing: [{ mediaId: 'a2', role: 'ambience', name: 'Nom a2' }],
+    };
+    expect(
+      soundingOf(withMissing, { voices: [] }).voices.map(({ mediaId, state }) => [mediaId, state]),
+    ).toEqual([
+      ['m1', 'loading'],
+      ['a1', 'loading'],
+      ['a2', 'missing'],
+    ]);
+  });
+
   it('ignores voices the engine still holds that left the mix (fading out)', () => {
     expect(
       soundingOf({ ...mix, voices: [] }, { voices: [{ mediaId: 'm1', state: 'playing' }] }),
     ).toEqual({ voices: [], pads: [] });
+  });
+});
+
+describe('sounds that cannot be played', () => {
+  const sounding = (...states: [string, SoundingState][]) => ({
+    pads: [],
+    voices: states.map(([mediaId, state]) => ({
+      mediaId,
+      role: 'ambience' as const,
+      name: `Nom ${mediaId}`,
+      state,
+    })),
+  });
+
+  it('are told once, when they become missing or unreadable', () => {
+    const first = sounding(['m1', 'missing'], ['a1', 'loading']);
+    const failed = sounding(['m1', 'missing'], ['a1', 'failed']);
+
+    expect(newlyUnplayable(null, first).map((voice) => voice.mediaId)).toEqual(['m1']);
+    expect(newlyUnplayable(first, failed).map((voice) => voice.mediaId)).toEqual(['a1']);
+    expect(newlyUnplayable(failed, failed)).toEqual([]);
+    expect(newlyUnplayable(failed, sounding(['a1', 'missing']))).toEqual([]);
+  });
+
+  it('are told again once they played in between', () => {
+    const missing = sounding(['m1', 'missing']);
+    expect(newlyUnplayable(sounding(['m1', 'playing']), missing)).toHaveLength(1);
+    expect(newlyUnplayable(sounding(), missing)).toHaveLength(1);
   });
 });
 
@@ -299,7 +385,7 @@ describe('untrusted engine reports', () => {
 });
 
 describe('the newest mix', () => {
-  const at = (version: number): AudioMix => ({ version, fadeMs: 0, voices: [] });
+  const at = (version: number): AudioMix => ({ version, fadeMs: 0, voices: [], missing: [] });
 
   it('takes a mix only if it is newer than the one applied', () => {
     expect(latestMix(null, at(1))).toEqual(at(1));

@@ -23,6 +23,7 @@ import { audioChangeOf } from './audioMix.js';
 import type { AudioOnAir } from './audioOnAir.js';
 import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
+import { mediaAddress } from './mediaAddress.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
 import { addedMedia, applySceneEdit, type SceneEdit } from './sceneEdits.js';
 import { mediaOfScene, SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
@@ -115,11 +116,29 @@ export function createOnAirCommands(deps: {
     return onAirSceneOf(scene, await library.list(scene.campaignId));
   }
 
+  /**
+   * The audio Media of `scene` whose file is missing: its address answers 404, the rule the
+   * Media protocol serves by (deleted or moved outside the app). Left out of the mix.
+   */
+  async function missingAudio(scene: Scene, media: readonly Media[]): Promise<Set<MediaId>> {
+    const used = new Set(mediaOfScene(scene));
+    const checked = await Promise.all(
+      media
+        .filter((item) => item.kind === 'audio' && used.has(item.id))
+        .map(async (item) => ({
+          id: item.id,
+          found: await library.resolveAddress(mediaAddress(item), scene.campaignId),
+        })),
+    );
+    return new Set(checked.filter(({ found }) => found === undefined).map(({ id }) => id));
+  }
+
   /** Puts the Active Scene, as it now is, on air: its picture and its sound. */
   async function showActive(scene: Scene, change: AudioChange) {
     const media = await library.list(scene.campaignId);
+    const missing = await missingAudio(scene, media);
     onAir.showActiveScene(scene.id, onAirSceneOf(scene, media));
-    audio.showActiveScene(scene, media, change);
+    audio.showActiveScene(scene, media, change, missing);
   }
 
   /** Saves a Scene and, when it is the Active Scene, puts it on air (`change`: its audio fade). */
@@ -234,7 +253,7 @@ export function createOnAirCommands(deps: {
         const scene = await scenes.get(campaignId, sceneId);
         if (!scene) throw new SceneError('Cette scène n’existe plus.');
         const media = await library.list(campaignId);
-        audio.activateScene(scene, media);
+        audio.activateScene(scene, media, await missingAudio(scene, media));
         return onAir.activateScene(scene.id, onAirSceneOf(scene, media));
       }),
 
@@ -271,9 +290,11 @@ export function createOnAirCommands(deps: {
           case 'frame-background':
             onAir.showActiveScene(sceneId, await picture(shown));
             return;
-          case 'set-music-level':
-            audio.showActiveScene(shown, await library.list(campaignId), 'volume');
+          case 'set-music-level': {
+            const media = await library.list(campaignId);
+            audio.showActiveScene(shown, media, 'volume', await missingAudio(shown, media));
             return;
+          }
         }
       }),
 

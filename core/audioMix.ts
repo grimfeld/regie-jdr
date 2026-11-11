@@ -12,7 +12,8 @@
  * - #38 Activate continuity: voices are known by Media, so a Media in both mixes keeps playing.
  * - #39 Soundboard: pad sounds are one-off commands beside the mix (core/padVoices.ts).
  * - #40 Silence: a flag in AudioOnAirState that zeroes every target here.
- * - #42 missing files: leave Media known to be missing out in `audioOf`.
+ * - #42 missing files: Media whose file is known to be missing (`MixInput.missing`) are left
+ *   out of the voices and listed as `missing`; load failures come back from the engine.
  */
 import type { SceneEdit } from '../shared/contract.js';
 import type {
@@ -24,8 +25,11 @@ import type {
   AudioVoice,
   Media,
   MediaId,
+  MissingVoice,
   MusicPlayback,
   Scene,
+  SoundingState,
+  SoundingVoice,
   VoiceState,
 } from '../shared/domain.js';
 import { AUDIO_FADE_MS, type AudioChange } from './fades.js';
@@ -44,26 +48,34 @@ export interface MixInput {
   library: readonly Media[];
   masterVolume: number;
   audio: AudioOnAirState;
+  /** Audio Media whose file is missing (their address answers 404): never played. None if absent. */
+  missing?: ReadonlySet<MediaId>;
 }
 
 /** The mix for `input`, fading over the duration of `change`. Its version is the holder's. */
 export function mixOf(input: MixInput, change: AudioChange): Omit<AudioMix, 'version'> {
-  const { scene, library, masterVolume, audio } = input;
+  const { scene, library, masterVolume, audio, missing = new Set<MediaId>() } = input;
   const voices: AudioVoice[] = [];
+  const left: MissingVoice[] = [];
+  /** Plays `voice`, unless its file is missing: then it is only listed as missing. */
+  const add = (voice: AudioVoice) => {
+    if (!missing.has(voice.mediaId)) voices.push(voice);
+    else left.push({ mediaId: voice.mediaId, role: voice.role, name: voice.name });
+  };
   if (scene) {
     const { music } = audio;
     const track = music ? audioOf(library, music.mediaId) : null;
     if (music && track && music.playback !== 'stopped') {
-      voices.push(voiceOf(track, 'music', masterVolume * scene.volumes.music, music.playback));
+      add(voiceOf(track, 'music', masterVolume * scene.volumes.music, music.playback));
     }
     for (const ambience of scene.ambiences) {
       const media = ambience.on ? audioOf(library, ambience.mediaId) : null;
       if (!media) continue;
       const gain = masterVolume * scene.volumes.ambience * ambience.volume;
-      voices.push(voiceOf(media, 'ambience', gain, 'playing'));
+      add(voiceOf(media, 'ambience', gain, 'playing'));
     }
   }
-  return { voices, fadeMs: AUDIO_FADE_MS[change] };
+  return { voices, missing: left, fadeMs: AUDIO_FADE_MS[change] };
 }
 
 /** The audio Media `mediaId` of the library, or null when it is not one (deleted, an image). */
@@ -175,8 +187,8 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
 
 /**
  * What is sounding: each voice of `mix` with the state the engine last reported for it, loading
- * until it does, and the Soundboard `pads` sounding. Voices the engine still holds but the mix
- * dropped (fading out) are not shown.
+ * until it does, then the voices left out because their file is missing, and the Soundboard
+ * `pads` sounding. Voices the engine still holds but the mix dropped (fading out) are not shown.
  */
 export function soundingOf(
   mix: AudioMix,
@@ -185,13 +197,38 @@ export function soundingOf(
 ): AudioSounding {
   return {
     pads,
-    voices: mix.voices.map(({ mediaId, role, name }) => ({
-      mediaId,
-      role,
-      name,
-      state: report.voices.find((voice) => voice.mediaId === mediaId)?.state ?? 'loading',
-    })),
+    voices: [
+      ...mix.voices.map(({ mediaId, role, name }) => ({
+        mediaId,
+        role,
+        name,
+        state: report.voices.find((voice) => voice.mediaId === mediaId)?.state ?? 'loading',
+      })),
+      ...mix.missing.map((voice) => ({ ...voice, state: 'missing' as const })),
+    ],
   };
+}
+
+/** Whether a voice in this state cannot be heard for good: its file is missing or unreadable. */
+function isUnplayable(state: SoundingState): boolean {
+  return state === 'missing' || state === 'failed';
+}
+
+/**
+ * The voices of `next` that became unplayable (missing or failed) since `previous` (null
+ * before the first): each is told to the Game Master once, not on every report.
+ */
+export function newlyUnplayable(
+  previous: AudioSounding | null,
+  next: AudioSounding,
+): SoundingVoice[] {
+  return next.voices.filter(
+    (voice) =>
+      isUnplayable(voice.state) &&
+      !previous?.voices.some(
+        (before) => before.mediaId === voice.mediaId && isUnplayable(before.state),
+      ),
+  );
 }
 
 /** More voices than this in one report is a malformed message. */

@@ -1,23 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AudioLines, Music2, Pause, Play, Square, Volume2, Waves, Zap } from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
 import type {
   AudioSounding,
   MusicPlayback as MusicPlaybackState,
+  SoundingState,
   SoundingVoice,
-  VoiceState,
 } from '../shared/domain';
-import { MASTER_VOLUME } from '../core/audioMix';
+import { MASTER_VOLUME, newlyUnplayable } from '../core/audioMix';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
 import { createTransientSender } from './transientUpdates';
 
-const stateLabels: Record<VoiceState, string> = {
+const stateLabels: Record<SoundingState, string> = {
   loading: 'chargement…',
   playing: 'en lecture',
   paused: 'en pause',
   failed: 'illisible',
+  missing: 'média manquant',
 };
+
+/** What the Game Master is told when a sound cannot be played; the others play on. */
+function unplayableNotice({ name, state }: SoundingVoice): string {
+  return state === 'missing'
+    ? `« ${name} » est introuvable (fichier supprimé ou déplacé hors de l’application) : il est ignoré, les autres sons continuent.`
+    : `« ${name} » n’a pas pu être lu : il est ignoré, les autres sons continuent.`;
+}
 
 const roleIcons = { music: Music2, ambience: Waves };
 
@@ -114,21 +122,30 @@ function MusicPlayback({
   );
 }
 
-/** What is sounding, kept up to date; null until first known. */
+/**
+ * What is sounding, kept up to date; null until first known. A sound that turns out missing or
+ * unreadable raises a notice, once.
+ */
 export function useSounding(control: ControlBridge | undefined): AudioSounding | null {
   const [sounding, setSounding] = useState<AudioSounding | null>(null);
+  const shown = useRef<AudioSounding | null>(null);
   useEffect(() => {
     if (!control) return;
+    const show = (next: AudioSounding) => {
+      newlyUnplayable(shown.current, next).forEach((voice) => showNotice(unplayableNotice(voice)));
+      shown.current = next;
+      setSounding(next);
+    };
     // Subscribe first, then read: a reply older than an event already received is ignored.
     let changed = false;
     const unsubscribe = control.onSoundingChanged((next) => {
       changed = true;
-      setSounding(next);
+      show(next);
     });
     control
       .getSounding()
       .then((current) => {
-        if (!changed) setSounding(current);
+        if (!changed) show(current);
       })
       .catch((error: unknown) => showNotice(errorMessage(error)));
     return unsubscribe;

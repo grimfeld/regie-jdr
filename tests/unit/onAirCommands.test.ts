@@ -5,12 +5,13 @@ import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createAudioOnAir } from '../../core/audioOnAir';
 import { AUDIO_FADE_MS } from '../../core/fades';
 import { createMediaLibrary } from '../../core/media';
+import { mediaFileName } from '../../core/mediaAddress';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
 import { createSceneLibrary } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
 import type { SceneEdit } from '../../shared/contract';
-import type { AudioMix, OnAirState } from '../../shared/domain';
+import type { AudioMix, Media, OnAirState } from '../../shared/domain';
 import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
@@ -293,7 +294,12 @@ describe('on-air commands', () => {
     });
 
     it('nothing plays in a fresh audio state, as after a restart', () => {
-      expect(createAudioOnAir().mix()).toEqual({ voices: [], fadeMs: 0, version: 0 });
+      expect(createAudioOnAir().mix()).toEqual({
+        voices: [],
+        missing: [],
+        fadeMs: 0,
+        version: 0,
+      });
     });
 
     it('adding Music saves it in the Scene and makes no sound, Active or not', async () => {
@@ -355,6 +361,61 @@ describe('on-air commands', () => {
       await ctx.commands.deleteMedia(ctx.campaign.id, ctx.music[0].id, true);
 
       expect(ctx.audio.mix().voices).toEqual([]);
+    });
+
+    describe('a file missing on disk', () => {
+      /** Scene Taverne with both Music and the switched-on Ambience Pluie; Campaign open. */
+      async function withAmbience(ctx: Awaited<ReturnType<typeof setupWithMusic>>) {
+        const file = path.join(dir.path, 'Pluie.ogg');
+        await fs.writeFile(file, 'Pluie');
+        const { imported } = await ctx.library.import(ctx.campaign.id, [file], {
+          accept: 'audio',
+          role: 'ambience',
+        });
+        const [rain] = imported;
+        const created = await ctx.scenes.create(ctx.campaign.id, 'Taverne');
+        const scene = await ctx.scenes.save({
+          ...created,
+          music: ctx.music.map((m) => m.id),
+          ambiences: [{ mediaId: rain.id, on: true, volume: 1 }],
+        });
+        await ctx.commands.openCampaign(ctx.campaign.id);
+        return { scene, rain };
+      }
+      const deleteFile = (ctx: Awaited<ReturnType<typeof setup>>, media: Media) =>
+        fs.rm(
+          path.join(ctx.storage.campaignFolder(ctx.campaign.id), 'media', mediaFileName(media)),
+        );
+
+      it('leaves the Media out on Activate, listed as missing; the other sounds play', async () => {
+        const ctx = await setupWithMusic();
+        const { scene, rain } = await withAmbience(ctx);
+        await deleteFile(ctx, ctx.music[0]);
+
+        await ctx.commands.activateScene(scene.id);
+
+        expect(voices(ctx.audio.mix())).toEqual([{ mediaId: rain.id, playing: true }]);
+        expect(ctx.audio.mix().missing).toEqual([
+          { mediaId: ctx.music[0].id, role: 'music', name: 'Taverne' },
+        ]);
+      });
+
+      it('drops a sound whose file went missing at the next change of the Active Scene', async () => {
+        const ctx = await setupWithMusic();
+        const { scene, rain } = await withAmbience(ctx);
+        await ctx.commands.activateScene(scene.id);
+        await deleteFile(ctx, rain);
+
+        await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+          kind: 'set-title',
+          title: 'Nuit',
+        });
+
+        expect(voices(ctx.audio.mix())).toEqual([{ mediaId: ctx.music[0].id, playing: true }]);
+        expect(ctx.audio.mix().missing).toEqual([
+          { mediaId: rain.id, role: 'ambience', name: 'Pluie' },
+        ]);
+      });
     });
 
     it('the Master volume sets every level, without restarting anything', async () => {

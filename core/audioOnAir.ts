@@ -22,13 +22,21 @@ import type { AudioChange } from './fades.js';
 export interface AudioOnAir {
   /** The current mix. */
   mix(): AudioMix;
-  /** A Scene is Activated: its first Music plays, with its switched-on Ambiences. */
-  activateScene(scene: Scene, library: readonly Media[]): AudioMix;
+  /**
+   * A Scene is Activated: its first Music plays, with its switched-on Ambiences. `missing`:
+   * the audio Media whose file is missing, left out (here and below).
+   */
+  activateScene(scene: Scene, library: readonly Media[], missing: ReadonlySet<MediaId>): AudioMix;
   /**
    * The Active Scene changed (an edit, an undo, a deleted Media): it plays on as it now is;
    * the current Music stays while still in its Music list. `change` sets the fade.
    */
-  showActiveScene(scene: Scene, library: readonly Media[], change: AudioChange): AudioMix;
+  showActiveScene(
+    scene: Scene,
+    library: readonly Media[],
+    change: AudioChange,
+    missing: ReadonlySet<MediaId>,
+  ): AudioMix;
   /**
    * The Game Master picks a Music of the Active Scene's list: it crossfades in, playing. Never
    * saved into the Scene: the next Activate starts from its first Music again. Throws a
@@ -45,20 +53,26 @@ export interface AudioOnAir {
   subscribe(listener: (mix: AudioMix) => void): () => void;
 }
 
+/** What a mix makes heard (or tells missing), to compare two mixes; its fade does not count. */
+function heard({ voices, missing }: Pick<AudioMix, 'voices' | 'missing'>): string {
+  return JSON.stringify({ voices, missing });
+}
+
 export function createAudioOnAir(): AudioOnAir {
   let input: MixInput = {
     scene: null,
     library: [],
     masterVolume: MASTER_VOLUME.default,
     audio: { music: null },
+    missing: new Set(),
   };
-  let mix: AudioMix = { voices: [], fadeMs: 0, version: 0 };
+  let mix: AudioMix = { voices: [], missing: [], fadeMs: 0, version: 0 };
   const listeners = new Set<(mix: AudioMix) => void>();
 
   function change(next: MixInput, kind: AudioChange): AudioMix {
     input = next;
     const computed = mixOf(next, kind);
-    if (JSON.stringify(computed.voices) === JSON.stringify(mix.voices)) {
+    if (heard(computed) === heard(mix)) {
       return structuredClone(mix);
     }
     mix = { ...computed, version: mix.version + 1 };
@@ -68,11 +82,20 @@ export function createAudioOnAir(): AudioOnAir {
 
   return {
     mix: () => structuredClone(mix),
-    activateScene: (scene, library) =>
-      change({ ...input, scene, library, audio: { music: activatedMusic(scene) } }, 'activate'),
-    showActiveScene: (scene, library, kind) =>
+    activateScene: (scene, library, missing) =>
       change(
-        { ...input, scene, library, audio: { music: musicAfterEdit(scene, input.audio.music) } },
+        { ...input, scene, library, missing, audio: { music: activatedMusic(scene) } },
+        'activate',
+      ),
+    showActiveScene: (scene, library, kind, missing) =>
+      change(
+        {
+          ...input,
+          scene,
+          library,
+          missing,
+          audio: { music: musicAfterEdit(scene, input.audio.music) },
+        },
         kind,
       ),
     pickMusic: (mediaId) => {
@@ -85,7 +108,11 @@ export function createAudioOnAir(): AudioOnAir {
         { ...input, audio: { music: musicWithPlayback(input.scene, input.audio.music, playback) } },
         'pause',
       ),
-    clear: () => change({ ...input, scene: null, library: [], audio: { music: null } }, 'stop'),
+    clear: () =>
+      change(
+        { ...input, scene: null, library: [], missing: new Set(), audio: { music: null } },
+        'stop',
+      ),
     setMasterVolume: (masterVolume) => change({ ...input, masterVolume }, 'volume'),
     subscribe: (listener) => {
       const own = (snapshot: AudioMix) => listener(snapshot);
