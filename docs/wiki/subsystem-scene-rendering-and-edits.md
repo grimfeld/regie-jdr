@@ -118,3 +118,11 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - Settings schema 4: `activateDurationMs` (default 1500, 0.1–5 s) and `musicCrossfadeMs` (default 2000, 0.1–10 s); bounds are the agent's choice (0.1 s minimum avoids clicks). Control-only `settings:set-activate-duration`, `settings:set-music-crossfade`. Not on air (the Transition carries `durationMs`).
 - `OnAirCommands.setPlayDurations` sets picture and audio together (startup and both channels). `audioFadeMs(change, durations)` replaces `AUDIO_FADE_MS.activate`/`crossfade`; `ACTIVATE_DURATION_MS` is `{default, min, max}`. Cut stays 0 ms picture / 100 ms audio.
 - UI: "Durée d’activation" and "Fondu entre musiques" number fields (seconds) under "Fondus".
+
+## Chapters (#70, 2026-11-12, `m4-campaign-themes-qol@ff0a117`)
+
+- `scenes.json` v5 adds `chapters [{id, name, collapsed, sceneIds}]`; Scenes stored in running order (each Chapter's Scenes, then unchaptered). 4→5 migration: no Chapters. Export/Import carry them; Import refuses unreadable Chapters.
+- Chapter is not a Scene field: Scene undo, broadcast allow-list and duplicate guard unchanged. All Chapter changes via `scenes:edit-running-order` (never an undo step); read via `scenes:running-order`. Supersedes #46's `scenes:move` / `moveScene` (now a `move-scene` command naming the target Chapter). `scenes:create` takes the Selected Scene id.
+- Rules: deleting a Chapter makes its Scenes the first unchaptered Scenes; new Scene goes last in the Selected Scene's Chapter; duplicate right after its source in the same Chapter; Ctrl+↓/↑ walk every Scene incl. collapsed Chapters ("Active" shown on a collapsed heading); Alt+↑/↓ at a group edge enters the next visible group and skips collapsed Chapters; on a Chapter heading Alt+↑/↓ move the Chapter. Unchaptered Scenes always come after all Chapters (simplification).
+- UI: "Nouveau chapitre" button opens the form (a permanent form pushed the canvas down and broke `undo.spec`).
+- Watch: a move is shown at once and the saved answer is ignored (to fix a race under load). If the save fails, the list could disagree with disk: ask the M4 review to check.

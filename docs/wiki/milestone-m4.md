@@ -31,3 +31,4 @@ Read first: ADR-0005 (Campaign export as plain zip), [carry-forward](carry-forwa
 - 2026-11-12: #66 Rétro SF merged at `6521557` (1392 unit, 196 app tests).
 - 2026-11-12: #68 Fantasy merged at `73e7ea8` (1392 unit, 199 app tests).
 - 2026-11-12: #67 Imperium merged at `870eec4` (201 app tests). All three themes done.
+- 2026-11-12: #70 Chapters merged at `ff0a117` (1426 unit, 204 app tests).
