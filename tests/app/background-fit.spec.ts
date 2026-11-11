@@ -237,3 +237,27 @@ test('stack order, fit, zoom and pan survive a restart', async ({ regie }) => {
     await restarted.app.close();
   }
 });
+
+test('after a framing slider is dragged, released and undone, the slider shows the restored value', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await cantina(regie);
+  const slider = backgroundList(controlWindow).getByLabel('Zoom de Carre');
+  await expect(slider).toHaveValue('1');
+
+  // Drag the zoom thumb from its left end (zoom 1) to the right end, then release: saved at 4.
+  await slider.scrollIntoViewIfNeeded();
+  const box = await slider.boundingBox();
+  if (!box) throw new Error('The zoom slider is not shown.');
+  const middle = box.y + box.height / 2;
+  await controlWindow.mouse.move(box.x + 4, middle);
+  await controlWindow.mouse.down();
+  await controlWindow.mouse.move(box.x + box.width + 20, middle, { steps: 10 });
+  await controlWindow.mouse.up();
+  await expect(slider).toHaveValue('4');
+
+  // Undo brings the saved zoom back to 1, and the slider follows it.
+  await controlWindow.keyboard.press('Control+z');
+  await expect(slider).toHaveValue('1');
+});
