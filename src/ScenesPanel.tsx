@@ -4,6 +4,7 @@ import type {
   AudioMedia,
   CampaignId,
   ImageMedia,
+  MediaId,
   NormalizedPoint,
   Scene,
   SceneId,
@@ -326,6 +327,9 @@ export function ScenesPanel({ campaignId, control, mediaRevision, onMediaImporte
           onDrop={(event, target, dropPoint) =>
             void placeDropped(selected, event, target, dropPoint)
           }
+          onPickMusic={(mediaId) => {
+            control?.pickMusic(mediaId).catch((error: unknown) => showNotice(errorMessage(error)));
+          }}
           onActivate={() => void activate(selected)}
           onDelete={() => void remove(selected)}
         />
@@ -363,6 +367,8 @@ interface EditorProps {
   onEditShowingFailure: (command: SceneEdit) => void;
   /** Shows a live drag's transient update on air (Active Scene only), unsaved. */
   onTransient: (edit: TransientEdit) => Promise<void>;
+  /** Crossfades to a track of the Active Scene's Music list (live playback, unsaved). */
+  onPickMusic: (mediaId: MediaId) => void;
   /**
    * Something was dropped on the canvas (with the drop point, as canvas fractions) or on a
    * placement list. Read the event's data before awaiting anything.
@@ -564,10 +570,14 @@ function SceneEditor(props: EditorProps) {
         <SceneMusicList
           scene={scene}
           sounds={props.sounds}
+          active={active}
           onAdd={(mediaId) => {
             if (!props.sounds.some((sound) => sound.id === mediaId)) onRefreshImages();
             onEditShowingFailure({ kind: 'add-music', mediaId });
           }}
+          onEdit={onEditShowingFailure}
+          onPick={props.onPickMusic}
+          onTransient={props.onTransient}
         />
         <SceneAmbienceList
           scene={scene}

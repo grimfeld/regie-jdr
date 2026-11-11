@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AudioLines, Music2, Volume2, Waves, Zap } from 'lucide-react';
+import { AudioLines, Music2, Pause, Play, Square, Volume2, Waves, Zap } from 'lucide-react';
 import type { ControlBridge } from '../shared/contract';
-import type { AudioSounding, SoundingVoice, VoiceState } from '../shared/domain';
+import type {
+  AudioSounding,
+  MusicPlayback as MusicPlaybackState,
+  SoundingVoice,
+  VoiceState,
+} from '../shared/domain';
 import { MASTER_VOLUME } from '../core/audioMix';
 import { errorMessage } from './CampaignList';
 import { showNotice } from './notices';
@@ -24,8 +29,9 @@ function RoleIcon({ role }: { role: SoundingVoice['role'] }) {
 /**
  * The "En cours" strip, next to the On-air monitor: what is actually sounding, as the audio
  * engine reports it (a file that failed to load shows as such), and the Master volume.
- * Pads sounding (#39) show after the voices.
- * Later slices add here: play/pause (#36), Ambiences on (#37), Silence (#40).
+ * Pads sounding (#39) show after the voices. The current Music has its pause/resume and
+ * stop buttons here (live playback, not saved).
+ * Later slices add here: Ambiences on (#37), Silence (#40).
  */
 export function NowPlaying({ control }: { control: ControlBridge | undefined }) {
   const sounding = useSounding(control);
@@ -45,13 +51,17 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
         <p className="now-playing-empty">Aucun son.</p>
       ) : (
         <ul className="now-playing-list" aria-label="Sons en cours">
-          {voices.map((voice) => (
-            <li key={voice.mediaId} data-role={voice.role} data-state={voice.state}>
-              <RoleIcon role={voice.role} />
-              <span className="now-playing-name">{voice.name}</span>
-              <small>{stateLabels[voice.state]}</small>
-            </li>
-          ))}
+          {voices.map((voice) => {
+            const isMusic = voice.role === 'music';
+            return (
+              <li key={voice.mediaId} data-role={voice.role} data-state={voice.state}>
+                <RoleIcon role={voice.role} />
+                <span className="now-playing-name">{voice.name}</span>
+                <small>{stateLabels[voice.state]}</small>
+                {isMusic && <MusicPlayback control={control} voice={voice} />}
+              </li>
+            );
+          })}
           {pads.map((pad) => (
             <li key={`pad-${pad.padId}`} data-role="pad" data-state="playing">
               <Zap size={14} aria-hidden />
@@ -63,6 +73,44 @@ export function NowPlaying({ control }: { control: ControlBridge | undefined }) 
       )}
       <MasterVolume control={control} />
     </section>
+  );
+}
+
+/**
+ * Pause or resume the current Music (keeping its position), or stop it (the Ambiences play
+ * on; picking a track in the Scene's Music list starts it again). Follows what the engine
+ * reports: a paused Music offers to resume.
+ */
+function MusicPlayback({
+  control,
+  voice,
+}: {
+  control: ControlBridge | undefined;
+  voice: SoundingVoice;
+}) {
+  const set = (playback: MusicPlaybackState) => {
+    control?.setMusicPlayback(playback).catch((error: unknown) => showNotice(errorMessage(error)));
+  };
+  const paused = voice.state === 'paused';
+  return (
+    <span className="now-playing-controls">
+      <button
+        className="placement-move"
+        aria-label={paused ? 'Reprendre la musique' : 'Mettre la musique en pause'}
+        title={paused ? 'Reprendre là où elle en était' : 'Mettre en pause'}
+        onClick={() => set(paused ? 'playing' : 'paused')}
+      >
+        {paused ? <Play size={13} aria-hidden /> : <Pause size={13} aria-hidden />}
+      </button>
+      <button
+        className="placement-move"
+        aria-label="Arrêter la musique"
+        title="Arrêter la musique (les ambiances continuent)"
+        onClick={() => set('stopped')}
+      >
+        <Square size={13} aria-hidden />
+      </button>
+    </span>
   );
 }
 

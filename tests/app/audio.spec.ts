@@ -92,6 +92,146 @@ async function activate(page: Page) {
   await editor(page).getByRole('button', { name: 'Activer' }).click();
 }
 
+function undoButton(page: Page) {
+  return editor(page)
+    .getByRole('toolbar', { name: 'Historique de la scène' })
+    .getByRole('button', { name: /annuler/i });
+}
+
+/** The sounds the "En cours" strip shows. */
+function strip(page: Page) {
+  return nowPlaying(page).getByRole('listitem');
+}
+
+async function openScene(page: Page, name: string) {
+  await page
+    .getByRole('region', { name: 'Scènes' })
+    .getByRole('button', { name, exact: true })
+    .click();
+  await expect(editor(page).getByRole('heading', { name, exact: true })).toBeVisible();
+}
+
+test('clicking a track crossfades to it; pause, resume and stop; the pick is not saved', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await sceneWithMusic(regie);
+  // Not the Active Scene: its tracks cannot be picked.
+  await expect(musicList(controlWindow).getByRole('button', { name: 'Jouer Bagarre' })).toHaveCount(
+    0,
+  );
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+  const undoBefore = await undoButton(controlWindow).textContent();
+
+  await musicList(controlWindow).getByRole('button', { name: 'Jouer Bagarre' }).click();
+  await expect(sounding(controlWindow, 'Bagarre')).toHaveAttribute('data-state', 'playing');
+  await expect(strip(controlWindow)).toHaveCount(1);
+  // Live playback: no undo step, and the Scene's order is unchanged.
+  await expect(undoButton(controlWindow)).toHaveText(undoBefore ?? '');
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/, /Bagarre/]);
+
+  await nowPlaying(controlWindow)
+    .getByRole('button', { name: 'Mettre la musique en pause' })
+    .click();
+  await expect(sounding(controlWindow, 'Bagarre')).toHaveAttribute('data-state', 'paused');
+  await expect(sounding(controlWindow, 'Bagarre')).toContainText('en pause');
+  await nowPlaying(controlWindow).getByRole('button', { name: 'Reprendre la musique' }).click();
+  await expect(sounding(controlWindow, 'Bagarre')).toHaveAttribute('data-state', 'playing');
+
+  await nowPlaying(controlWindow).getByRole('button', { name: 'Arrêter la musique' }).click();
+  await expect(nowPlaying(controlWindow)).toContainText('Aucun son.');
+
+  // The next Activate starts from the first Music again.
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+  await expect(strip(controlWindow)).toHaveCount(1);
+});
+
+test('Music is reordered and removed, saved and undoable; edits of a Scene off air are silent', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await sceneWithMusic(regie);
+  await createScene(controlWindow, 'Forêt');
+  await dropOnMusicList(controlWindow, 'Auberge');
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+
+  // Back to Taverne, not active: its edits make no sound.
+  await openScene(controlWindow, 'Taverne');
+  await musicList(controlWindow).getByRole('button', { name: 'Monter Bagarre' }).click();
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/, /Auberge/]);
+  await expect(undoButton(controlWindow)).toHaveText(/réordonner la musique Bagarre/);
+  await musicList(controlWindow).getByRole('button', { name: 'Retirer Auberge' }).click();
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/]);
+  await expect(undoButton(controlWindow)).toHaveText(/retirer la musique Auberge/);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+  await expect(strip(controlWindow)).toHaveCount(1);
+
+  await controlWindow.locator('body').press('Control+z');
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/, /Auberge/]);
+
+  // Saved: still so once the Scenes are read again.
+  await controlWindow.reload();
+  await expect(controlWindow.getByRole('heading', { name: 'Star Wars' })).toBeVisible();
+  await openScene(controlWindow, 'Taverne');
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/, /Auberge/]);
+});
+
+test('removing the current Music from the Active Scene stops it', async ({ regie }) => {
+  const { controlWindow } = regie;
+  await sceneWithMusic(regie);
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+
+  await musicList(controlWindow).getByRole('button', { name: 'Retirer Auberge' }).click();
+
+  await expect(nowPlaying(controlWindow)).toContainText('Aucun son.');
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Bagarre/]);
+});
+
+test('the Scene Music level is heard while dragged and saved as one undo step', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await sceneWithMusic(regie);
+  await activate(controlWindow);
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+  const slider = editor(controlWindow).getByRole('slider', { name: 'Niveau des musiques' });
+  await expect(slider).toHaveValue('100');
+  const undoBefore = await undoButton(controlWindow).textContent();
+  await slider.scrollIntoViewIfNeeded();
+  const box = await slider.boundingBox();
+  if (!box) throw new Error('The Music level slider is not on screen');
+
+  const y = box.y + box.height / 2;
+  await controlWindow.mouse.move(box.x + box.width - 2, y);
+  await controlWindow.mouse.down();
+  await controlWindow.mouse.move(box.x + box.width * 0.5, y, { steps: 6 });
+  // Heard while the button is still held, with nothing saved yet.
+  await expect
+    .poll(async () => (await currentMix(controlWindow)).voices[0]?.gain)
+    .toBeLessThan(0.7);
+  await expect(undoButton(controlWindow)).toHaveText(undoBefore ?? '');
+  await controlWindow.mouse.move(box.x + box.width * 0.25, y, { steps: 6 });
+  await controlWindow.mouse.up();
+
+  await expect(undoButton(controlWindow)).toHaveText(/régler le niveau des musiques/);
+  const saved = Number(await slider.inputValue());
+  expect(saved).toBeLessThan(40);
+  await expect
+    .poll(async () => (await currentMix(controlWindow)).voices[0]?.gain)
+    .toBeCloseTo(saved / 100, 2);
+  // Ramped, not restarted.
+  await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'playing');
+
+  // One undo goes back to before the whole drag.
+  await controlWindow.locator('body').press('Control+z');
+  await expect(slider).toHaveValue('100');
+  await expect.poll(async () => (await currentMix(controlWindow)).voices[0]?.gain).toBe(1);
+});
+
 test('Music dragged onto a Scene is saved; Activating it plays the first Music, looping', async ({
   regie,
 }) => {
@@ -219,6 +359,8 @@ test('the audio engine’s bridge can only read the mix and report; the Broadcas
       ['audio:get-sounding', []],
       ['audio:report', [{ voices: [] }]],
       ['settings:set-master-volume', [{ masterVolume: 0 }]],
+      ['audio:pick-music', [{ mediaId: 'x' }]],
+      ['audio:set-music-playback', [{ playback: 'stopped' }]],
     ];
     return Promise.all(
       tries.map(([channel, args]) =>
