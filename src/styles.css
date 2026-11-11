@@ -193,6 +193,116 @@ button {
 .media-library:empty {
   display: none;
 }
+.sound-library {
+  margin-top: 12px;
+}
+/* The image library: a scrolling grid rendering only the rows near the visible area
+   (src/MediaLibrary.tsx sets its columns, row height and padding). */
+.image-library-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+.image-library-scroll.empty {
+  display: none;
+}
+.image-library {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.image-library .media-item {
+  min-height: 0;
+  overflow: hidden;
+}
+.image-library .asset-thumb {
+  height: 96px;
+  flex: none;
+}
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.library-filter {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.library-filter button {
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.library-filter button + button {
+  border-left: 1px solid var(--line);
+}
+.library-filter button.selected {
+  background: var(--panel2);
+  color: var(--text);
+}
+.library-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+}
+.library-search input {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  width: 200px;
+}
+.media-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.media-rename-button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.media-rename-button:hover,
+.media-rename-button:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.media-rename {
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
 .media-item {
   display: flex;
   flex-direction: column;
@@ -376,6 +486,19 @@ button {
 .selected .radio-indicator {
   border: 4px solid var(--accent2);
 }
+.fade-setting-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fade-setting-field span:first-child {
+  flex: 1;
+}
+.fade-setting-field input {
+  width: 64px;
+}
 .theme-footnote {
   font-size: 9px;
   line-height: 1.6;
@@ -477,55 +600,150 @@ button {
   color: #e08a7a;
   font-size: 12px;
 }
+/* The Broadcast window: only the canvas. No theme, no minimum width, no cursor. */
+:root[data-view='broadcast'],
+:root[data-view='broadcast'] body {
+  min-width: 0;
+  background: #000;
+}
+:root[data-view='broadcast'],
+:root[data-view='broadcast'] * {
+  cursor: none;
+}
 .broadcast-screen {
   position: fixed;
   inset: 0;
-  background: #08090c;
+  background: #000;
   overflow: hidden;
 }
-/* Active Scene placements: the wrapper carries position (custom properties), the image fills it. */
-.broadcast-layer {
-  position: absolute;
-  inset: 0;
+
+/*
+ * The shared renderer (src/SceneCanvas.tsx): black around the letterboxed 16:9 stage, whatever
+ * the theme. Boxes are laid out in pixels by core/canvas.ts; sizes of text follow
+ * --canvas-scale (pixels per canvas unit), so they keep their place on the canvas.
+ */
+.scene-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
 }
-.broadcast-layer img {
+.scene-canvas-stage {
+  position: absolute;
+  overflow: hidden;
+  background: #000;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.canvas-background,
+.canvas-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.canvas-background img,
+.canvas-overlay img {
   display: block;
   width: 100%;
   height: 100%;
-  object-position: var(--x) var(--y);
 }
-.broadcast-layer.fit-cover img {
-  object-fit: cover;
-}
-.broadcast-layer.fit-contain img {
-  object-fit: contain;
-}
-.broadcast-layer.fit-stretch img {
-  object-fit: fill;
-}
-.broadcast-overlay {
+.canvas-label {
   position: absolute;
-  left: var(--x);
-  top: var(--y);
-  height: var(--height);
-  transform: translate(-50%, -50%);
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  margin-top: calc(8px * var(--canvas-scale));
+  padding: calc(4px * var(--canvas-scale)) calc(14px * var(--canvas-scale));
+  white-space: nowrap;
+  font-size: calc(30px * var(--canvas-scale));
+  color: #fff;
+  background: rgb(0 0 0 / 0.6);
+  border-radius: calc(4px * var(--canvas-scale));
 }
-.broadcast-overlay img {
-  display: block;
-  height: 100%;
-  width: auto;
-}
-.broadcast-fullscreen {
+.canvas-title {
   position: absolute;
-  right: 20px;
-  top: 20px;
-  width: 38px;
-  height: 38px;
-  background: #0007;
-  color: white;
-  border: 1px solid #ffffff55;
-  border-radius: 5px;
-  font-size: 22px;
+  left: calc(36px * var(--canvas-scale));
+  bottom: calc(28px * var(--canvas-scale));
+  font-size: calc(26px * var(--canvas-scale));
+  letter-spacing: 0.04em;
+  color: rgb(255 255 255 / 0.72);
+  text-shadow: 0 0 calc(6px * var(--canvas-scale)) rgb(0 0 0 / 0.8);
+}
+.canvas-blackout {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+/* The On-air monitor (Control window only): the broadcast at 16:9, its badges, the Blackout button. */
+.on-air-screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+}
+.on-air-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--accent2);
+  background: rgb(0 0 0 / 0.7);
+  border: 1px solid var(--accent2);
+  border-radius: 4px;
+}
+/* Overlays in the editor: picked and dragged with the pointer, resized by their handle. */
+.editor-canvas .canvas-overlay {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+.editor-canvas .canvas-overlay.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.canvas-overlay-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 2px;
+}
+.editor-canvas:focus-visible {
+  outline: 2px solid var(--accent2);
+  outline-offset: 2px;
+}
+/* Hidden placements and Labels, in the editor only: the Game Master sees them, faded. */
+.canvas-background.is-hidden,
+.canvas-overlay.is-hidden,
+.canvas-label.is-hidden {
+  opacity: 0.4;
+  outline: 2px dashed rgb(255 255 255 / 0.6);
+}
+/*
+ * Fades (src/SceneCanvas.tsx data-fade), over the fade duration setting: an item fades in when
+ * it appears (an image only once decoded), fades out before it is removed, and changes between
+ * shown and Hidden (editor) by fading too. Blackout fades the same way.
+ */
+.scene-canvas-stage [data-fade] {
+  transition: opacity var(--fade-duration, 0ms) ease;
+}
+.scene-canvas-stage [data-fade='shown'] {
+  animation: canvas-fade-in var(--fade-duration, 0ms) ease backwards;
+}
+.scene-canvas-stage [data-fade='waiting'],
+.scene-canvas-stage [data-fade='leaving'] {
+  opacity: 0;
+}
+@keyframes canvas-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 :root[data-theme='imperium'] {
   --bg: #111013;
@@ -624,7 +842,7 @@ button {
   margin-bottom: 18px;
 }
 .scene-list,
-.background-list {
+.placement-list ul {
   list-style: none;
   margin: 0 0 12px;
   padding: 0;
@@ -691,8 +909,51 @@ button {
   gap: 12px;
   margin-bottom: 12px;
 }
+/* Undo and redo of the Selected Scene's edits; each button names its edit. */
+.undo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.undo-bar button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .scene-editor-heading h3 {
   flex: 1;
+  margin: 0;
+}
+/* "EN DIRECT": the Selected Scene is the Active Scene, its edits go on air. */
+.scene-live-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+  background: #c62828;
+  border-radius: 3px;
+}
+/* The Selected Scene on the shared renderer: the letterboxed 16:9 canvas. */
+.editor-canvas {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+}
+.scene-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+.scene-editor-empty p {
   margin: 0;
 }
 .background-picker {
@@ -717,8 +978,126 @@ button {
   border: 1px solid var(--line);
   border-radius: 4px;
 }
-.background-list label {
+/* Background and Overlay lists of the Selected Scene; each is also a drop target. */
+.placement-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.placement-list {
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+}
+.placement-list h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.placement-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* An Overlay's Label controls, on their own line under the Overlay. */
+.placement-list li {
+  flex-wrap: wrap;
+}
+.placement-label {
+  order: 1;
+  flex-basis: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-left: 22px;
+  color: var(--muted);
+}
+.placement-label input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 0;
+}
+.placement-label.is-hidden input:not([type='checkbox']) {
+  opacity: 0.6;
+}
+.scene-title-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.scene-title-field input {
+  flex: 1;
+}
+.placement-list li.is-hidden .placement-name {
+  opacity: 0.6;
+}
+.placement-visible {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.placement-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placement-remove {
+  padding: 4px 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+/* A placement's place in its stack (Backgrounds and Overlays); a Background's fit and framing. */
+.placement-move {
+  padding: 4px 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.placement-move:disabled {
+  opacity: 0.4;
+}
+.background-fit {
+  font-size: 12px;
+}
+.background-framing {
+  order: 1;
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.framing-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.framing-slider input {
+  width: 100%;
+}
+.placement-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.placement-list.drop-ready,
+.editor-canvas.drop-ready,
+.library-drop.drop-ready {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.image-library .asset-thumb[draggable='true'] {
+  cursor: grab;
 }

@@ -11,7 +11,7 @@ const NOTICE_MS = 8000;
 
 export function isIpcFailure(value: unknown): value is IpcFailure {
   return (
-    typeof value === 'object' && value !== null && (value as IpcFailure).kind === 'ipc-failure'
+    typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'ipc-failure'
   );
 }
 
@@ -23,7 +23,10 @@ export function noticeFor(failure: IpcFailure): string {
     : `L'action n'a pas pu aboutir. ${details}`;
 }
 
-type Notice = { id: number; text: string };
+interface Notice {
+  id: number;
+  text: string;
+}
 const listeners = new Set<(text: string) => void>();
 
 /** Shows a short notice in the Control window. */

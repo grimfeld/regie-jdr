@@ -22,7 +22,7 @@ export interface DocumentType<T> {
   /** Current schema version, written into every saved document. Starts at 1. */
   version: number;
   /** `migrations[n]` upgrades the fields of a version-n document to version n + 1. */
-  migrations: Record<number, (fields: Fields) => Fields>;
+  migrations: Partial<Record<number, (fields: Fields) => Fields>>;
   /** Checks fields at the current version (without `schemaVersion`); undefined if invalid. */
   parse(fields: Fields): T | undefined;
 }
@@ -76,7 +76,8 @@ export const nodeFileSystem: FileSystem = {
     // Windows can briefly lock a file (antivirus, indexer): retry a few times.
     for (let attempt = 0; ; attempt++) {
       try {
-        return await fsp.rename(from, to);
+        await fsp.rename(from, to);
+        return;
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (attempt >= 5 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES'))
@@ -94,7 +95,7 @@ export const nodeFileSystem: FileSystem = {
 };
 
 function isNotFound(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException)?.code === 'ENOENT';
+  return isRecord(error) && error.code === 'ENOENT';
 }
 
 type Decoded<T> =

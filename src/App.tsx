@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Aperture, ArrowLeft, MonitorPlay, Palette, Settings2 } from 'lucide-react';
+import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from 'lucide-react';
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
-import type { BroadcastBridge, CampaignChanges, ControlBridge } from '../shared/contract';
+import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
 import { CampaignList, errorMessage } from './CampaignList';
+import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
+import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel } from './ScenesPanel';
 import { showNotice } from './notices';
 
@@ -20,7 +22,7 @@ const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 export default function App() {
   const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
   // Each window's preload exposes its own bridge (see shared/contract.ts).
-  if (isBroadcast) return <BroadcastView bridge={window.regie as BroadcastBridge | undefined} />;
+  if (isBroadcast) return <BroadcastView bridge={window.regie} />;
   return <ControlApp control={window.regie as ControlBridge | undefined} />;
 }
 
@@ -30,7 +32,8 @@ function byName(a: Campaign, b: Campaign) {
 
 /**
  * The Control window: the Campaign list home page, or the screen of the open Campaign.
- * On launch, the only Campaign (when there is exactly one) opens directly.
+ * On launch, the only Campaign (when there is exactly one) opens directly. On a reload of the
+ * window, the Campaign the main process has open comes back as it was.
  */
 function ControlApp({ control }: { control: ControlBridge | undefined }) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
@@ -41,17 +44,48 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     (await control.takeNotices()).forEach(showNotice);
   }, [control]);
 
+  /**
+   * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
+   * state, which clears the Active Scene on every switch. A Campaign's screen shows once it is
+   * open: its Media are only served for the open Campaign.
+   */
+  const enter = useCallback(
+    async (id: CampaignId | null) => {
+      if (!control) {
+        setOpenId(id);
+        return;
+      }
+      try {
+        if (id) {
+          await control.openCampaign(id);
+          setOpenId(id);
+        } else {
+          setOpenId(null);
+          await control.closeCampaign();
+        }
+      } catch (error) {
+        showNotice(errorMessage(error));
+      }
+    },
+    [control],
+  );
+
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
-    control
-      .listCampaigns()
-      .then((list) => {
+    Promise.all([control.listCampaigns(), control.getOnAir()])
+      .then(([list, onAir]) => {
         if (cancelled) return;
         setCampaigns(list);
-        if (list.length === 1) void enter(list[0].id);
+        // After a reload of this window the main process still has its Campaign open, with its
+        // Active Scene, Blackout and undo histories: show it again, never open it anew.
+        if (onAir.campaignId !== null && list.some((item) => item.id === onAir.campaignId)) {
+          setOpenId(onAir.campaignId);
+        } else if (list.length === 1) {
+          void enter(list[0].id);
+        }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       })
       .finally(() => {
@@ -60,30 +94,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     return () => {
       cancelled = true;
     };
-  }, [control, collectNotices]);
-
-  /**
-   * Opens a Campaign (or, with null, goes back to the Campaign list) and tells the on-air
-   * state, which clears the Active Scene on every switch. A Campaign's screen shows once it is
-   * open: its Media are only served for the open Campaign.
-   */
-  async function enter(id: CampaignId | null) {
-    if (!control) {
-      setOpenId(id);
-      return;
-    }
-    try {
-      if (id) {
-        await control.openCampaign(id);
-        setOpenId(id);
-      } else {
-        setOpenId(null);
-        await control.closeCampaign();
-      }
-    } catch (error) {
-      showNotice(errorMessage(error));
-    }
-  }
+  }, [control, collectNotices, enter]);
 
   // The global theme (Settings) dresses the home page; inside a Campaign, its own theme.
   const [homeTheme, setHomeTheme] = useState<ThemeId>(DEFAULT_HOME_THEME);
@@ -95,7 +106,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
       .then((settings) => {
         if (!cancelled) setHomeTheme(settings.theme);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
       });
     return () => {
@@ -159,8 +170,16 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           ) : (
             <HomeThemePicker theme={homeTheme} onChange={(next) => void changeHomeTheme(next)} />
           )}
-          <button className="primary-button" onClick={() => control?.openBroadcast()}>
+          <button className="primary-button" onClick={() => void control?.openBroadcast()}>
             <MonitorPlay size={16} /> Ouvrir la diffusion
+          </button>
+          {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
+          <button
+            className="secondary-button"
+            onClick={() => void control?.toggleBroadcastFullscreen()}
+            title="Mettre la diffusion en plein écran, ou l’en sortir"
+          >
+            <Maximize size={14} /> Plein écran
           </button>
         </div>
       </header>
@@ -170,9 +189,9 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
           campaign={openCampaign}
           control={control}
           onThemeChange={(next) =>
-            update(openCampaign.id, { theme: next }).catch((error) =>
-              showNotice(errorMessage(error)),
-            )
+            void update(openCampaign.id, { theme: next }).catch((error: unknown) => {
+              showNotice(errorMessage(error));
+            })
           }
         />
       ) : (
@@ -196,7 +215,13 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
 }
 
 /** Minimal picker for the home page theme (finished themes and their picker come later). */
-function HomeThemePicker({ theme, onChange }: { theme: ThemeId; onChange(theme: ThemeId): void }) {
+function HomeThemePicker({
+  theme,
+  onChange,
+}: {
+  theme: ThemeId;
+  onChange: (theme: ThemeId) => void;
+}) {
   return (
     <label className="home-theme">
       <Palette size={14} />
@@ -218,14 +243,19 @@ function HomeThemePicker({ theme, onChange }: { theme: ThemeId; onChange(theme: 
 interface CampaignScreenProps {
   campaign: Campaign;
   control: ControlBridge | undefined;
-  onThemeChange(theme: ThemeId): void;
+  onThemeChange: (theme: ThemeId) => void;
 }
 
 /** The screen of the open Campaign: its Scenes, its Media library and its theme. */
 function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProps) {
   const theme = campaign.theme;
-  /** Bumped when a Media is deleted: the Scenes panel reloads (placements may be gone). */
+  /**
+   * Bumped when a Media is deleted or renamed: the Scenes panel reloads (placements may be gone,
+   * names may have changed).
+   */
   const [mediaRevision, setMediaRevision] = useState(0);
+  /** Bumped when Media were dropped on the Scene editor and imported: the library reloads. */
+  const [importRevision, setImportRevision] = useState(0);
 
   const themeLabel = themes.find((t) => t.id === theme)?.label ?? 'Imperium';
 
@@ -244,16 +274,25 @@ function CampaignScreen({ campaign, control, onThemeChange }: CampaignScreenProp
 
       <div className="workspace">
         <section className="main-column">
-          <ScenesPanel campaignId={campaign.id} control={control} mediaRevision={mediaRevision} />
+          <ScenesPanel
+            campaignId={campaign.id}
+            control={control}
+            mediaRevision={mediaRevision}
+            onMediaImported={() => setImportRevision((revision) => revision + 1)}
+          />
 
           <MediaLibrary
             campaignId={campaign.id}
             control={control}
             onMediaDeleted={() => setMediaRevision((revision) => revision + 1)}
+            onMediaRenamed={() => setMediaRevision((revision) => revision + 1)}
+            importRevision={importRevision}
           />
         </section>
 
         <aside className="control-column">
+          <OnAirMonitor control={control} />
+          <FadeSetting control={control} />
           <div className="panel">
             <div className="panel-heading">
               <div>

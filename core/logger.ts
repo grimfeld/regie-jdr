@@ -86,7 +86,9 @@ export function describe(value: unknown): string {
   if (value instanceof Error) return value.stack ?? `${value.name}: ${value.message}`;
   if (typeof value === 'string') return value;
   try {
-    return JSON.stringify(value) ?? String(value);
+    // undefined for undefined, functions and symbols, whatever the lib typings say.
+    const json = JSON.stringify(value) as string | undefined;
+    return json ?? String(value);
   } catch {
     return String(value);
   }

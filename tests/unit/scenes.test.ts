@@ -26,6 +26,7 @@ describe('scene library', () => {
       id: expect.any(String),
       campaignId: campaign.id,
       name: 'La cantina',
+      title: '',
       backgrounds: [],
       overlays: [],
       music: [],
@@ -42,8 +43,19 @@ describe('scene library', () => {
     const edited: Scene = {
       ...created,
       backgrounds: [
-        { id: 'b1', mediaId: 'm1', fit: 'cover', position: { x: 0.5, y: 0.5 }, visible: true },
+        { id: 'b1', mediaId: 'm1', fit: 'cover', zoom: 2, focus: { x: 0, y: 1 }, visible: true },
       ],
+      overlays: [
+        {
+          id: 'o1',
+          mediaId: 'm2',
+          position: { x: 0.25, y: 0.75 },
+          height: 0.4,
+          visible: true,
+          label: { text: 'Garde', visible: false },
+        },
+      ],
+      title: 'Le vieux moulin',
     };
     await scenes.save(edited);
 
@@ -54,32 +66,28 @@ describe('scene library', () => {
 
   it('removes every placement of a Media from the Scenes using it, and only from those', async () => {
     const { campaign, scenes } = await setup();
-    const placed = (mediaId: string, id: string) => ({
-      id,
-      mediaId,
-      position: { x: 0.5, y: 0.5 },
-      visible: true,
-    });
+    const placed = (mediaId: string, id: string) => ({ id, mediaId, visible: true });
+    const background = { fit: 'cover' as const, zoom: 1, focus: { x: 0.5, y: 0.5 } };
     const cantina = await scenes.save({
       ...(await scenes.create(campaign.id, 'La cantina')),
       backgrounds: [
-        { ...placed('gone', 'b1'), fit: 'cover' },
-        { ...placed('kept', 'b2'), fit: 'cover' },
+        { ...placed('gone', 'b1'), ...background },
+        { ...placed('kept', 'b2'), ...background },
       ],
-      overlays: [{ ...placed('gone', 'o1'), scale: 1, zIndex: 0 }],
+      overlays: [{ ...placed('gone', 'o1'), position: { x: 0.5, y: 0.5 }, height: 1 }],
       music: ['gone', 'kept'],
       ambiences: [{ mediaId: 'gone', on: true, volume: 1 }],
     });
     const bridge = await scenes.save({
       ...(await scenes.create(campaign.id, 'La passerelle')),
-      backgrounds: [{ ...placed('kept', 'b3'), fit: 'cover' }],
+      backgrounds: [{ ...placed('kept', 'b3'), ...background }],
     });
 
     const affected = await scenes.removeMediaPlacements(campaign.id, 'gone');
 
     const cleaned: Scene = {
       ...cantina,
-      backgrounds: [{ ...placed('kept', 'b2'), fit: 'cover' }],
+      backgrounds: [{ ...placed('kept', 'b2'), ...background }],
       overlays: [],
       music: ['kept'],
       ambiences: [],
@@ -123,6 +131,25 @@ describe('scene library', () => {
     await expect(scenes.list('inconnue')).rejects.toBeInstanceOf(CampaignError);
   });
 
+  it('deletes a Scene, keeping the others, after the storage is reopened (restart)', async () => {
+    const { campaign, scenes } = await setup();
+    const cantina = await scenes.create(campaign.id, 'La cantina');
+    const hangar = await scenes.create(campaign.id, 'Le hangar');
+
+    await scenes.delete(campaign.id, cantina.id);
+
+    expect(await scenes.list(campaign.id)).toEqual([hangar]);
+    const reopened = createSceneLibrary(openStorage(root()));
+    expect(await reopened.list(campaign.id)).toEqual([hangar]);
+  });
+
+  it('refuses to delete a Scene that does not exist, in French', async () => {
+    const { campaign, scenes } = await setup();
+    const scene = await scenes.create(campaign.id, 'La cantina');
+    await expect(scenes.delete(campaign.id, 'autre')).rejects.toThrow('Cette scène n’existe plus.');
+    expect(await scenes.list(campaign.id)).toEqual([scene]);
+  });
+
   it('refuses to save a Scene that does not exist', async () => {
     const { campaign, scenes } = await setup();
     const scene = await scenes.create(campaign.id, 'La cantina');
@@ -130,6 +157,69 @@ describe('scene library', () => {
       'Cette scène n’existe plus.',
     );
     expect(await scenes.get(campaign.id, 'autre')).toBeUndefined();
+  });
+
+  it('upgrades Milestone 0 Scenes (version 1) to the Milestone 1 placements', async () => {
+    const { storage, campaign, scenes } = await setup();
+    const placement = { mediaId: 'm1', visible: true };
+    await fs.writeFile(
+      path.join(storage.campaignFolder(campaign.id), 'scenes.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        scenes: [
+          {
+            id: 's1',
+            name: 'La cantina',
+            backgrounds: [
+              { id: 'b1', ...placement, fit: 'stretch', position: { x: 0.2, y: 0.3 } },
+              { id: 'b2', ...placement, fit: 'contain', position: { x: 0.5, y: 0.5 } },
+            ],
+            overlays: [
+              { id: 'front', ...placement, position: { x: 0.1, y: 0.2 }, scale: 0.3, zIndex: 5 },
+              {
+                id: 'back',
+                ...placement,
+                position: { x: 0.5, y: 0.5 },
+                scale: 0.6,
+                zIndex: 1,
+                label: 'Garde',
+              },
+            ],
+            music: [],
+            ambiences: [],
+            volumes: { music: 1, ambience: 1 },
+            notes: 'secret',
+          },
+        ],
+      }),
+    );
+
+    expect(await scenes.list(campaign.id)).toEqual([
+      {
+        id: 's1',
+        campaignId: campaign.id,
+        name: 'La cantina',
+        title: '',
+        backgrounds: [
+          { id: 'b1', ...placement, fit: 'cover', zoom: 1, focus: { x: 0.2, y: 0.3 } },
+          { id: 'b2', ...placement, fit: 'contain', zoom: 1, focus: { x: 0.5, y: 0.5 } },
+        ],
+        overlays: [
+          {
+            id: 'back',
+            ...placement,
+            position: { x: 0.5, y: 0.5 },
+            height: 0.6,
+            label: { text: 'Garde', visible: false },
+          },
+          { id: 'front', ...placement, position: { x: 0.1, y: 0.2 }, height: 0.3 },
+        ],
+        music: [],
+        ambiences: [],
+        volumes: { music: 1, ambience: 1 },
+        notes: 'secret',
+      },
+    ]);
   });
 
   it('keeps every Scene when saves run at the same time', async () => {
@@ -147,18 +237,18 @@ describe('Scene parsing', () => {
   const valid = {
     id: 's1',
     name: 'La cantina',
+    title: 'Le vieux moulin',
     backgrounds: [
-      { id: 'b1', mediaId: 'm1', fit: 'contain', position: { x: 0, y: 1 }, visible: false },
+      { id: 'b1', mediaId: 'm1', fit: 'contain', zoom: 1, focus: { x: 0, y: 1 }, visible: false },
     ],
     overlays: [
       {
         id: 'o1',
         mediaId: 'm2',
         position: { x: 0.2, y: 0.8 },
-        scale: 0.5,
-        zIndex: 2,
+        height: 0.5,
         visible: true,
-        label: 'Garde',
+        label: { text: 'Garde', visible: true },
       },
     ],
     music: ['m3'],
@@ -180,11 +270,14 @@ describe('Scene parsing', () => {
     ['an empty id', { ...valid, id: '' }],
     ['a name that is not text', { ...valid, name: 3 }],
     ['an unknown fit', { ...valid, backgrounds: [{ ...valid.backgrounds[0], fit: 'tile' }] }],
+    ['no Scene title', { ...valid, title: undefined }],
     [
-      'a position off the canvas',
-      { ...valid, backgrounds: [{ ...valid.backgrounds[0], position: { x: 1.5, y: 0 } }] },
+      'a focal point off the canvas',
+      { ...valid, backgrounds: [{ ...valid.backgrounds[0], focus: { x: 1.5, y: 0 } }] },
     ],
-    ['a negative scale', { ...valid, overlays: [{ ...valid.overlays[0], scale: -1 }] }],
+    ['a zero zoom', { ...valid, backgrounds: [{ ...valid.backgrounds[0], zoom: 0 }] }],
+    ['a negative height', { ...valid, overlays: [{ ...valid.overlays[0], height: -1 }] }],
+    ['a Label that is bare text', { ...valid, overlays: [{ ...valid.overlays[0], label: 'X' }] }],
     ['a volume above 1', { ...valid, volumes: { music: 2, ambience: 0 } }],
     ['missing notes', { ...valid, notes: undefined }],
     [

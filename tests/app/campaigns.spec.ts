@@ -38,7 +38,7 @@ test('a created Campaign opens, and lives in its own folder with its theme', asy
   await expect(controlWindow.getByRole('heading', { name: 'Les Ombres de Tarsis' })).toBeVisible();
   const folders = await fs.readdir(path.join(dataDir, 'campaigns'));
   expect(folders).toHaveLength(1);
-  const stored = JSON.parse(
+  const stored: unknown = JSON.parse(
     await fs.readFile(path.join(dataDir, 'campaigns', folders[0], 'campaign.json'), 'utf8'),
   );
   expect(stored).toMatchObject({ name: 'Les Ombres de Tarsis', theme: 'imperium' });

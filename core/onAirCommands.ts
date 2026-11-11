@@ -1,18 +1,28 @@
 /**
  * The on-air commands the Control window gives: open or close a Campaign, Activate a Scene,
- * update a Scene, delete Media (which can change Scenes, so the Active Scene's picture). They check that Campaigns and Scenes exist, save Scene edits, and keep the
- * on-air state (core/onAir.ts) in step. No Electron dependency.
+ * start or end Blackout, edit a Scene and undo or redo its edits, delete Media (which can change Scenes, so the Active Scene's picture). They
+ * check that Campaigns, Scenes and Media exist, save Scene edits, and keep the on-air state
+ * (core/onAir.ts) in step. No Electron dependency.
  *
  * Commands run one at a time, in the order they arrive, so a slow save never lets an older
  * picture overtake a newer one.
  */
-import type { MediaDeletion } from '../shared/contract.js';
+import type { MediaDeletion, TransientEdit, UndoState } from '../shared/contract.js';
+import { randomUUID } from 'node:crypto';
 import type { CampaignId, MediaId, OnAirState, Scene, SceneId } from '../shared/domain.js';
 import { CampaignError } from './campaigns.js';
 import { MediaError, type MediaLibrary } from './media.js';
 import { onAirSceneOf, type OnAir } from './onAir.js';
-import { SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
+import { applySceneEdit, placedMedia, type SceneEdit } from './sceneEdits.js';
+import { mediaOfScene, SceneError, sceneUsesMedia, type SceneLibrary } from './scenes.js';
 import { createSerialQueue } from './serialQueue.js';
+import {
+  createUndoHistories,
+  isSameValue,
+  undoLabel,
+  type UndoHistories,
+  type UndoMove,
+} from './undoHistory.js';
 import type { CampaignRepository } from './storage/index.js';
 
 /** Where audio plays. No audio engine yet: stopping is announced to the windows. */
@@ -28,10 +38,40 @@ export interface OnAirCommands {
   /** Puts a Scene of the open Campaign on air, as the Active Scene. */
   activateScene(sceneId: SceneId): Promise<OnAirState>;
   /**
-   * Saves a Scene. When it is the Active Scene, the Broadcast window shows the edit at once;
-   * any other Scene stays private.
+   * Starts or ends Blackout in the open Campaign: the broadcast fades to black, the Active
+   * Scene and its edits stay as they are. Never saved: opening, switching or closing a
+   * Campaign, and a restart, clear it.
    */
-  updateScene(scene: Scene): Promise<Scene>;
+  setBlackout(on: boolean): Promise<OnAirState>;
+  /**
+   * Applies one edit command to a Scene of a Campaign and saves it; returns the Scene as saved.
+   * When it is the Active Scene, the Broadcast window shows the edit at once; any other Scene
+   * stays private. Every Scene composition edit goes through here, one at a time: this is
+   * where the Scene before and after each edit is known, for an undo history.
+   */
+  editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
+  /**
+   * Shows a transient update of a live drag (a move or resize of an Overlay, a framing slider
+   * of a Background): on the Active Scene, the broadcast shows the saved Scene with `edit`
+   * applied; nothing is saved and no undo step is recorded. On any other Scene it does
+   * nothing. The drag ends with the same edit through `editScene`, which saves it as one step;
+   * if that fails, the Scene as saved goes back on air.
+   */
+  showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
+  /** What can be undone and redone on a Scene: the labels of its next undo and redo. */
+  undoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
+  /**
+   * Undoes the last edit in a Scene's undo history: saves the Scene as it was before it and
+   * returns it. On the Active Scene the broadcast shows it at once, like any edit.
+   */
+  undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
+  /** Redoes the last undone edit of a Scene, like `undoSceneEdit`. */
+  redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
+  /**
+   * Deletes a Scene of a Campaign. When it is the Active Scene, the Active Scene is cleared and
+   * the Broadcast window shows nothing on air.
+   */
+  deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   /**
    * Deletes a Media. Unused Media goes at once. Media that Scenes use is only listed with
    * those Scenes unless `confirmed`; then the Media, its file and its placements in those
@@ -46,13 +86,84 @@ export function createOnAirCommands(deps: {
   scenes: SceneLibrary;
   onAir: OnAir;
   audio: AudioOutput;
+  /** Names new placements; random UUIDs unless a test gives its own. */
+  newId?: () => string;
+  /** The Scenes' undo histories; fresh ones unless a test gives its own (with its clock). */
+  histories?: UndoHistories;
 }): OnAirCommands {
-  const { campaigns, library, scenes, onAir, audio } = deps;
+  const { campaigns, library, scenes, onAir, audio, newId = randomUUID } = deps;
+  const histories = deps.histories ?? createUndoHistories();
 
   const serialized = createSerialQueue();
 
   async function picture(scene: Scene) {
     return onAirSceneOf(scene, await library.list(scene.campaignId));
+  }
+
+  /** Saves a Scene and, when it is the Active Scene, puts it on air. */
+  async function saveScene(scene: Scene) {
+    const saved = await scenes.save(scene);
+    const current = onAir.current();
+    if (saved.campaignId === current.campaignId && saved.id === current.activeSceneId) {
+      onAir.showActiveScene(saved.id, await picture(saved));
+    }
+    return saved;
+  }
+
+  /** Applies one edit to a Scene, saves it and records it in the Scene's undo history. */
+  async function applyEdit(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit) {
+    const scene = await scenes.get(campaignId, sceneId);
+    if (!scene) throw new SceneError('Cette scène n’existe plus.');
+    const media = await library.list(campaignId);
+    const mediaId = placedMedia(edit);
+    if (mediaId !== undefined) {
+      const placing = media.find((item) => item.id === mediaId);
+      if (placing?.kind !== 'image') throw new MediaError('Ce média n’existe plus.');
+    }
+    const saved = await saveScene(applySceneEdit(scene, edit, newId));
+    histories.record({
+      before: scene,
+      after: saved,
+      label: undoLabel(scene, edit, (id) => media.find((item) => item.id === id)?.name),
+    });
+    return saved;
+  }
+
+  /** Puts the Active Scene back on air as saved, when it is `sceneId` of `campaignId`. */
+  async function showSavedActiveScene(campaignId: CampaignId, sceneId: SceneId) {
+    const current = onAir.current();
+    if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
+    const saved = await scenes.get(campaignId, sceneId);
+    if (saved) onAir.showActiveScene(saved.id, await picture(saved));
+  }
+
+  /**
+   * Undoes or redoes (`move`) on a Scene, applied literally: the Scene saved before the step
+   * comes back. A Scene changed outside its history since (its placements of a deleted Media)
+   * cannot be, nor can a step that would bring back a deleted Media (removed from the Scene
+   * before it was deleted): its history is cleared.
+   */
+  async function travel(
+    campaignId: CampaignId,
+    sceneId: SceneId,
+    move: UndoMove | undefined,
+    nothing: string,
+  ) {
+    if (!move) throw new SceneError(nothing);
+    const scene = await scenes.get(campaignId, sceneId);
+    if (!scene) throw new SceneError('Cette scène n’existe plus.');
+    if (!isSameValue(scene, move.expected)) {
+      histories.clear(campaignId, sceneId);
+      throw new SceneError('La scène a changé entre-temps : son historique est effacé.');
+    }
+    const known = new Set((await library.list(campaignId)).map((media) => media.id));
+    if (!mediaOfScene(move.restore).every((mediaId) => known.has(mediaId))) {
+      histories.clear(campaignId, sceneId);
+      throw new SceneError(
+        'Une image de cette étape a été supprimée de la bibliothèque : l’historique de la scène est effacé.',
+      );
+    }
+    return saveScene(move.restore);
   }
 
   return {
@@ -62,12 +173,14 @@ export function createOnAirCommands(deps: {
           throw new CampaignError('Cette campagne n’existe plus.');
         }
         audio.halt();
+        histories.clearAll();
         return onAir.openCampaign(campaignId);
       }),
 
     closeCampaign: () =>
-      serialized(async () => {
+      serialized(() => {
         audio.halt();
+        histories.clearAll();
         return onAir.closeCampaign();
       }),
 
@@ -82,14 +195,59 @@ export function createOnAirCommands(deps: {
         return onAir.activateScene(scene.id, await picture(scene));
       }),
 
-    updateScene: (scene) =>
-      serialized(async () => {
-        const saved = await scenes.save(scene);
-        const { campaignId, activeSceneId } = onAir.current();
-        if (saved.campaignId === campaignId && saved.id === activeSceneId) {
-          onAir.showActiveScene(saved.id, await picture(saved));
+    setBlackout: (on) =>
+      serialized(() => {
+        if (onAir.current().campaignId === null) {
+          throw new CampaignError('Ouvrez une campagne avant de passer au noir.');
         }
+        return onAir.setBlackout(on);
+      }),
+
+    editScene: (campaignId, sceneId, edit) =>
+      serialized(async () => {
+        try {
+          return await applyEdit(campaignId, sceneId, edit);
+        } catch (error) {
+          // A live drag (Overlay or Background framing) may have shown unsaved transient
+          // updates on air: show the Scene as saved again. What the Game Master is told is the
+          // edit's own failure, so a failure here is dropped.
+          await showSavedActiveScene(campaignId, sceneId).catch(() => undefined);
+          throw error;
+        }
+      }),
+
+    showTransientEdit: (campaignId, sceneId, edit) =>
+      serialized(async () => {
+        const current = onAir.current();
+        if (current.campaignId !== campaignId || current.activeSceneId !== sceneId) return;
+        const scene = await scenes.get(campaignId, sceneId);
+        if (!scene) throw new SceneError('Cette scène n’existe plus.');
+        onAir.showActiveScene(sceneId, await picture(applySceneEdit(scene, edit, newId)));
+      }),
+
+    undoState: (campaignId, sceneId) => serialized(() => histories.state(campaignId, sceneId)),
+
+    undoSceneEdit: (campaignId, sceneId) =>
+      serialized(async () => {
+        const move = histories.nextUndo(campaignId, sceneId);
+        const saved = await travel(campaignId, sceneId, move, 'Rien à annuler.');
+        histories.undone(campaignId, sceneId);
         return saved;
+      }),
+
+    redoSceneEdit: (campaignId, sceneId) =>
+      serialized(async () => {
+        const move = histories.nextRedo(campaignId, sceneId);
+        const saved = await travel(campaignId, sceneId, move, 'Rien à rétablir.');
+        histories.redone(campaignId, sceneId);
+        return saved;
+      }),
+
+    deleteScene: (campaignId, sceneId) =>
+      serialized(async () => {
+        await scenes.delete(campaignId, sceneId);
+        histories.clear(campaignId, sceneId);
+        if (onAir.current().campaignId === campaignId) onAir.clearActiveScene(sceneId);
       }),
 
     deleteMedia: (campaignId, mediaId, confirmed) =>
@@ -106,6 +264,8 @@ export function createOnAirCommands(deps: {
         }
         // Placements first: if the Media delete then fails, no Scene points at a missing Media.
         const cleaned = await scenes.removeMediaPlacements(campaignId, mediaId);
+        // Their histories could bring the deleted Media back: forget them.
+        cleaned.forEach((scene) => histories.clear(campaignId, scene.id));
         await library.delete(campaignId, mediaId);
         const current = onAir.current();
         const active = cleaned.find((scene) => scene.id === current.activeSceneId);

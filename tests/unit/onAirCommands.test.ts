@@ -5,10 +5,11 @@ import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
 import { createOnAir } from '../../core/onAir';
 import { createOnAirCommands } from '../../core/onAirCommands';
-import { addBackground, setBackgroundVisible } from '../../core/sceneEdits';
 import { createSceneLibrary } from '../../core/scenes';
 import { openStorage } from '../../core/storage';
+import type { SceneEdit } from '../../shared/contract';
 import type { OnAirState } from '../../shared/domain';
+import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
 // SHA-256 of the three bytes "abc" (FIPS 180-2 test vector).
@@ -19,18 +20,29 @@ describe('on-air commands', () => {
 
   async function setup() {
     const storage = openStorage(path.join(dir.path, 'data'));
-    const library = createMediaLibrary(storage);
+    const library = createMediaLibrary(storage, fakeResizer().resizer);
     const scenes = createSceneLibrary(storage);
     const onAir = createOnAir();
     const broadcast: OnAirState[] = [];
     onAir.subscribe((snapshot) => broadcast.push(snapshot));
     let audioHalts = 0;
+    let placements = 0;
+    // When set, the commands' Scene saves fail, as on a full or read-only disk.
+    let saveFailure: Error | undefined;
     const commands = createOnAirCommands({
       campaigns: storage.campaigns,
       library,
-      scenes,
+      scenes: {
+        ...scenes,
+        save: (scene) => (saveFailure ? Promise.reject(saveFailure) : scenes.save(scene)),
+      },
       onAir,
-      audio: { halt: () => void audioHalts++ },
+      audio: {
+        halt: () => {
+          audioHalts++;
+        },
+      },
+      newId: () => `p${++placements}`,
     });
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
     const picked = path.join(dir.path, 'Cantina.png');
@@ -45,14 +57,28 @@ describe('on-air commands', () => {
       image,
       broadcast,
       audioHalts: () => audioHalts,
+      failSaves: (failure: Error | undefined) => {
+        saveFailure = failure;
+      },
     };
   }
 
-  /** A Scene with the imported image as a visible Background. */
+  /** A Scene with the imported image as a visible Background `bg-<name>`. */
   async function sceneShowing(ctx: Awaited<ReturnType<typeof setup>>, name: string) {
     const created = await ctx.scenes.create(ctx.campaign.id, name);
-    const withBackground = addBackground(created, ctx.image.id, `bg-${name}`);
-    return ctx.scenes.save(setBackgroundVisible(withBackground, `bg-${name}`, true));
+    return ctx.scenes.save({
+      ...created,
+      backgrounds: [
+        {
+          id: `bg-${name}`,
+          mediaId: ctx.image.id,
+          fit: 'cover',
+          zoom: 1,
+          focus: { x: 0.5, y: 0.5 },
+          visible: true,
+        },
+      ],
+    });
   }
 
   const cantinaPicture = {
@@ -61,7 +87,8 @@ describe('on-air commands', () => {
         id: 'bg-Cantina',
         src: expect.stringContaining(`${ABC_SHA256}.png`),
         fit: 'cover',
-        position: { x: 0.5, y: 0.5 },
+        zoom: 1,
+        focus: { x: 0.5, y: 0.5 },
       },
     ],
     overlays: [],
@@ -78,6 +105,8 @@ describe('on-air commands', () => {
       campaignId: ctx.campaign.id,
       activeSceneId: scene.id,
       scene: cantinaPicture,
+      blackout: false,
+      fadeDurationMs: 600,
       version: 2,
     });
     expect(ctx.broadcast.at(-1)).toEqual(state);
@@ -89,21 +118,68 @@ describe('on-air commands', () => {
     await ctx.commands.openCampaign(ctx.campaign.id);
     await ctx.commands.activateScene(scene.id);
     expect(ctx.broadcast.at(-1)?.scene).toEqual({ backgrounds: [], overlays: [] });
+    const edit = (command: SceneEdit) => ctx.commands.editScene(ctx.campaign.id, scene.id, command);
 
-    const hidden = await ctx.commands.updateScene(addBackground(scene, ctx.image.id, 'bg-Cantina'));
+    const placed = await edit({ kind: 'place-background', mediaId: ctx.image.id });
     // A new Background starts Hidden: nothing new reaches the broadcast.
+    expect(placed.backgrounds).toEqual([expect.objectContaining({ id: 'p1', visible: false })]);
     expect(ctx.broadcast.at(-1)?.scene).toEqual({ backgrounds: [], overlays: [] });
-    await ctx.commands.updateScene(setBackgroundVisible(hidden, 'bg-Cantina', true));
+    const shown = await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
 
     expect(ctx.broadcast.at(-1)).toEqual({
       campaignId: ctx.campaign.id,
       activeSceneId: scene.id,
-      scene: cantinaPicture,
+      scene: {
+        ...cantinaPicture,
+        backgrounds: [{ ...cantinaPicture.backgrounds[0], id: 'p1' }],
+      },
+      blackout: false,
+      fadeDurationMs: 600,
       version: 4,
     });
-    expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.backgrounds).toEqual([
-      expect.objectContaining({ id: 'bg-Cantina', visible: true }),
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(shown);
+  });
+
+  it('places Overlays above every Background', async () => {
+    const ctx = await setup();
+    const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+    const edit = (command: SceneEdit) => ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+    await edit({ kind: 'place-overlay', mediaId: ctx.image.id, position: { x: 0.25, y: 0.5 } });
+    await edit({ kind: 'place-background', mediaId: ctx.image.id });
+    for (const placementId of ['p1', 'p2']) {
+      await edit({ kind: 'set-visible', placementId, visible: true });
+    }
+    await ctx.commands.openCampaign(ctx.campaign.id);
+
+    const { scene: picture } = await ctx.commands.activateScene(scene.id);
+
+    expect(picture?.backgrounds.map((item) => item.id)).toEqual(['p2']);
+    expect(picture?.overlays).toEqual([
+      { id: 'p1', src: expect.any(String), position: { x: 0.25, y: 0.5 }, height: 0.5 },
     ]);
+  });
+
+  it('showing, hiding and removing an Overlay of the Active Scene updates the broadcast', async () => {
+    const ctx = await setup();
+    const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+    const edit = (command: SceneEdit) => ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+    const onAirOverlays = () => ctx.broadcast.at(-1)?.scene?.overlays.map((item) => item.id);
+
+    await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+    await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+    expect(onAirOverlays()).toEqual([]);
+    await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+    await edit({ kind: 'set-visible', placementId: 'p2', visible: true });
+    expect(onAirOverlays()).toEqual(['p1', 'p2']);
+    await edit({ kind: 'set-visible', placementId: 'p1', visible: false });
+    expect(onAirOverlays()).toEqual(['p2']);
+    const removed = await edit({ kind: 'remove-placement', placementId: 'p2' });
+
+    expect(onAirOverlays()).toEqual([]);
+    expect(removed.overlays.map((item) => item.id)).toEqual(['p1']);
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(removed);
   });
 
   it('editing another Scene saves it and never changes the broadcast', async () => {
@@ -114,11 +190,32 @@ describe('on-air commands', () => {
     await ctx.commands.activateScene(active.id);
     const sent = ctx.broadcast.length;
 
-    const edited = setBackgroundVisible(addBackground(other, ctx.image.id, 'b'), 'b', true);
-    await ctx.commands.updateScene(edited);
+    await ctx.commands.editScene(ctx.campaign.id, other.id, {
+      kind: 'place-background',
+      mediaId: ctx.image.id,
+    });
+    const edited = await ctx.commands.editScene(ctx.campaign.id, other.id, {
+      kind: 'set-visible',
+      placementId: 'p1',
+      visible: true,
+    });
 
     expect(ctx.broadcast.length).toBe(sent);
     expect(await ctx.scenes.get(ctx.campaign.id, other.id)).toEqual(edited);
+  });
+
+  it('refuses to edit a Scene that does not exist, or to place unknown Media', async () => {
+    const ctx = await setup();
+    const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+    const place = { kind: 'place-overlay', mediaId: ctx.image.id } as const;
+
+    await expect(ctx.commands.editScene(ctx.campaign.id, 'inconnue', place)).rejects.toThrow(
+      'Cette scène n’existe plus.',
+    );
+    await expect(
+      ctx.commands.editScene(ctx.campaign.id, scene.id, { ...place, mediaId: 'inconnu' }),
+    ).rejects.toThrow('Ce média n’existe plus.');
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
   });
 
   it('opening a Campaign puts nothing on air and stops audio; switching clears the broadcast', async () => {
@@ -159,6 +256,174 @@ describe('on-air commands', () => {
       'Cette scène n’existe plus.',
     );
     expect(ctx.broadcast.map((s) => s.version)).toEqual([1]);
+  });
+
+  describe('a live drag of an Overlay', () => {
+    /** A Scene with one visible Overlay p1 at the centre; Active unless `active` is false. */
+    async function dragging(ctx: Awaited<ReturnType<typeof setup>>, active = true) {
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      const edit = (command: SceneEdit) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+      await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+      const saved = await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      if (active) await ctx.commands.activateScene(scene.id);
+      return { saved, edit };
+    }
+    const move = (x: number, y: number) =>
+      ({ kind: 'transform-overlay', placementId: 'p1', position: { x, y } }) as const;
+    const onAirOverlay = (ctx: Awaited<ReturnType<typeof setup>>) =>
+      ctx.broadcast.at(-1)?.scene?.overlays[0];
+
+    it('shows each transient update on the Active Scene without saving it', async () => {
+      const ctx = await setup();
+      const { saved } = await dragging(ctx);
+
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.2, y: 0.3 }, height: 0.5 });
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, {
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.25, y: 0.35 },
+        height: 0.4,
+      });
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.25, y: 0.35 }, height: 0.4 });
+
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
+    });
+
+    it('saves the drag once, with the committed edit at its end', async () => {
+      const ctx = await setup();
+      const { saved, edit } = await dragging(ctx);
+      for (const x of [0.1, 0.2, 0.3]) {
+        await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(x, 0.5));
+      }
+
+      const committed = await edit(move(0.4, 0.6));
+
+      expect(committed.overlays[0].position).toEqual({ x: 0.4, y: 0.6 });
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(committed);
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.4, y: 0.6 } });
+    });
+
+    it('puts the saved Scene back on air when the committed edit fails', async () => {
+      const ctx = await setup();
+      const { saved, edit } = await dragging(ctx);
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+      ctx.failSaves(new Error('disk full'));
+
+      await expect(edit(move(0.2, 0.3))).rejects.toThrow('disk full');
+
+      expect(onAirOverlay(ctx)).toMatchObject({ position: { x: 0.5, y: 0.5 } });
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
+    });
+
+    it('never touches the broadcast, nor saves, on a Scene that is not active', async () => {
+      const ctx = await setup();
+      const { saved } = await dragging(ctx, false);
+      const sent = ctx.broadcast.length;
+
+      await ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, move(0.2, 0.3));
+
+      expect(ctx.broadcast.length).toBe(sent);
+      expect(await ctx.scenes.get(ctx.campaign.id, saved.id)).toEqual(saved);
+    });
+
+    it('refuses a transient update of an Overlay that is gone, in French', async () => {
+      const ctx = await setup();
+      const { saved } = await dragging(ctx);
+      const sent = ctx.broadcast.length;
+
+      await expect(
+        ctx.commands.showTransientEdit(ctx.campaign.id, saved.id, {
+          ...move(0.2, 0.3),
+          placementId: 'absent',
+        }),
+      ).rejects.toThrow('Cet élément n’est plus sur la scène.');
+      expect(ctx.broadcast.length).toBe(sent);
+    });
+  });
+
+  it('shows a live framing of a Background on the Active Scene without saving it', async () => {
+    const ctx = await setup();
+    const scene = await sceneShowing(ctx, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+
+    await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+      kind: 'frame-background',
+      placementId: 'bg-Cantina',
+      zoom: 2,
+      focus: { x: 0.25 },
+    });
+
+    expect(ctx.broadcast.at(-1)?.scene?.backgrounds[0]).toMatchObject({
+      zoom: 2,
+      focus: { x: 0.25, y: 0.5 },
+    });
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(scene);
+    expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+      undo: null,
+      redo: null,
+    });
+  });
+
+  it('renames a Scene; on the Active Scene the broadcast carries no Scene name', async () => {
+    const ctx = await setup();
+    const scene = await sceneShowing(ctx, 'Cantina');
+    await ctx.commands.openCampaign(ctx.campaign.id);
+    await ctx.commands.activateScene(scene.id);
+
+    const renamed = await ctx.commands.editScene(ctx.campaign.id, scene.id, {
+      kind: 'rename',
+      name: 'Embuscade',
+    });
+
+    expect(renamed).toEqual({ ...scene, name: 'Embuscade' });
+    expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(renamed);
+    expect(JSON.stringify(ctx.broadcast)).not.toContain('Embuscade');
+  });
+
+  describe('deleting a Scene', () => {
+    it('deletes a Scene that is not active, leaving the broadcast alone', async () => {
+      const ctx = await setup();
+      const active = await sceneShowing(ctx, 'Cantina');
+      const other = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(active.id);
+      const sent = ctx.broadcast.length;
+
+      await ctx.commands.deleteScene(ctx.campaign.id, other.id);
+
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([active]);
+      expect(ctx.broadcast.length).toBe(sent);
+    });
+
+    it('deleting the Active Scene clears the Active Scene and the broadcast', async () => {
+      const ctx = await setup();
+      const active = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(active.id);
+
+      await ctx.commands.deleteScene(ctx.campaign.id, active.id);
+
+      expect(await ctx.scenes.list(ctx.campaign.id)).toEqual([]);
+      expect(ctx.broadcast.at(-1)).toEqual({
+        campaignId: ctx.campaign.id,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        fadeDurationMs: 600,
+        version: 3,
+      });
+    });
+
+    it('refuses a Scene that no longer exists', async () => {
+      const ctx = await setup();
+      await expect(ctx.commands.deleteScene(ctx.campaign.id, 'inconnue')).rejects.toThrow(
+        'Cette scène n’existe plus.',
+      );
+    });
   });
 
   describe('deleting Media', () => {
@@ -223,6 +488,8 @@ describe('on-air commands', () => {
         campaignId: ctx.campaign.id,
         activeSceneId: cantina.id,
         scene: { backgrounds: [], overlays: [] },
+        blackout: false,
+        fadeDurationMs: 600,
         version: 3,
       });
     });
@@ -246,6 +513,239 @@ describe('on-air commands', () => {
       await expect(ctx.commands.deleteMedia(ctx.campaign.id, 'gone', true)).rejects.toThrow(
         'Ce média n’existe plus.',
       );
+    });
+  });
+
+  describe('Blackout', () => {
+    it('blacks out the broadcast and leaves the Active Scene as it is', async () => {
+      const ctx = await setup();
+      const scene = await sceneShowing(ctx, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+
+      const state = await ctx.commands.setBlackout(true);
+
+      expect(state).toEqual({
+        campaignId: ctx.campaign.id,
+        activeSceneId: scene.id,
+        scene: cantinaPicture,
+        blackout: true,
+        fadeDurationMs: 600,
+        version: 3,
+      });
+      expect(ctx.broadcast.at(-1)).toEqual(state);
+      expect(await ctx.commands.setBlackout(false)).toMatchObject({
+        activeSceneId: scene.id,
+        scene: cantinaPicture,
+        blackout: false,
+        fadeDurationMs: 600,
+      });
+    });
+
+    it('keeps edits made during Blackout, shown once it ends', async () => {
+      const ctx = await setup();
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      await ctx.commands.setBlackout(true);
+      const edit = (command: SceneEdit) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+
+      await edit({ kind: 'place-background', mediaId: ctx.image.id });
+      await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+
+      expect(ctx.broadcast.at(-1)).toMatchObject({ blackout: true });
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.backgrounds).toEqual([
+        expect.objectContaining({ id: 'p1', visible: true }),
+      ]);
+      const ended = await ctx.commands.setBlackout(false);
+      expect(ended.scene?.backgrounds).toEqual([expect.objectContaining({ id: 'p1' })]);
+    });
+
+    it('stays on when another Scene is Activated', async () => {
+      const ctx = await setup();
+      const cantina = await sceneShowing(ctx, 'Cantina');
+      const hangar = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(cantina.id);
+      await ctx.commands.setBlackout(true);
+
+      expect(await ctx.commands.activateScene(hangar.id)).toMatchObject({
+        activeSceneId: hangar.id,
+        blackout: true,
+        fadeDurationMs: 600,
+      });
+    });
+
+    it('is cleared when a Campaign is opened, switched or closed', async () => {
+      const ctx = await setup();
+      const other = await createCampaign(ctx.storage.campaigns, 'Warhammer');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.setBlackout(true);
+      expect((await ctx.commands.openCampaign(other.id)).blackout).toBe(false);
+      await ctx.commands.setBlackout(true);
+      expect((await ctx.commands.closeCampaign()).blackout).toBe(false);
+    });
+
+    it('is refused when no Campaign is open', async () => {
+      const ctx = await setup();
+
+      await expect(ctx.commands.setBlackout(true)).rejects.toThrow(CampaignError);
+      expect(ctx.broadcast).toEqual([]);
+    });
+  });
+
+  describe('undo and redo', () => {
+    /** An open Campaign with Scene Cantina, Active, holding a Hidden Overlay p1 of the image. */
+    async function editing(ctx: Awaited<ReturnType<typeof setup>>) {
+      const scene = await ctx.scenes.create(ctx.campaign.id, 'Cantina');
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await ctx.commands.activateScene(scene.id);
+      const edit = (command: SceneEdit) =>
+        ctx.commands.editScene(ctx.campaign.id, scene.id, command);
+      const placed = await edit({ kind: 'place-overlay', mediaId: ctx.image.id });
+      return {
+        scene,
+        placed,
+        edit,
+        undo: () => ctx.commands.undoSceneEdit(ctx.campaign.id, scene.id),
+        redo: () => ctx.commands.redoSceneEdit(ctx.campaign.id, scene.id),
+        state: () => ctx.commands.undoState(ctx.campaign.id, scene.id),
+      };
+    }
+    const onAirOverlays = (ctx: Awaited<ReturnType<typeof setup>>) =>
+      ctx.broadcast.at(-1)?.scene?.overlays ?? [];
+
+    it('undoes and redoes an edit on the Active Scene, live, naming it by its Media', async () => {
+      const ctx = await setup();
+      const { placed, edit, undo, redo, state } = await editing(ctx);
+      const shown = await edit({ kind: 'set-visible', placementId: 'p1', visible: true });
+      expect(onAirOverlays(ctx)).toHaveLength(1);
+      expect(await state()).toEqual({ undo: 'afficher Cantina', redo: null });
+
+      expect(await undo()).toEqual(placed);
+      expect(await ctx.scenes.get(ctx.campaign.id, placed.id)).toEqual(placed);
+      expect(onAirOverlays(ctx)).toEqual([]);
+      expect(await state()).toEqual({
+        undo: 'placer Cantina en superposition',
+        redo: 'afficher Cantina',
+      });
+
+      expect(await redo()).toEqual(shown);
+      expect(onAirOverlays(ctx)).toHaveLength(1);
+      expect(await state()).toEqual({ undo: 'afficher Cantina', redo: null });
+    });
+
+    it('undoes a whole drag as one step, whatever transient updates came before', async () => {
+      const ctx = await setup();
+      const { scene, placed, edit, undo, state } = await editing(ctx);
+      for (const x of [0.1, 0.2, 0.3]) {
+        await ctx.commands.showTransientEdit(ctx.campaign.id, scene.id, {
+          kind: 'transform-overlay',
+          placementId: 'p1',
+          position: { x, y: 0.5 },
+        });
+      }
+      await edit({ kind: 'transform-overlay', placementId: 'p1', position: { x: 0.4, y: 0.6 } });
+      expect((await state()).undo).toBe('déplacer Cantina');
+
+      expect(await undo()).toEqual(placed);
+    });
+
+    it('keeps a drag and a resize of one Overlay as two steps, however quick', async () => {
+      const ctx = await setup();
+      const { placed, edit, undo, state } = await editing(ctx);
+      const moved = await edit({
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.4, y: 0.5 },
+      });
+      await edit({
+        kind: 'transform-overlay',
+        placementId: 'p1',
+        position: { x: 0.4, y: 0.5 },
+        height: 0.3,
+      });
+      expect((await state()).undo).toBe('redimensionner Cantina');
+
+      expect(await undo()).toEqual(moved);
+      expect((await state()).undo).toBe('déplacer Cantina');
+      expect(await undo()).toEqual(placed);
+    });
+
+    it('refuses to undo or redo with nothing to, in French', async () => {
+      const ctx = await setup();
+      const { undo, redo } = await editing(ctx);
+      await expect(redo()).rejects.toThrow('Rien à rétablir.');
+      await undo();
+      await expect(undo()).rejects.toThrow('Rien à annuler.');
+    });
+
+    it('keeps each Scene its own history, across Activating, until the Campaign is opened again', async () => {
+      const ctx = await setup();
+      const { scene, state } = await editing(ctx);
+      const hangar = await ctx.scenes.create(ctx.campaign.id, 'Hangar');
+      await ctx.commands.editScene(ctx.campaign.id, hangar.id, { kind: 'rename', name: 'Dock' });
+      await ctx.commands.activateScene(hangar.id);
+      await ctx.commands.setBlackout(true);
+
+      expect(await state()).toEqual({ undo: 'placer Cantina en superposition', redo: null });
+      expect(await ctx.commands.undoState(ctx.campaign.id, hangar.id)).toEqual({
+        undo: 'renommer la scène',
+        redo: null,
+      });
+
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect(await ctx.commands.undoState(ctx.campaign.id, scene.id)).toEqual({
+        undo: null,
+        redo: null,
+      });
+    });
+
+    it('clears the history when the Campaign is closed or the Scene deleted', async () => {
+      const ctx = await setup();
+      const first = await editing(ctx);
+      await ctx.commands.closeCampaign();
+      expect(await first.state()).toEqual({ undo: null, redo: null });
+
+      await ctx.commands.openCampaign(ctx.campaign.id);
+      await first.edit({ kind: 'rename', name: 'Cantina 2' });
+      await ctx.commands.deleteScene(ctx.campaign.id, first.scene.id);
+      expect(await first.state()).toEqual({ undo: null, redo: null });
+    });
+
+    it('clears the history of the Scenes whose placements a Media deletion removed', async () => {
+      const ctx = await setup();
+      const { state, undo } = await editing(ctx);
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, true);
+
+      expect(await state()).toEqual({ undo: null, redo: null });
+      await expect(undo()).rejects.toThrow('Rien à annuler.');
+    });
+
+    it('refuses to bring back a placement whose Media was deleted after it was removed', async () => {
+      const ctx = await setup();
+      const { scene, edit, undo, redo, state } = await editing(ctx);
+      const removed = await edit({ kind: 'remove-placement', placementId: 'p1' });
+      // The Scene no longer uses the image: it goes at once, and the history stays.
+      await ctx.commands.deleteMedia(ctx.campaign.id, ctx.image.id, false);
+
+      await expect(undo()).rejects.toThrow('Une image de cette étape a été supprimée');
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(removed);
+      expect(onAirOverlays(ctx)).toEqual([]);
+      await expect(redo()).rejects.toThrow('Rien à rétablir.');
+    });
+
+    it('refuses an undo once the Scene changed outside its history, and clears it', async () => {
+      const ctx = await setup();
+      const { scene, placed, undo, state } = await editing(ctx);
+      await ctx.scenes.save({ ...placed, notes: 'changed elsewhere' });
+
+      await expect(undo()).rejects.toThrow('La scène a changé entre-temps');
+      expect(await state()).toEqual({ undo: null, redo: null });
+      expect((await ctx.scenes.get(ctx.campaign.id, scene.id))?.notes).toBe('changed elsewhere');
     });
   });
 

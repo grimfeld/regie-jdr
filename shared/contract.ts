@@ -7,17 +7,106 @@
  */
 import type {
   AudioRole,
+  BackgroundFit,
   Campaign,
   CampaignId,
   ImageCategory,
   Media,
   MediaId,
+  NormalizedPoint,
   OnAirState,
   Scene,
   SceneId,
   Settings,
   ThemeId,
 } from './domain.js';
+
+/**
+ * One edit command on a Scene's composition, applied by the app core (core/sceneEdits.ts).
+ * Plain data, so the core can keep an undo history of them.
+ */
+export type SceneEdit =
+  /** Places an image as a new Background, on top of the stack, Hidden, covering the canvas. */
+  | { kind: 'place-background'; mediaId: MediaId }
+  /**
+   * Places an image as a new Overlay, in front of the others, Hidden, half the canvas high,
+   * centred on `position` (the canvas centre when absent).
+   */
+  | { kind: 'place-overlay'; mediaId: MediaId; position?: NormalizedPoint }
+  /** Shows or hides a Background or Overlay. */
+  | { kind: 'set-visible'; placementId: string; visible: boolean }
+  /** Removes a Background or Overlay from the Scene. */
+  | { kind: 'remove-placement'; placementId: string }
+  /**
+   * Moves a Background to `toIndex` in the stack (0 is the bottom; past the top stays on top),
+   * so it covers the ones below it.
+   */
+  | { kind: 'move-background'; placementId: string; toIndex: number }
+  /** Sets a Background to Cover or Contain, keeping its Cover zoom and focal point. */
+  | { kind: 'set-background-fit'; placementId: string; fit: BackgroundFit }
+  /**
+   * Frames a Background in Cover: sets its zoom (kept within limits) and either coordinate of
+   * its focal point, each only when given, so one slider never overwrites another's change.
+   */
+  | {
+      kind: 'frame-background';
+      placementId: string;
+      zoom?: number;
+      focus?: Partial<NormalizedPoint>;
+    }
+  /**
+   * Moves and/or resizes an Overlay (a drag, a resize, or a burst of arrow-key nudges): sets
+   * either coordinate of its centre and its height (kept within limits), each only when given,
+   * so a move never overwrites a resize sent alongside it.
+   */
+  | {
+      kind: 'transform-overlay';
+      placementId: string;
+      position?: Partial<NormalizedPoint>;
+      height?: number;
+    }
+  /**
+   * Moves an Overlay to `toIndex` among the Overlays (0 is the back; past the front stays in
+   * front), so it stands in front of the ones below it. Overlays stay above every Background.
+   */
+  | { kind: 'move-overlay'; placementId: string; toIndex: number }
+  /** Renames the Scene (its private name; never shown to players). */
+  | { kind: 'rename'; name: string }
+  /**
+   * Sets the player-facing Scene title, shown discreetly on the broadcast; '' clears it.
+   */
+  | { kind: 'set-title'; title: string }
+  /**
+   * Sets the text of an Overlay's Label. A new Label starts Hidden; empty text removes the
+   * Label.
+   */
+  | { kind: 'set-label-text'; overlayId: string; text: string }
+  /** Shows or hides an Overlay's Label, independently of the Overlay. */
+  | { kind: 'set-label-visible'; overlayId: string; visible: boolean };
+
+/**
+ * A move or resize of an Overlay in progress (a live drag): shown on air on the Active Scene,
+ * never saved. The drag's end is sent as the same edit through `scenes:edit`.
+ */
+export type OverlayTransform = Extract<SceneEdit, { kind: 'transform-overlay' }>;
+
+/** A Background's zoom or focal point being chosen with a slider: shown and sent like a drag. */
+export type BackgroundFraming = Extract<SceneEdit, { kind: 'frame-background' }>;
+
+/**
+ * A transient update of a live drag (an Overlay moved or resized, a framing slider dragged):
+ * shown on air on the Active Scene, never saved.
+ */
+export type TransientEdit = OverlayTransform | BackgroundFraming;
+
+/**
+ * What can be undone and redone on a Scene: the French label of the next undo and of the next
+ * redo ("masquer Orc"), or null when there is none.
+ */
+export interface UndoState {
+  undo: string | null;
+  redo: string | null;
+}
 
 /** What an import accepts: images, or audio with the role (fixed) every imported file gets. */
 export type MediaImportKind = { accept: 'image' } | { accept: 'audio'; role: AudioRole };
@@ -58,17 +147,54 @@ export interface InvokeChannels {
   'onAir:close-campaign': { payload: void; result: OnAirState };
   /** Activate a Scene of the open Campaign: it goes on air. Fails if no Campaign is open. */
   'onAir:activate-scene': { payload: { sceneId: SceneId }; result: OnAirState };
+  /**
+   * Start (`on`) or end Blackout: the broadcast fades to black, the Active Scene is unchanged.
+   * Fails if no Campaign is open.
+   */
+  'onAir:set-blackout': { payload: { on: boolean }; result: OnAirState };
   /** The Scenes of a Campaign, in creation order. */
   'scenes:list': { payload: { campaignId: CampaignId }; result: Scene[] };
   /** Create an empty Scene; fails with a French message for an empty name. */
   'scenes:create': { payload: { campaignId: CampaignId; name: string }; result: Scene };
   /**
-   * Save a whole Scene (the "update the Active Scene" command). The Active Scene goes on air
-   * at once; any other Scene stays private.
+   * Apply one edit command to a Scene (core/sceneEdits.ts) and get the Scene as saved. On the
+   * Active Scene the edit goes on air at once; any other Scene stays private.
    */
-  'scenes:update': { payload: Scene; result: Scene };
+  'scenes:edit': {
+    payload: { campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit };
+    result: Scene;
+  };
+  /**
+   * Show a transient update of a live drag: on the Active Scene, the broadcast shows the Scene
+   * with `edit` applied, without saving it (nor adding an undo step); on any other Scene it does
+   * nothing. The window sends at most one per animation frame, then commits the drag's end
+   * with `scenes:edit`.
+   */
+  'scenes:show-transient': {
+    payload: { campaignId: CampaignId; sceneId: SceneId; edit: TransientEdit };
+    result: void;
+  };
+  /** What can be undone and redone on a Scene (its undo history, kept by the main process). */
+  'scenes:undo-state': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: UndoState };
+  /**
+   * Undo the last Scene edit of a Scene's history and get the Scene as saved; on the Active
+   * Scene it goes on air at once, like any edit. Fails when there is nothing to undo.
+   */
+  'scenes:undo': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
+  /** Redo the last undone edit of a Scene, like `scenes:undo`. */
+  'scenes:redo': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: Scene };
+  /**
+   * Delete a Scene. When it is the Active Scene, the Active Scene is cleared: nothing of it
+   * stays on air. The window asks the Game Master to confirm first.
+   */
+  'scenes:delete': { payload: { campaignId: CampaignId; sceneId: SceneId }; result: void };
   /** Open the Broadcast window, or focus it if already open. */
   'broadcast:open': { payload: void; result: void };
+  /**
+   * Put the Broadcast window in fullscreen, or take it out. Returns whether it is now
+   * fullscreen (false when it is not open).
+   */
+  'broadcast:toggle-fullscreen': { payload: void; result: boolean };
   /** The Media library of a Campaign, in import order. */
   'media:list': { payload: { campaignId: CampaignId }; result: Media[] };
   /**
@@ -79,9 +205,26 @@ export interface InvokeChannels {
     payload: { campaignId: CampaignId } & MediaImportKind;
     result: MediaImportResult;
   };
+  /**
+   * Import image files the Game Master dropped from outside the app (Windows Explorer) into the
+   * Campaign's library, like `media:import` with `accept: 'image'`. `files` are the dropped
+   * files' absolute paths, which only the Control window's bridge reads off the drop.
+   */
+  'media:import-dropped': {
+    payload: { campaignId: CampaignId; files: string[] };
+    result: MediaImportResult;
+  };
   /** Change an image's category. Fails for audio: its role is fixed at import. */
   'media:set-category': {
     payload: { campaignId: CampaignId; mediaId: MediaId; category: ImageCategory };
+    result: Media;
+  };
+  /**
+   * Rename a Media: changes the name it is shown under; its original file name is kept. Fails
+   * with a French message for an empty or too long name.
+   */
+  'media:rename': {
+    payload: { campaignId: CampaignId; mediaId: MediaId; name: string };
     result: Media;
   };
   /**
@@ -104,12 +247,17 @@ export interface InvokeChannels {
    */
   'notices:take': { payload: void; result: string[] };
   /**
-   * The global Settings: home page theme, window bounds, and each Campaign's last Active Scene
-   * (for highlighting only: nothing goes on air after a restart).
+   * The global Settings: home page theme, window bounds, each Campaign's last Active Scene
+   * (for highlighting only: nothing goes on air after a restart) and the fade duration.
    */
   'settings:get': { payload: void; result: Settings };
   /** Change the theme of the Campaign list home page. */
   'settings:set-theme': { payload: { theme: ThemeId }; result: Settings };
+  /**
+   * Change the fade duration (milliseconds, bounds in core/fades.ts); every renderer gets it
+   * through the on-air state.
+   */
+  'settings:set-fade-duration': { payload: { fadeDurationMs: number }; result: Settings };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -158,17 +306,30 @@ export interface ControlBridge extends BroadcastBridge {
   openCampaign(campaignId: CampaignId): Promise<OnAirState>;
   closeCampaign(): Promise<OnAirState>;
   activateScene(sceneId: SceneId): Promise<OnAirState>;
+  setBlackout(on: boolean): Promise<OnAirState>;
   listScenes(campaignId: CampaignId): Promise<Scene[]>;
   createScene(campaignId: CampaignId, name: string): Promise<Scene>;
-  updateScene(scene: Scene): Promise<Scene>;
+  editScene(campaignId: CampaignId, sceneId: SceneId, edit: SceneEdit): Promise<Scene>;
+  showTransientEdit(campaignId: CampaignId, sceneId: SceneId, edit: TransientEdit): Promise<void>;
+  getUndoState(campaignId: CampaignId, sceneId: SceneId): Promise<UndoState>;
+  undoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
+  redoSceneEdit(campaignId: CampaignId, sceneId: SceneId): Promise<Scene>;
+  deleteScene(campaignId: CampaignId, sceneId: SceneId): Promise<void>;
   openBroadcast(): Promise<void>;
+  toggleBroadcastFullscreen(): Promise<boolean>;
   listMedia(campaignId: CampaignId): Promise<Media[]>;
   importMedia(campaignId: CampaignId, kind: MediaImportKind): Promise<MediaImportResult>;
+  /**
+   * Imports image files dropped from outside the app. Takes the drop's File objects, not
+   * paths: the bridge reads their paths itself, so the page cannot name other files.
+   */
+  importDroppedImages(campaignId: CampaignId, files: readonly File[]): Promise<MediaImportResult>;
   setImageCategory(
     campaignId: CampaignId,
     mediaId: MediaId,
     category: ImageCategory,
   ): Promise<Media>;
+  renameMedia(campaignId: CampaignId, mediaId: MediaId, name: string): Promise<Media>;
   deleteMedia(campaignId: CampaignId, mediaId: MediaId, confirmed: boolean): Promise<MediaDeletion>;
   listCampaigns(): Promise<Campaign[]>;
   createCampaign(name: string): Promise<Campaign>;
@@ -176,4 +337,5 @@ export interface ControlBridge extends BroadcastBridge {
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;
+  setFadeDuration(fadeDurationMs: number): Promise<Settings>;
 }

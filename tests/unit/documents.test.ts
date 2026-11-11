@@ -45,7 +45,7 @@ describe('document store', () => {
   it('writes human-readable JSON carrying the schema version', async () => {
     await createDocumentStore().write(file(), noteV1, { title: 'Taverne', body: '' });
 
-    const onDisk = JSON.parse(await fs.readFile(file(), 'utf8'));
+    const onDisk: unknown = JSON.parse(await fs.readFile(file(), 'utf8'));
     expect(onDisk).toEqual({ schemaVersion: 1, title: 'Taverne', body: '' });
   });
 

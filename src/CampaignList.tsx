@@ -16,9 +16,9 @@ export function errorMessage(error: unknown): string {
 
 interface Props {
   campaigns: Campaign[];
-  onOpen(id: CampaignId): void;
-  onCreate(name: string): Promise<void>;
-  onRename(id: CampaignId, name: string): Promise<void>;
+  onOpen: (id: CampaignId) => void;
+  onCreate: (name: string) => Promise<void>;
+  onRename: (id: CampaignId, name: string) => Promise<void>;
 }
 
 /** The Campaign list home page: pick, create or rename a Campaign. */
@@ -82,7 +82,7 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
       </div>
 
       {creating && (
-        <form className="campaign-form panel" onSubmit={submitCreate}>
+        <form className="campaign-form panel" onSubmit={(event) => void submitCreate(event)}>
           <label>
             Nom de la campagne
             <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} />
@@ -108,7 +108,7 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename }: Props) {
         {campaigns.map((campaign) => (
           <li key={campaign.id} className="campaign-item panel">
             {renaming === campaign.id ? (
-              <form className="campaign-form" onSubmit={submitRename}>
+              <form className="campaign-form" onSubmit={(event) => void submitRename(event)}>
                 <label>
                   Nouveau nom
                   <input autoFocus value={renameTo} onChange={(e) => setRenameTo(e.target.value)} />

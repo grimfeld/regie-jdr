@@ -7,6 +7,7 @@ import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
 import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
 import { createOnAir } from '../core/onAir.js';
@@ -102,7 +103,9 @@ function roleOf(sender: WebContents): WindowRole | undefined {
 /** Runs a Settings write; failures are logged, and the app waits for it before quitting. */
 function saveSetting(write: (store: SettingsStore) => Promise<unknown>) {
   if (!settings) return;
-  const pending = write(settings).catch((error) => log.error('Saving the settings failed', error));
+  const pending = write(settings).catch((error: unknown) => {
+    log.error('Saving the settings failed', error);
+  });
   pendingWrites.add(pending);
   void pending.finally(() => pendingWrites.delete(pending));
 }
@@ -135,6 +138,13 @@ function rememberBounds(window: BrowserWindow, name: SettingsWindow) {
   });
 }
 
+/** Loads a window's page; a page that fails to load is logged (the window stays blank). */
+function loadPage(window: SettingsWindow, loading: Promise<void>) {
+  loading.catch((error: unknown) => {
+    log.error(`Loading the ${window} window failed`, error);
+  });
+}
+
 async function createControlWindow() {
   const placement = await savedPlacement('control');
   controlWindow = new BrowserWindow({
@@ -149,10 +159,10 @@ async function createControlWindow() {
   });
   rememberBounds(controlWindow, 'control');
   if (process.env.VITE_DEV_SERVER_URL) {
-    controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    loadPage('control', controlWindow.loadURL(process.env.VITE_DEV_SERVER_URL));
     controlWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    controlWindow.loadFile(appIndexFile);
+    loadPage('control', controlWindow.loadFile(appIndexFile));
   }
 }
 
@@ -172,18 +182,45 @@ async function createBroadcastWindow() {
     height: 720,
     ...placement,
     title: 'Régie JDR — Diffusion',
-    backgroundColor: '#08090c',
+    // Black like the letterbox bars, whatever the theme. No minimum size: it may take a third
+    // of the screen.
+    backgroundColor: '#000000',
     autoHideMenuBar: true,
     webPreferences: secureWebPreferences('broadcast'),
   });
   rememberBounds(broadcastWindow, 'broadcast');
   broadcastWindow.setMenuBarVisibility(false);
+  leaveFullscreenOnEscape(broadcastWindow);
   // The page reads the on-air state itself (onAir:get) once subscribed, on every load.
-  if (process.env.VITE_DEV_SERVER_URL)
-    broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`);
-  else broadcastWindow.loadFile(appIndexFile, { query: { view: 'broadcast' } });
+  loadPage(
+    'broadcast',
+    process.env.VITE_DEV_SERVER_URL
+      ? broadcastWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?view=broadcast`)
+      : broadcastWindow.loadFile(appIndexFile, { query: { view: 'broadcast' } }),
+  );
   broadcastWindow.on('closed', () => {
     broadcastWindow = null;
+  });
+}
+
+/**
+ * The Broadcast window has no controls of its own: its fullscreen is toggled from the Control
+ * window. Returns whether it is now fullscreen (false when it is not open).
+ */
+function toggleBroadcastFullscreen(): boolean {
+  if (!broadcastWindow || broadcastWindow.isDestroyed()) return false;
+  const fullscreen = !broadcastWindow.isFullScreen();
+  broadcastWindow.setFullScreen(fullscreen);
+  return fullscreen;
+}
+
+/** Esc in a fullscreen window leaves fullscreen, so it can never trap the Game Master's screen. */
+function leaveFullscreenOnEscape(window: BrowserWindow) {
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape' && window.isFullScreen()) {
+      event.preventDefault();
+      window.setFullScreen(false);
+    }
   });
 }
 
@@ -220,7 +257,7 @@ function startApp() {
   });
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
-  const library = createMediaLibrary(storage);
+  const library = createMediaLibrary(storage, electronImageResizer, { log });
   const scenes = createSceneLibrary(storage);
   registerMediaProtocol(library);
   // No audio engine yet: both windows are told to halt audio (ADR-0002 decides where it lives).
@@ -236,6 +273,13 @@ function startApp() {
       },
     },
   });
+  // The renderers fade with the saved duration, carried by the on-air state.
+  settingsStore
+    .get()
+    .then(({ fadeDurationMs }) => onAir.setFadeDuration(fadeDurationMs))
+    .catch((error: unknown) => {
+      log.error('Reading the fade duration failed', error);
+    });
   // Every new on-air snapshot goes to both windows, whole and with its version.
   onAir.subscribe((snapshot) => {
     sendEvent(broadcastWindow?.webContents, 'onAir:changed', snapshot);
@@ -254,10 +298,22 @@ function startApp() {
         if (campaignId) saveSetting((store) => store.setLastActiveScene(campaignId, sceneId));
         return state;
       },
+      'onAir:set-blackout': ({ on }) => commands.setBlackout(on),
       'scenes:list': ({ campaignId }) => scenes.list(campaignId),
       'scenes:create': ({ campaignId, name }) => scenes.create(campaignId, name),
-      'scenes:update': (scene) => commands.updateScene(scene),
+      'scenes:edit': ({ campaignId, sceneId, edit }) =>
+        commands.editScene(campaignId, sceneId, edit),
+      'scenes:show-transient': ({ campaignId, sceneId, edit }) =>
+        commands.showTransientEdit(campaignId, sceneId, edit),
+      'scenes:undo-state': ({ campaignId, sceneId }) => commands.undoState(campaignId, sceneId),
+      'scenes:undo': ({ campaignId, sceneId }) => commands.undoSceneEdit(campaignId, sceneId),
+      'scenes:redo': ({ campaignId, sceneId }) => commands.redoSceneEdit(campaignId, sceneId),
+      'scenes:delete': async ({ campaignId, sceneId }) => {
+        await commands.deleteScene(campaignId, sceneId);
+        saveSetting((store) => store.forgetScene(campaignId, sceneId));
+      },
       'broadcast:open': () => createBroadcastWindow(),
+      'broadcast:toggle-fullscreen': () => toggleBroadcastFullscreen(),
       'media:list': ({ campaignId }) => library.list(campaignId),
       'media:import': async ({ campaignId, ...kind }) => {
         const files = await pickMediaFiles(kind);
@@ -265,8 +321,14 @@ function startApp() {
         result.refused.forEach((message) => log.info(`Media refused: ${message}`));
         return result;
       },
+      'media:import-dropped': async ({ campaignId, files }) => {
+        const result = await library.import(campaignId, files, { accept: 'image' });
+        result.refused.forEach((message) => log.info(`Media refused: ${message}`));
+        return result;
+      },
       'media:set-category': ({ campaignId, mediaId, category }) =>
         library.setImageCategory(campaignId, mediaId, category),
+      'media:rename': ({ campaignId, mediaId, name }) => library.rename(campaignId, mediaId, name),
       'media:delete': ({ campaignId, mediaId, confirmed }) =>
         commands.deleteMedia(campaignId, mediaId, confirmed),
       'campaigns:list': () => storage.campaigns.list(),
@@ -275,6 +337,11 @@ function startApp() {
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
       'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),
+      'settings:set-fade-duration': async ({ fadeDurationMs }) => {
+        const saved = await settingsStore.setFadeDuration(fadeDurationMs);
+        onAir.setFadeDuration(saved.fadeDurationMs);
+        return saved;
+      },
     },
     roleOf,
     log,
@@ -295,7 +362,12 @@ app.on('will-quit', (event) => {
 // Only one app per data folder: a second launch hands over to the first and quits.
 if (app.requestSingleInstanceLock()) {
   app.on('second-instance', focusControlWindow);
-  app.whenReady().then(startApp);
+  app
+    .whenReady()
+    .then(startApp)
+    .catch((error: unknown) => {
+      log.error('Starting the app failed', error);
+    });
 } else {
   app.quit();
 }

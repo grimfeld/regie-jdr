@@ -17,12 +17,16 @@ import type {
   InvokeChannels,
   MediaImportKind,
   Payload,
+  SceneEdit,
+  TransientEdit,
 } from '../shared/contract.js';
-import type { CampaignId, ImageCategory, MediaId, Scene, ThemeId } from '../shared/domain.js';
+import path from 'node:path';
+import type { CampaignId, ImageCategory, MediaId, SceneId, ThemeId } from '../shared/domain.js';
 import { isAudioRole, isImageCategory } from './media.js';
-import { parseScene } from './scenes.js';
+import { parseSceneEdit, parseTransientEdit } from './sceneEdits.js';
 import { isThemeId } from './storage/campaigns.js';
 import { isCampaignId } from './storage/index.js';
+import { parseFadeDuration } from './fades.js';
 import { isRecord } from './guards.js';
 
 /** The windows that can send messages. */
@@ -102,6 +106,11 @@ function themeOf(value: unknown): Parsed<{ theme: ThemeId }> {
   return { theme: value.theme };
 }
 
+function fadeDurationOf(value: unknown): Parsed<{ fadeDurationMs: number }> {
+  const fadeDurationMs = isRecord(value) ? parseFadeDuration(value.fadeDurationMs) : undefined;
+  return fadeDurationMs === undefined ? INVALID : { fadeDurationMs };
+}
+
 function campaignOf(value: unknown): Parsed<{ campaignId: CampaignId }> {
   if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
   return { campaignId: value.campaignId };
@@ -117,6 +126,34 @@ function mediaImport(value: unknown): Parsed<{ campaignId: CampaignId } & MediaI
   return INVALID;
 }
 
+/** More dropped files than this in one message is a malformed message. */
+export const MAX_DROPPED_FILES = 1000;
+/** Longest path Windows accepts (with the long-path prefix); longer ones are malformed. */
+const MAX_PATH_LENGTH = 32767;
+
+/**
+ * A dropped file's path: absolute, on a local drive. Paths on a network share (`\\server\...`)
+ * and device paths are refused, so a message can never make the app reach out to another host.
+ */
+function isDroppedPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_PATH_LENGTH &&
+    !value.includes('\0') &&
+    !/^[\\/]{2}/.test(value) &&
+    path.isAbsolute(value)
+  );
+}
+
+function droppedImport(value: unknown): Parsed<{ campaignId: CampaignId; files: string[] }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { files } = value;
+  if (!Array.isArray(files) || files.length > MAX_DROPPED_FILES) return INVALID;
+  if (!files.every(isDroppedPath)) return INVALID;
+  return { ...campaign, files: [...files] };
+}
+
 function categoryChange(
   value: unknown,
 ): Parsed<{ campaignId: CampaignId; mediaId: MediaId; category: ImageCategory }> {
@@ -125,6 +162,16 @@ function categoryChange(
   const { mediaId, category } = value;
   if (typeof mediaId !== 'string' || mediaId === '' || !isImageCategory(category)) return INVALID;
   return { ...campaign, mediaId, category };
+}
+
+function mediaRename(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; mediaId: MediaId; name: string }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { mediaId, name } = value;
+  if (typeof mediaId !== 'string' || mediaId === '' || !isName(name)) return INVALID;
+  return { ...campaign, mediaId, name };
 }
 
 function mediaDelete(
@@ -139,15 +186,43 @@ function mediaDelete(
   return { ...campaign, mediaId, confirmed };
 }
 
+function blackoutOf(value: unknown): Parsed<{ on: boolean }> {
+  if (!isRecord(value) || typeof value.on !== 'boolean') return INVALID;
+  return { on: value.on };
+}
+
 function newScene(value: unknown): Parsed<{ campaignId: CampaignId; name: string }> {
   const campaign = campaignOf(value);
   if (campaign === INVALID || !isRecord(value) || !isName(value.name)) return INVALID;
   return { ...campaign, name: value.name };
 }
 
-function sceneOf(value: unknown): Parsed<Scene> {
-  if (!isRecord(value) || !isCampaignId(value.campaignId)) return INVALID;
-  return parseScene(value, value.campaignId) ?? INVALID;
+function sceneOf(value: unknown): Parsed<{ campaignId: CampaignId; sceneId: SceneId }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { sceneId } = value;
+  if (typeof sceneId !== 'string' || sceneId === '') return INVALID;
+  return { ...campaign, sceneId };
+}
+
+function sceneEdit(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: SceneEdit }> {
+  const campaign = campaignOf(value);
+  if (campaign === INVALID || !isRecord(value)) return INVALID;
+  const { sceneId } = value;
+  const edit = parseSceneEdit(value.edit);
+  if (typeof sceneId !== 'string' || sceneId === '' || !edit) return INVALID;
+  return { ...campaign, sceneId, edit };
+}
+
+function transientEdit(
+  value: unknown,
+): Parsed<{ campaignId: CampaignId; sceneId: SceneId; edit: TransientEdit }> {
+  const scene = sceneOf(value);
+  if (scene === INVALID || !isRecord(value)) return INVALID;
+  const edit = parseTransientEdit(value.edit);
+  return edit ? { ...scene, edit } : INVALID;
 }
 
 // Rules --------------------------------------------------------------------
@@ -157,13 +232,22 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'onAir:open-campaign': { from: controlOnly, parse: onePayload(idOf('campaignId')) },
   'onAir:close-campaign': { from: controlOnly, parse: noPayload },
   'onAir:activate-scene': { from: controlOnly, parse: onePayload(idOf('sceneId')) },
+  'onAir:set-blackout': { from: controlOnly, parse: onePayload(blackoutOf) },
   'scenes:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'scenes:create': { from: controlOnly, parse: onePayload(newScene) },
-  'scenes:update': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:edit': { from: controlOnly, parse: onePayload(sceneEdit) },
+  'scenes:show-transient': { from: controlOnly, parse: onePayload(transientEdit) },
+  'scenes:undo-state': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:undo': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:redo': { from: controlOnly, parse: onePayload(sceneOf) },
+  'scenes:delete': { from: controlOnly, parse: onePayload(sceneOf) },
   'broadcast:open': { from: controlOnly, parse: noPayload },
+  'broadcast:toggle-fullscreen': { from: controlOnly, parse: noPayload },
   'media:list': { from: controlOnly, parse: onePayload(campaignOf) },
   'media:import': { from: controlOnly, parse: onePayload(mediaImport) },
+  'media:import-dropped': { from: controlOnly, parse: onePayload(droppedImport) },
   'media:set-category': { from: controlOnly, parse: onePayload(categoryChange) },
+  'media:rename': { from: controlOnly, parse: onePayload(mediaRename) },
   'media:delete': { from: controlOnly, parse: onePayload(mediaDelete) },
   'campaigns:list': { from: controlOnly, parse: noPayload },
   'campaigns:create': { from: controlOnly, parse: onePayload(newCampaign) },
@@ -171,10 +255,16 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
+  'settings:set-fade-duration': { from: controlOnly, parse: onePayload(fadeDurationOf) },
 };
 
 export function isInvokeChannel(channel: string): channel is InvokeChannel {
   return Object.prototype.hasOwnProperty.call(rules, channel);
+}
+
+/** The windows allowed to call `channel` (its sender rule). */
+export function sendersOf(channel: InvokeChannel): readonly WindowRole[] {
+  return rules[channel].from;
 }
 
 /** Every channel of the contract, for wiring. */

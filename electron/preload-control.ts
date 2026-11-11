@@ -1,7 +1,7 @@
 // Control window bridge: the full API (contract: ControlBridge).
 // Sandboxed preload: it can only require('electron'), so contract imports are type-only and
 // the small helpers below are repeated in preload-broadcast.ts.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   ControlBridge,
   EventChannel,
@@ -49,14 +49,29 @@ const bridge: ControlBridge = {
   openCampaign: (campaignId) => invoke('onAir:open-campaign', { campaignId }),
   closeCampaign: () => invoke('onAir:close-campaign'),
   activateScene: (sceneId) => invoke('onAir:activate-scene', { sceneId }),
+  setBlackout: (on) => invoke('onAir:set-blackout', { on }),
   listScenes: (campaignId) => invoke('scenes:list', { campaignId }),
   createScene: (campaignId, name) => invoke('scenes:create', { campaignId, name }),
-  updateScene: (scene) => invoke('scenes:update', scene),
+  editScene: (campaignId, sceneId, edit) => invoke('scenes:edit', { campaignId, sceneId, edit }),
+  showTransientEdit: (campaignId, sceneId, edit) =>
+    invoke('scenes:show-transient', { campaignId, sceneId, edit }),
+  getUndoState: (campaignId, sceneId) => invoke('scenes:undo-state', { campaignId, sceneId }),
+  undoSceneEdit: (campaignId, sceneId) => invoke('scenes:undo', { campaignId, sceneId }),
+  redoSceneEdit: (campaignId, sceneId) => invoke('scenes:redo', { campaignId, sceneId }),
+  deleteScene: (campaignId, sceneId) => invoke('scenes:delete', { campaignId, sceneId }),
   openBroadcast: () => invoke('broadcast:open'),
+  toggleBroadcastFullscreen: () => invoke('broadcast:toggle-fullscreen'),
   listMedia: (campaignId) => invoke('media:list', { campaignId }),
   importMedia: (campaignId, kind) => invoke('media:import', { campaignId, ...kind }),
+  // Only files the Game Master really dropped have a path; files made by the page have none.
+  importDroppedImages: (campaignId, files) =>
+    invoke('media:import-dropped', {
+      campaignId,
+      files: files.map((file) => webUtils.getPathForFile(file)).filter((file) => file !== ''),
+    }),
   setImageCategory: (campaignId, mediaId, category) =>
     invoke('media:set-category', { campaignId, mediaId, category }),
+  renameMedia: (campaignId, mediaId, name) => invoke('media:rename', { campaignId, mediaId, name }),
   deleteMedia: (campaignId, mediaId, confirmed) =>
     invoke('media:delete', { campaignId, mediaId, confirmed }),
   listCampaigns: () => invoke('campaigns:list'),
@@ -65,6 +80,7 @@ const bridge: ControlBridge = {
   takeNotices: () => invoke('notices:take'),
   getSettings: () => invoke('settings:get'),
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
+  setFadeDuration: (fadeDurationMs) => invoke('settings:set-fade-duration', { fadeDurationMs }),
 };
 
 contextBridge.exposeInMainWorld('regie', bridge);

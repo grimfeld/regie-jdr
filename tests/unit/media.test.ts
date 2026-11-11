@@ -5,6 +5,7 @@ import { CampaignError, createCampaign } from '../../core/campaigns';
 import { createMediaLibrary } from '../../core/media';
 import { mediaAddress } from '../../core/mediaAddress';
 import { openStorage } from '../../core/storage';
+import { fakeResizer } from './fakeResizer';
 import { useTempDir } from './tempDir';
 
 // SHA-256 of the three bytes "abc" (FIPS 180-2 test vector).
@@ -16,7 +17,7 @@ describe('media library', () => {
   async function setup() {
     const storage = openStorage(path.join(dir.path, 'data'));
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
-    const library = createMediaLibrary(storage);
+    const library = createMediaLibrary(storage, fakeResizer().resizer);
     return { storage, campaign, library };
   }
 
@@ -53,13 +54,37 @@ describe('media library', () => {
     expect(await fs.readFile(path.join(mediaFolder, `${ABC_SHA256}.png`), 'utf8')).toBe('abc');
   });
 
+  it('imports an image whose thumbnail cannot be made, and logs why', async () => {
+    const storage = openStorage(path.join(dir.path, 'data'));
+    const campaign = await createCampaign(storage.campaigns, 'Star Wars');
+    const warnings: { message: string; detail: unknown }[] = [];
+    const library = createMediaLibrary(storage, fakeResizer(['broken']).resizer, {
+      log: { warn: (message, detail) => warnings.push({ message, detail }) },
+    });
+
+    const result = await library.import(campaign.id, [await sourceFile('Ruine.png', 'broken')], {
+      accept: 'image',
+    });
+
+    expect(result.imported).toHaveLength(1);
+    expect(warnings).toEqual([
+      {
+        message: expect.stringContaining('thumbnail'),
+        detail: expect.objectContaining({ message: 'not an image' }),
+      },
+    ]);
+  });
+
   it('keeps the library after the storage is reopened (restart)', async () => {
     const { campaign, library } = await setup();
     const { imported } = await library.import(campaign.id, [await sourceFile('Cantina.png')], {
       accept: 'image',
     });
 
-    const reopened = createMediaLibrary(openStorage(path.join(dir.path, 'data')));
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
     expect(await reopened.list(campaign.id)).toEqual(imported);
   });
 
@@ -192,6 +217,26 @@ describe('media library', () => {
     expect(result.refused).toHaveLength(1);
   });
 
+  it('refuses a path that is not a file (gone, or a folder) with a message and imports the rest', async () => {
+    const { storage, campaign, library } = await setup();
+    const folder = path.join(dir.path, 'picked', 'dossier.png');
+    await fs.mkdir(folder, { recursive: true });
+
+    const result = await library.import(
+      campaign.id,
+      [path.join(dir.path, 'picked', 'parti.png'), folder, await sourceFile('Cantina.png')],
+      { accept: 'image' },
+    );
+
+    expect(result.imported.map((m) => m.name)).toEqual(['Cantina']);
+    expect(result.refused).toEqual([
+      '« parti.png » n’a pas été importé : ce n’est pas un fichier lisible.',
+      '« dossier.png » n’a pas été importé : ce n’est pas un fichier lisible.',
+    ]);
+    const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
+    expect(await fs.readdir(mediaFolder)).toEqual([`${ABC_SHA256}.png`]);
+  });
+
   it('gives imported audio the role chosen at import: Music, Sound effect or Ambience', async () => {
     const { campaign, library } = await setup();
 
@@ -221,9 +266,46 @@ describe('media library', () => {
     const character = await library.setImageCategory(campaign.id, image.id, 'character');
     expect(character).toEqual({ ...image, category: 'character' });
 
-    const reopened = createMediaLibrary(openStorage(path.join(dir.path, 'data')));
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
     expect(await reopened.list(campaign.id)).toEqual([character]);
     expect(await reopened.setImageCategory(campaign.id, image.id, 'scenery')).toEqual(image);
+  });
+
+  it('renames a Media, keeping its original file name, and keeps the name after a restart', async () => {
+    const { campaign, library } = await setup();
+    const [image] = (
+      await library.import(campaign.id, [await sourceFile('IMG_4032.png')], { accept: 'image' })
+    ).imported;
+
+    const renamed = await library.rename(campaign.id, image.id, '  Port de nuit ');
+
+    expect(renamed).toEqual({ ...image, name: 'Port de nuit', originalName: 'IMG_4032' });
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
+    expect(await reopened.list(campaign.id)).toEqual([renamed]);
+  });
+
+  it('refuses an empty or too long Media name, and a Media that no longer exists', async () => {
+    const { campaign, library } = await setup();
+    const [image] = (
+      await library.import(campaign.id, [await sourceFile('Cantina.png')], { accept: 'image' })
+    ).imported;
+
+    await expect(library.rename(campaign.id, image.id, '   ')).rejects.toThrow(
+      'Le nom du média ne peut pas être vide.',
+    );
+    await expect(library.rename(campaign.id, image.id, 'x'.repeat(101))).rejects.toThrow(
+      'Le nom du média est trop long (100 caractères au plus).',
+    );
+    await expect(library.rename(campaign.id, 'gone', 'Orc')).rejects.toThrow(
+      'Ce média n’existe plus.',
+    );
+    expect(await library.list(campaign.id)).toEqual([image]);
   });
 
   it('never changes the role of audio', async () => {
@@ -296,7 +378,10 @@ describe('media library', () => {
     await library.delete(campaign.id, cantina.id);
 
     expect(await library.list(campaign.id)).toEqual([theme]);
-    const reopened = createMediaLibrary(openStorage(path.join(dir.path, 'data')));
+    const reopened = createMediaLibrary(
+      openStorage(path.join(dir.path, 'data')),
+      fakeResizer().resizer,
+    );
     expect(await reopened.list(campaign.id)).toEqual([theme]);
     const mediaFolder = path.join(storage.campaignFolder(campaign.id), 'media');
     expect(await fs.readdir(mediaFolder)).toEqual([`${theme.contentHash}.mp3`]);
@@ -333,7 +418,7 @@ describe('media addresses', () => {
   async function importedImage() {
     const storage = openStorage(path.join(dir.path, 'data'));
     const campaign = await createCampaign(storage.campaigns, 'Star Wars');
-    const library = createMediaLibrary(storage);
+    const library = createMediaLibrary(storage, fakeResizer().resizer);
     const source = path.join(dir.path, 'Cantina.jpeg');
     await fs.writeFile(source, 'abc');
     const [media] = (await library.import(campaign.id, [source], { accept: 'image' })).imported;
@@ -381,6 +466,9 @@ describe('media addresses', () => {
       `regie-media://media/${campaign.id}/media/${ABC_SHA256}.jpeg`,
       `regie-media://media/${campaign.id}%2Fmedia/${ABC_SHA256}.jpeg`,
       `regie-media://other/${campaign.id}/${ABC_SHA256}.jpeg`,
+      `regie-media://thumbnail/${campaign.id}/${ABC_SHA256}.exe`,
+      `regie-media://thumbnail/${campaign.id}/..%2F..%2F..%2F${ABC_SHA256}.png`,
+      `regie-media://thumbnail/..%2F..%2F${campaign.id}/${ABC_SHA256}.jpeg`,
       `regie-media://media/inconnue/${ABC_SHA256}.jpeg`,
       `file:///${folder}/media/${ABC_SHA256}.jpeg`,
       'not a url',

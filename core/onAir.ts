@@ -10,11 +10,14 @@
 import type {
   CampaignId,
   Media,
+  OnAirBackground,
+  OnAirOverlay,
   OnAirScene,
   OnAirState,
   Scene,
   SceneId,
 } from '../shared/domain.js';
+import { FADE_DURATION_MS } from './fades.js';
 import { mediaAddress } from './mediaAddress.js';
 
 export interface OnAir {
@@ -31,6 +34,22 @@ export interface OnAir {
    * nothing, when `sceneId` is not the Active Scene.
    */
   showActiveScene(sceneId: SceneId, scene: OnAirScene): OnAirState | undefined;
+  /**
+   * Takes a deleted Scene off air: when `sceneId` is the Active Scene, nothing is on air any
+   * more (the Campaign stays open, Blackout as it is). Returns undefined, changing nothing,
+   * when it is not the Active Scene.
+   */
+  clearActiveScene(sceneId: SceneId): OnAirState | undefined;
+  /**
+   * Starts or ends Blackout: the broadcast fades to black, the Active Scene stays as it is.
+   * Activating a Scene leaves it as it is; opening, switching or closing a Campaign clears it.
+   */
+  setBlackout(on: boolean): OnAirState;
+  /**
+   * Sets the fade duration every renderer uses (the Settings value, already checked). The same
+   * duration changes nothing, so reading it from Settings at start-up starts no new version.
+   */
+  setFadeDuration(fadeDurationMs: number): OnAirState;
   /** Calls `listener` with each new snapshot. Returns the unsubscribe function. */
   subscribe(listener: (snapshot: OnAirState) => void): () => void;
 }
@@ -41,7 +60,14 @@ function copy(state: OnAirState): OnAirState {
 }
 
 export function createOnAir(): OnAir {
-  let state: OnAirState = { campaignId: null, activeSceneId: null, scene: null, version: 0 };
+  let state: OnAirState = {
+    campaignId: null,
+    activeSceneId: null,
+    scene: null,
+    blackout: false,
+    fadeDurationMs: FADE_DURATION_MS.default,
+    version: 0,
+  };
   const listeners = new Set<(snapshot: OnAirState) => void>();
 
   function change(next: Omit<OnAirState, 'version'>): OnAirState {
@@ -52,17 +78,26 @@ export function createOnAir(): OnAir {
 
   return {
     current: () => copy(state),
-    openCampaign: (campaignId) => change({ campaignId, activeSceneId: null, scene: null }),
-    closeCampaign: () => change({ campaignId: null, activeSceneId: null, scene: null }),
+    openCampaign: (campaignId) =>
+      change({ ...state, campaignId, activeSceneId: null, scene: null, blackout: false }),
+    closeCampaign: () =>
+      change({ ...state, campaignId: null, activeSceneId: null, scene: null, blackout: false }),
     activateScene: (sceneId, scene) => {
       const { campaignId } = state;
       if (campaignId === null) throw new Error('Cannot Activate a Scene: no Campaign is open');
-      return change({ campaignId, activeSceneId: sceneId, scene });
+      return change({ ...state, campaignId, activeSceneId: sceneId, scene });
     },
     showActiveScene: (sceneId, scene) => {
       if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
-      return change({ campaignId: state.campaignId, activeSceneId: sceneId, scene });
+      return change({ ...state, scene });
     },
+    clearActiveScene: (sceneId) => {
+      if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;
+      return change({ ...state, activeSceneId: null, scene: null });
+    },
+    setBlackout: (on) => change({ ...state, blackout: on }),
+    setFadeDuration: (fadeDurationMs) =>
+      fadeDurationMs === state.fadeDurationMs ? copy(state) : change({ ...state, fadeDurationMs }),
     subscribe: (listener) => {
       const own = (snapshot: OnAirState) => listener(snapshot);
       listeners.add(own);
@@ -74,8 +109,10 @@ export function createOnAir(): OnAir {
 }
 
 /**
- * What players see of a Scene: its visible Backgrounds and Overlays whose Media is in
- * `library`, in order, with their Media addresses. Nothing private (name, notes, Labels).
+ * The broadcast projection of a Scene: what players see of it, and nothing else (see
+ * OnAirScene). Visible Backgrounds and Overlays whose Media is an image in `library`, bottom
+ * to top, with their Media addresses; an Overlay's Label text only when the Label is shown;
+ * the Scene title only when set. Never the Scene's name, its notes or Media names.
  */
 export function onAirSceneOf(scene: Scene, library: readonly Media[]): OnAirScene {
   const addressOf = (mediaId: string) => {
@@ -83,16 +120,66 @@ export function onAirSceneOf(scene: Scene, library: readonly Media[]): OnAirScen
     return media && mediaAddress(media);
   };
   const backgrounds: OnAirScene['backgrounds'] = [];
-  for (const { id, mediaId, fit, position, visible } of scene.backgrounds) {
+  for (const { id, mediaId, fit, zoom, focus, visible } of scene.backgrounds) {
     const src = visible ? addressOf(mediaId) : undefined;
-    if (src) backgrounds.push({ id, src, fit, position: { ...position } });
+    if (src) backgrounds.push({ id, src, fit, zoom, focus: { ...focus } });
   }
   const overlays: OnAirScene['overlays'] = [];
-  for (const { id, mediaId, position, scale, zIndex, visible } of scene.overlays) {
+  for (const { id, mediaId, position, height, visible, label } of scene.overlays) {
     const src = visible ? addressOf(mediaId) : undefined;
-    if (src) overlays.push({ id, src, position: { ...position }, scale, zIndex });
+    if (!src) continue;
+    const shownLabel = label?.visible && label.text.trim() ? label.text : undefined;
+    overlays.push({
+      id,
+      src,
+      position: { ...position },
+      height,
+      ...(shownLabel !== undefined && { label: shownLabel }),
+    });
   }
-  return { backgrounds, overlays };
+  const title = scene.title.trim();
+  return { backgrounds, overlays, ...(title && { title }) };
+}
+
+/** The full Selected Scene as the editor draws it (src/SceneCanvas.tsx `Picture`). */
+export interface EditorPicture {
+  backgrounds: (OnAirBackground & { hidden: boolean })[];
+  overlays: (OnAirOverlay & { hidden: boolean; labelHidden?: boolean })[];
+  title?: string;
+}
+
+/**
+ * What the editor draws of the Selected Scene: every placement whose Media is an image in
+ * `library`, Hidden ones included and marked `hidden`, so the Game Master sees them in the
+ * GM-only style; Labels with text, marked `labelHidden` when Hidden; the Scene title when set.
+ * Only for the Control window: the Broadcast window gets `onAirSceneOf`.
+ */
+export function editorPictureOf(scene: Scene, library: readonly Media[]): EditorPicture {
+  const addressOf = (mediaId: string) => {
+    const media = library.find((item) => item.id === mediaId && item.kind === 'image');
+    return media && mediaAddress(media);
+  };
+  const backgrounds: EditorPicture['backgrounds'] = [];
+  for (const { id, mediaId, fit, zoom, focus, visible } of scene.backgrounds) {
+    const src = addressOf(mediaId);
+    if (src) backgrounds.push({ id, src, fit, zoom, focus: { ...focus }, hidden: !visible });
+  }
+  const overlays: EditorPicture['overlays'] = [];
+  for (const { id, mediaId, position, height, visible, label } of scene.overlays) {
+    const src = addressOf(mediaId);
+    if (!src) continue;
+    const labelled = label?.text.trim() ? label : undefined;
+    overlays.push({
+      id,
+      src,
+      position: { ...position },
+      height,
+      hidden: !visible,
+      ...(labelled && { label: labelled.text, labelHidden: !labelled.visible }),
+    });
+  }
+  const title = scene.title.trim();
+  return { backgrounds, overlays, ...(title && { title }) };
 }
 
 /**

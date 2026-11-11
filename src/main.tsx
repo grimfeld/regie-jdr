@@ -6,10 +6,24 @@ import { Notices } from './notices';
 import './styles.css';
 
 const isBroadcast = new URLSearchParams(window.location.search).get('view') === 'broadcast';
+// The Broadcast window's page styles (no theme, no minimum width, no cursor) key on this.
+if (isBroadcast) document.documentElement.dataset.view = 'broadcast';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+// A drop that no drop target took (any drop in the Broadcast window, which takes none) is
+// refused, so a file dragged in from Explorer never opens in place of the app's page.
+window.addEventListener('dragover', (event) => {
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+});
+window.addEventListener('drop', (event) => event.preventDefault());
+
+const root = document.getElementById('root');
+if (!root) throw new Error('index.html has no #root element');
+
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <ErrorBoundary>
+    <ErrorBoundary window={isBroadcast ? 'broadcast' : 'control'}>
       <App />
     </ErrorBoundary>
     {isBroadcast ? null : <Notices />}

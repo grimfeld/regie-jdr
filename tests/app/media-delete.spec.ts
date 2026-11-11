@@ -14,7 +14,7 @@ import {
 const IMAGE = 'red-16x9';
 
 function library(page: Page) {
-  return page.getByRole('list', { name: 'Médias' });
+  return page.getByRole('list', { name: 'Images' });
 }
 
 function scenesPanel(page: Page) {
@@ -89,7 +89,9 @@ test('deleting Media used by Scenes lists them; confirming removes their placeme
   await showImageAsBackground(controlWindow);
   await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
   const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  const shown = broadcastWindow.locator('main.broadcast-screen .broadcast-layer img:not([hidden])');
+  const shown = broadcastWindow.locator(
+    'main.broadcast-screen .canvas-background img:not([hidden])',
+  );
   await expect(shown).toHaveCount(1);
 
   // Cancelling changes nothing.
@@ -106,7 +108,7 @@ test('deleting Media used by Scenes lists them; confirming removes their placeme
   await deleteButton(controlWindow).click();
   await confirmation(controlWindow).getByRole('button', { name: 'Supprimer quand même' }).click();
   await expect(library(controlWindow).getByRole('listitem')).toHaveCount(0);
-  await expect(broadcastWindow.locator('.broadcast-layer')).toHaveCount(0);
+  await expect(broadcastWindow.locator('.canvas-background')).toHaveCount(0);
   await expect(
     editor(controlWindow).getByRole('list', { name: 'Arrière-plans' }).getByRole('listitem'),
   ).toHaveCount(0);

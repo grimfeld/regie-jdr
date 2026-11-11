@@ -1,13 +1,17 @@
 /**
  * Global Settings (one document, `<root>/settings.json`): the home page theme, the Control and
- * Broadcast window bounds, and the last Active Scene of each Campaign (for highlighting only:
- * nothing goes on air after a restart). No Electron dependency.
+ * Broadcast window bounds, the last Active Scene of each Campaign (for highlighting only:
+ * nothing goes on air after a restart) and the fade duration. No Electron dependency.
  */
 import type { CampaignId, SceneId, Settings, ThemeId, WindowBounds } from '../shared/domain.js';
 import { isThemeId } from './storage/campaigns.js';
 import type { DocumentType, Storage } from './storage/index.js';
+import { FADE_DURATION_MS, parseFadeDuration } from './fades.js';
 import { isRecord } from './guards.js';
 import { createSerialQueue } from './serialQueue.js';
+
+/** A Settings change refused, with a message the Game Master can read. */
+export class SettingsError extends Error {}
 
 export type SettingsWindow = keyof Settings['windowBounds'];
 
@@ -18,13 +22,22 @@ export interface SettingsStore {
   setTheme(theme: ThemeId): Promise<Settings>;
   setWindowBounds(window: SettingsWindow, bounds: WindowBounds): Promise<Settings>;
   setLastActiveScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
+  /** A deleted Scene: no longer its Campaign's last Active Scene, if it was. */
+  forgetScene(campaignId: CampaignId, sceneId: SceneId): Promise<Settings>;
+  /** Throws a SettingsError for a duration outside FADE_DURATION_MS. */
+  setFadeDuration(fadeDurationMs: number): Promise<Settings>;
 }
 
 /** Theme of the home page until the Game Master picks one. */
 export const DEFAULT_HOME_THEME: ThemeId = 'imperium';
 
 function defaults(): Settings {
-  return { theme: DEFAULT_HOME_THEME, windowBounds: {}, lastActiveSceneByCampaign: {} };
+  return {
+    theme: DEFAULT_HOME_THEME,
+    windowBounds: {},
+    lastActiveSceneByCampaign: {},
+    fadeDurationMs: FADE_DURATION_MS.default,
+  };
 }
 
 /** Whole pixels, a size of at least 1: anything else is not a usable window rectangle. */
@@ -40,9 +53,10 @@ export function parseWindowBounds(value: unknown): WindowBounds | undefined {
 
 const settingsDocument: DocumentType<Settings> = {
   name: 'settings',
-  version: 1,
-  migrations: {},
-  parse({ theme, windowBounds, lastActiveSceneByCampaign }) {
+  version: 2,
+  // Version 2 adds the fade duration, at its default.
+  migrations: { 1: (fields) => ({ ...fields, fadeDurationMs: FADE_DURATION_MS.default }) },
+  parse({ theme, windowBounds, lastActiveSceneByCampaign, fadeDurationMs }) {
     if (!isThemeId(theme) || !isRecord(windowBounds) || !isRecord(lastActiveSceneByCampaign)) {
       return undefined;
     }
@@ -55,7 +69,12 @@ const settingsDocument: DocumentType<Settings> = {
     for (const [campaignId, sceneId] of Object.entries(lastActiveSceneByCampaign)) {
       if (typeof sceneId === 'string' && sceneId !== '') lastActive[campaignId] = sceneId;
     }
-    return { theme, windowBounds: bounds, lastActiveSceneByCampaign: lastActive };
+    return {
+      theme,
+      windowBounds: bounds,
+      lastActiveSceneByCampaign: lastActive,
+      fadeDurationMs: parseFadeDuration(fadeDurationMs) ?? FADE_DURATION_MS.default,
+    };
   },
 };
 
@@ -86,5 +105,22 @@ export function createSettingsStore(storage: Storage): SettingsStore {
         ...settings,
         lastActiveSceneByCampaign: { ...settings.lastActiveSceneByCampaign, [campaignId]: sceneId },
       })),
+    forgetScene: (campaignId, sceneId) =>
+      change((settings) => {
+        if (settings.lastActiveSceneByCampaign[campaignId] !== sceneId) return settings;
+        const { [campaignId]: _forgotten, ...kept } = settings.lastActiveSceneByCampaign;
+        return { ...settings, lastActiveSceneByCampaign: kept };
+      }),
+    setFadeDuration: (fadeDurationMs) => {
+      if (parseFadeDuration(fadeDurationMs) === undefined) {
+        const { min, max } = FADE_DURATION_MS;
+        return Promise.reject(
+          new SettingsError(
+            `La durée des fondus doit être comprise entre ${min / 1000} et ${max / 1000} secondes.`,
+          ),
+        );
+      }
+      return change((settings) => ({ ...settings, fadeDurationMs }));
+    },
   };
 }

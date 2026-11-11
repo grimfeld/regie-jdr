@@ -1,8 +1,15 @@
 import { expect, fixture, openBroadcastWindow, test } from './harness';
 
-type Rogue = { rogue: { invoke(channel: string, ...args: unknown[]): Promise<unknown> } };
-type Recorder = { calls: unknown[][]; unsubscribe(): void };
-type Bridge = { regie: Record<string, (...args: unknown[]) => unknown> };
+interface Rogue {
+  rogue: { invoke(channel: string, ...args: unknown[]): Promise<unknown> };
+}
+interface Recorder {
+  calls: unknown[][];
+  unsubscribe(): void;
+}
+interface Bridge {
+  regie: Record<string, (...args: unknown[]) => unknown>;
+}
 
 test('the Control window gets the full bridge, the Broadcast window only reads and subscribes', async ({
   regie,
@@ -17,8 +24,12 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'createCampaign',
     'createScene',
     'deleteMedia',
+    'deleteScene',
+    'editScene',
     'getOnAir',
     'getSettings',
+    'getUndoState',
+    'importDroppedImages',
     'importMedia',
     'listCampaigns',
     'listMedia',
@@ -27,11 +38,17 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'onOnAirChanged',
     'openBroadcast',
     'openCampaign',
+    'redoSceneEdit',
+    'renameMedia',
+    'setBlackout',
+    'setFadeDuration',
     'setHomeTheme',
     'setImageCategory',
+    'showTransientEdit',
     'takeNotices',
+    'toggleBroadcastFullscreen',
+    'undoSceneEdit',
     'updateCampaign',
-    'updateScene',
   ]);
   expect(await broadcastWindow.evaluate(keysOf)).toEqual([
     'getOnAir',
@@ -63,7 +80,14 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
   expect(outcome).toContain('rejected');
   expect(
     await controlWindow.evaluate(() => (window as unknown as Bridge).regie.getOnAir()),
-  ).toEqual({ campaignId: null, activeSceneId: null, scene: null, version: 0 });
+  ).toEqual({
+    campaignId: null,
+    activeSceneId: null,
+    scene: null,
+    blackout: false,
+    fadeDurationMs: 600,
+    version: 0,
+  });
   await expect
     .poll(() =>
       mainLog.filter(
@@ -85,7 +109,7 @@ test('a malformed message from the Control window is rejected and logged', async
     const { rogue } = window as unknown as Rogue;
     return rogue.invoke('onAir:open-campaign', { campaignId: 42 }).then(
       () => 'accepted',
-      (error) => String(error),
+      (error: unknown) => String(error),
     );
   });
 
@@ -122,9 +146,18 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
   const { id: campaignId } = (await gm('createCampaign', 'Star Wars')) as { id: string };
   const { id: sceneId } = (await gm('createScene', campaignId, 'Cantina')) as { id: string };
   await gm('openCampaign', campaignId);
-  await expect
-    .poll(calls)
-    .toEqual([[{ campaignId, activeSceneId: null, scene: null, version: 1 }]]);
+  await expect.poll(calls).toEqual([
+    [
+      {
+        campaignId,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        fadeDurationMs: 600,
+        version: 1,
+      },
+    ],
+  ]);
 
   await broadcastWindow.evaluate(() =>
     (window as unknown as { recorder: Recorder }).recorder.unsubscribe(),
@@ -135,17 +168,4 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
     '2',
   );
   expect(await calls()).toHaveLength(1);
-});
-
-test('the Broadcast window fullscreen button toggles fullscreen without its bridge', async ({
-  regie,
-}) => {
-  const { app, controlWindow } = regie;
-  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
-  const isFullscreen = () => broadcastWindow.evaluate(() => document.fullscreenElement !== null);
-
-  await broadcastWindow.getByTitle('Plein écran').click();
-  await expect.poll(isFullscreen).toBe(true);
-  await broadcastWindow.getByTitle('Plein écran').click();
-  await expect.poll(isFullscreen).toBe(false);
 });

@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { Campaign, CampaignId, ThemeId } from '../../shared/domain.js';
@@ -58,7 +59,7 @@ export function createCampaignRepository(deps: {
 
   return {
     async list() {
-      let entries: import('node:fs').Dirent[];
+      let entries: Dirent[];
       try {
         entries = await fsp.readdir(campaignsFolder, { withFileTypes: true });
       } catch (error) {
