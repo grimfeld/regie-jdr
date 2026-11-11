@@ -15,6 +15,17 @@ Review checklist for every Theme: no occult, Chaos or Mechanicus imagery; no Gam
 
 Checklist, 2026-11-11: no occult, Chaos or Mechanicus imagery; no Games Workshop logos, iconography or typefaces; every licence known. The body font stays the system's Arial.
 
+## Imperium (`src/themes/imperium.css`)
+
+| Asset | Kind | Source | Licence |
+|---|---|---|---|
+| Cinzel, variable weight 400–900, Latin subset (`src/themes/fonts/cinzel-latin-wght.woff2`) | Display font | Natanael Gama, The Cinzel Project Authors (github.com/NDISCOVER/Cinzel); file as distributed in the Fontsource package `@fontsource-variable/cinzel` 5.3.0 (`cinzel-latin-wght-normal.woff2`) | SIL OFL 1.1, no Reserved Font Name; licence text beside the font, `src/themes/fonts/cinzel-OFL.txt` |
+| Lozenge diapering (`--texture`) | Texture, window frame only | Drawn in the repo: two crossed CSS `repeating-linear-gradient`s | Repo's own |
+| Crimson banner and darkened edges (`--frame`) | Frame | Drawn in the repo: a CSS `linear-gradient` and `radial-gradient` | Repo's own |
+| Gold double rule under the title bar; crimson-and-gold rule on panel tops; heater-shield brand mark | Frame ornaments | Drawn in the repo: CSS borders, an inset `box-shadow` and a `border-radius` | Repo's own |
+
+Checklist, 2026-11-11: no occult, Chaos or Mechanicus imagery; no Games Workshop logos, iconography or typefaces (Cinzel is a Roman inscriptional face, not a Games Workshop one); every licence known. No animation. The body font stays the system's Arial, for reading Notes over a long session.
+
 ## Fantasy (`src/themes/fantasy.css`)
 
 | Asset | Kind | Source | Licence |

@@ -1,39 +1,96 @@
-/* Imperium: sets every token of tokens.css. Its finished version comes with #67. */
+/*
+ * Imperium: monumental gothic, red and gold with parchment accents (spec #58, #67). Sets every
+ * token of tokens.css. Strictly imperial: heraldic devices only (a lozenge diaper, a shield, gold
+ * rules), no Mechanicus, Chaos or occult imagery, no Games Workshop logo, iconography or
+ * typeface. Its display font, Cinzel, is bundled (fonts/, docs/theme-assets.md). Its ornaments
+ * are CSS drawn here, on the window frame only: lists, the Scene editor, Notes and the library
+ * keep their solid surfaces. It has no animation.
+ */
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('./fonts/cinzel-latin-wght.woff2') format('woff2');
+}
+
 [data-theme='imperium'] {
-  --page: #111013;
-  --title-bar: #111319;
-  --frame: radial-gradient(
-    ellipse at 80% -20%,
-    color-mix(in srgb, var(--accent) 12%, transparent),
-    transparent 45%
-  );
-  --texture: none;
+  --page: #0f0b0b;
+  --title-bar: #170d0e;
+  /* A crimson banner falling from the top of the window, the edges darkened like old stone. */
+  --frame:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--accent) 22%, transparent),
+      transparent 280px
+    ),
+    radial-gradient(ellipse at 50% 30%, transparent 55%, rgb(0 0 0 / 0.35));
+  /* Heraldic diapering: a faint gold lozenge lattice, static. */
+  --texture:
+    repeating-linear-gradient(
+      45deg,
+      color-mix(in srgb, var(--accent-strong) 5%, transparent) 0 1px,
+      transparent 1px 24px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--accent-strong) 5%, transparent) 0 1px,
+      transparent 1px 24px
+    );
 
-  --surface: #1d191b;
-  --surface-raised: #292124;
-  --surface-sunken: #15181e;
-  --border: #49363a;
-  --control-border: #777;
+  --surface: #1b1515;
+  --surface-raised: #251c1c;
+  --surface-sunken: #130f0f;
+  --border: #4d3a33;
+  --control-border: #8a7458;
 
-  --text: #eee5d8;
-  --text-secondary: #b0a29a;
-  --accent: #a43b3f;
-  --accent-strong: #d5b16d;
-  --on-accent: #eee5d8;
+  --text: #efe4cc;
+  --text-secondary: #b9a688;
+  --accent: #8f1d22;
+  --accent-strong: #d8b46a;
+  --on-accent: #f6ead0;
 
   --status-live: #c62828;
   --on-status-live: #fff;
   --status-blackout: var(--accent-strong);
-  --status-warning: var(--accent);
-  --status-error: #e08a7a;
+  --status-warning: var(--accent-strong);
+  --status-error: #ec9a88;
   --status-missing: var(--accent-strong);
-  --status-missing-fill: #1a1a1f;
-  --status-missing-fill-alt: #22222a;
+  --status-missing-fill: #1a1414;
+  --status-missing-fill-alt: #241b1b;
   --status-hidden-opacity: 0.6;
   --status-session: #83a77c;
 
   --font-body: Arial, Helvetica, sans-serif;
-  --font-display: 'Arial Narrow', Impact, sans-serif;
-  --radius: 7px;
-  --radius-small: 4px;
+  --font-display: 'Cinzel', 'Times New Roman', serif;
+  --radius: 2px;
+  --radius-small: 1px;
+
+  /* Native controls (sliders, fields, scrollbars) dark and gold, not system blue on white. */
+  color-scheme: dark;
+  accent-color: var(--accent-strong);
+}
+
+/* Title bar: a gold double rule under it, as on a herald's banner. */
+[data-theme='imperium'] .topbar {
+  border-bottom: 3px double color-mix(in srgb, var(--accent-strong) 60%, transparent);
+}
+
+/* The brand mark is cut as a heater shield. */
+[data-theme='imperium'] .brand-mark {
+  border-color: var(--accent-strong);
+  border-radius: 2px 2px 50% 50% / 2px 2px 45% 45%;
+}
+
+/* Panel borders: a crimson rule along the top, lined in gold. The panel itself stays solid. */
+[data-theme='imperium'] .panel {
+  border-top: 3px solid var(--accent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent-strong) 45%, transparent);
+}
+
+/* Monumental titles: Cinzel's capitals, spaced like an inscription. */
+[data-theme='imperium'] h1,
+[data-theme='imperium'] h2,
+[data-theme='imperium'] .brand strong {
+  letter-spacing: 1.5px;
 }
