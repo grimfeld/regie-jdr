@@ -3,7 +3,7 @@ import { createCampaign, expect, test } from './harness';
 
 /*
  * The top bar at the Control window's minimum width (1080 px, electron/main.ts): every button
- * on one line, "Toujours au premier plan" (#72) included, none cut off or wrapped, nothing
+ * on one line, "Toujours au premier plan" (#72) and "Raccourcis" (#71) included, none cut off or wrapped, nothing
  * pushed past the window's edge, in every Theme (their display fonts differ in width).
  */
 
@@ -78,6 +78,7 @@ for (const theme of THEMES) {
       'Ouvrir la diffusion',
       'Plein écran',
       'Toujours au premier plan',
+      'Raccourcis',
     ]);
     expect(layout.topbarOverflow).toBeLessThanOrEqual(0);
     expect(layout.topbarRight).toBeLessThanOrEqual(layout.pageWidth);

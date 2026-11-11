@@ -59,7 +59,7 @@ function themedFields(page: Page): Promise<FieldReport> {
     );
     const nameOf = (field: Element) =>
       field.getAttribute('aria-label') ??
-      field.closest('label')?.firstChild?.textContent?.trim() ??
+      (field as HTMLInputElement).labels?.[0]?.firstChild?.textContent?.trim() ??
       field.outerHTML.slice(0, 80);
     return {
       checked: fields.map(nameOf),
@@ -119,5 +119,11 @@ for (const theme of THEMES) {
       ]),
     );
     expect(campaign.unthemed).toEqual([]);
+
+    // The shortcuts page (#71).
+    await page.getByRole('button', { name: 'Raccourcis' }).click();
+    const shortcuts = await themedFields(page);
+    expect(shortcuts.checked).toContain('Forcer le Cut (avec une touche d’activation)');
+    expect(shortcuts.unthemed).toEqual([]);
   });
 }
