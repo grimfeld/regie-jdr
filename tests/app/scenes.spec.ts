@@ -339,6 +339,50 @@ test('Scenes are dragged into their running order, new ones go last, and the ord
   }
 });
 
+test('a focused Scene moves up with Alt+Up and down with Alt+Down, and keeps its place after a restart', async ({
+  regie,
+}) => {
+  const { app, controlWindow: page, dataDir } = regie;
+  await createCampaign(page, 'Star Wars');
+  await createScene(page, 'Cantina');
+  await createScene(page, 'Hangar');
+  await createScene(page, 'Dune');
+  const names = (on: Page) =>
+    scenesPanel(on).getByRole('list', { name: 'Scènes de la campagne' }).getByRole('button');
+
+  await sceneEntry(page, 'Dune').focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Cantina', 'Dune', 'Hangar']);
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Dune', 'Cantina', 'Hangar']);
+  // The moved Scene keeps the focus; the first one goes no higher.
+  await expect(sceneEntry(page, 'Dune')).toBeFocused();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Dune', 'Cantina', 'Hangar']);
+
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(names(page)).toHaveText(['Cantina', 'Dune', 'Hangar']);
+  await expect(sceneEntry(page, 'Dune')).toBeFocused();
+  await sceneEntry(page, 'Cantina').focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(names(page)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+
+  // Away from the list the keys move nothing.
+  await page.locator('body').click({ position: { x: 1, y: 1 } });
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(names(page)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+  await app.close();
+
+  const restarted = await launchApp(dataDir);
+  try {
+    await expect(names(restarted.controlWindow)).toHaveText(['Dune', 'Hangar', 'Cantina']);
+  } finally {
+    await restarted.app.close();
+  }
+});
+
 test('a duplicated Scene is a private copy right after its source, edited on its own, and kept after a restart', async ({
   regie,
 }) => {

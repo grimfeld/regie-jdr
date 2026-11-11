@@ -197,3 +197,30 @@ describe('Scene shortcuts', () => {
     expect(keyLabelOf('blackout')).toBe('B');
   });
 });
+
+describe('running order shortcuts', () => {
+  it('moves a Scene up with Alt+Up and down with Alt+Down, repeating while held', () => {
+    expect(shortcutOf(press('ArrowUp', 'ArrowUp', { alt: true }))).toBe('move-scene-up');
+    expect(shortcutOf(press('ArrowDown', 'ArrowDown', { alt: true }))).toBe('move-scene-down');
+    expect(shortcutOf(press('ArrowDown', 'ArrowDown', { alt: true, repeat: true }))).toBe(
+      'move-scene-down',
+    );
+  });
+
+  it('keeps Ctrl+Up and Ctrl+Down for Activate, and refuses other modifiers', () => {
+    expect(shortcutOf(press('ArrowUp', 'ArrowUp', { ctrl: true }))).toBe('activate-previous');
+    expect(shortcutOf(press('ArrowUp', 'ArrowUp', { alt: true, shift: true }))).toBeUndefined();
+    expect(shortcutOf(press('ArrowDown', 'ArrowDown', { alt: true, meta: true }))).toBeUndefined();
+  });
+
+  it('never fires while typing in a field', () => {
+    expect(
+      shortcutOf({ ...press('ArrowUp', 'ArrowUp', { alt: true }), target: input('text') }),
+    ).toBeUndefined();
+  });
+
+  it('shows its keys', () => {
+    expect(keyLabelOf('move-scene-up')).toBe('Alt+↑');
+    expect(keyLabelOf('move-scene-down')).toBe('Alt+↓');
+  });
+});

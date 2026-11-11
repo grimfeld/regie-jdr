@@ -50,9 +50,20 @@ export type EditShortcut = 'undo' | 'redo';
  */
 export type ActivateShortcut = 'activate' | 'activate-next' | 'activate-previous';
 
+/**
+ * The running order shortcuts: move the Scene whose row has the focus one place up or down.
+ * Alt, since Ctrl+Up and Ctrl+Down Activate.
+ */
+export type RunningOrderShortcut = 'move-scene-up' | 'move-scene-down';
+
 /** Everything a key can do in the Control window. */
 export type Shortcut =
-  EditShortcut | ActivateShortcut | 'blackout' | 'silence' | `pad-${PadKeyPosition}`;
+  | EditShortcut
+  | ActivateShortcut
+  | RunningOrderShortcut
+  | 'blackout'
+  | 'silence'
+  | `pad-${PadKeyPosition}`;
 
 /**
  * One key press a shortcut answers to. `code` names a physical key, whatever the layout (the
@@ -74,7 +85,12 @@ export interface KeyBinding {
 export type KeyMap = Readonly<Record<Shortcut, readonly KeyBinding[]>>;
 
 /** Shortcuts that fire again while their key is held; the others fire once per press. */
-const REPEATING: ReadonlySet<Shortcut> = new Set<Shortcut>(['undo', 'redo']);
+const REPEATING: ReadonlySet<Shortcut> = new Set<Shortcut>([
+  'undo',
+  'redo',
+  'move-scene-up',
+  'move-scene-down',
+]);
 
 /**
  * Shortcuts whose keys answer with or without Shift, whatever their bindings say: Shift is not
@@ -104,6 +120,8 @@ export const KEY_MAP: KeyMap = {
   activate: [{ key: 'enter', ctrl: true, label: 'Ctrl+Entrée' }],
   'activate-next': [{ key: 'arrowdown', ctrl: true, label: 'Ctrl+↓' }],
   'activate-previous': [{ key: 'arrowup', ctrl: true, label: 'Ctrl+↑' }],
+  'move-scene-up': [{ key: 'arrowup', alt: true, label: 'Alt+↑' }],
+  'move-scene-down': [{ key: 'arrowdown', alt: true, label: 'Alt+↓' }],
   blackout: [{ key: 'b', label: 'B' }],
   silence: [{ key: 's', label: 'S' }],
   'pad-1': padBindings(1),
@@ -140,6 +158,8 @@ const SHORTCUTS: readonly Shortcut[] = [
   'activate',
   'activate-next',
   'activate-previous',
+  'move-scene-up',
+  'move-scene-down',
   'blackout',
   'silence',
   ...PAD_KEY_POSITIONS.map((position) => `pad-${position}` as const),
