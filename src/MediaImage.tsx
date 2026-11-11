@@ -8,19 +8,21 @@ interface Props {
   /** Which window shows it: decides what a missing Media looks like. */
   window: 'control' | 'broadcast';
   className?: string;
-  /** Called with the image's natural size once it has loaded and is decoded. */
+  /** Called with the image's natural size once it has loaded. */
   onLoad?: (size: { width: number; height: number }) => void;
+  /** Called once the loaded image is decoded too: it can be drawn whole from then on. */
+  onDecoded?: () => void;
 }
 
 /**
  * An image Media. Every window shows image Media through this component, so a Media whose file
  * was deleted or moved outside the app (its address answers 404) never shows a broken image:
  * - Control window: a "Média manquant" placeholder, so the Game Master knows.
- * - Broadcast window: nothing at all; the image also stays hidden until it has loaded.
- * An image counts as loaded once decoded too, so it is never drawn half-done (the renderer
- * fades it in from then on).
+ * - Broadcast window: nothing at all; the image also stays hidden until it has loaded and is
+ *   decoded, so it is never drawn half-done.
  */
-export function MediaImage({ address, alt, window: shownIn, className, onLoad }: Props) {
+export function MediaImage(props: Props) {
+  const { address, alt, window: shownIn, className, onLoad, onDecoded } = props;
   // Per address, so another address (another Media, or the file put back) is tried again.
   const [state, setState] = useState<{ address: string; status: 'loaded' | 'missing' }>();
   const status = state?.address === address ? state.status : 'loading';
@@ -48,13 +50,13 @@ export function MediaImage({ address, alt, window: shownIn, className, onLoad }:
       hidden={shownIn === 'broadcast' && status !== 'loaded'}
       onLoad={(event) => {
         const image = event.currentTarget;
-        const size = { width: image.naturalWidth, height: image.naturalHeight };
-        const loaded = () => {
+        onLoad?.({ width: image.naturalWidth, height: image.naturalHeight });
+        const decoded = () => {
           setState({ address, status: 'loaded' });
-          onLoad?.(size);
+          onDecoded?.();
         };
         // A decoding failure still leaves a loaded image: show it as the browser can.
-        void image.decode().then(loaded, loaded);
+        void image.decode().then(decoded, decoded);
       }}
       onError={() => setState({ address, status: 'missing' })}
     />

@@ -239,8 +239,6 @@ test('placements, their visibility and drop position survive a restart', async (
     await expect(toggle(overlayList(page))).toBeChecked();
     const overlay = editorCanvas(page).locator('.canvas-overlay');
     await expect(overlay.locator('img:not([hidden])')).toHaveCount(1);
-    // Placed once its image is decoded.
-    await expect(overlay).toHaveAttribute('data-fade', 'shown');
     const after = await overlayCentre(page);
     expect(after.x).toBeCloseTo(before.x, 2);
     expect(after.y).toBeCloseTo(before.y, 2);

@@ -148,10 +148,8 @@ function Placement(props: PlacementProps) {
         address={item.src}
         alt=""
         window={shownIn}
-        onLoad={(natural) => {
-          onImageSize(item.src, natural);
-          setDecoded(item.src);
-        }}
+        onLoad={(natural) => onImageSize(item.src, natural)}
+        onDecoded={() => setDecoded(item.src)}
       />
       {editing && selected && (
         <span
@@ -193,7 +191,7 @@ function OverlayLabel({
  * The one renderer of a Scene, used by the editor, the On-air monitor and the Broadcast window
  * (ADR-0003), so all three show the same composition. It fills its container with black and
  * draws the fixed 16:9 canvas inside it, letterboxed, laid out by core/canvas.ts. DOM and CSS
- * only. An image takes its place once loaded and decoded (its proportions are needed for the
+ * only. An image takes its place once loaded (its proportions are needed for the
  * layout), then fades in; placements, Labels, the Scene title and Blackout fade in and out over
  * the fade duration.
  */

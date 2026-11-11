@@ -98,14 +98,24 @@ describe('a Media image in the Broadcast window', () => {
     expect(image()?.hidden).toBe(false);
   });
 
-  it('reports the natural size only once the image is decoded, so it never shows half-drawn', async () => {
+  it('reports its natural size once loaded, and that it can be drawn whole once decoded', async () => {
     const loaded = vi.fn();
-    render(<MediaImage address={ADDRESS} alt="" window="broadcast" onLoad={loaded} />);
+    const decoded = vi.fn();
+    render(
+      <MediaImage
+        address={ADDRESS}
+        alt=""
+        window="broadcast"
+        onLoad={loaded}
+        onDecoded={decoded}
+      />,
+    );
     fire('load');
-    expect(loaded).not.toHaveBeenCalled();
+    expect(loaded).toHaveBeenCalledTimes(1);
+    expect(decoded).not.toHaveBeenCalled();
 
     await finishDecoding();
-    expect(loaded).toHaveBeenCalledTimes(1);
+    expect(decoded).toHaveBeenCalledTimes(1);
   });
 
   it('shows nothing at all when the file is missing', () => {

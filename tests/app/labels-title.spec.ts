@@ -70,7 +70,8 @@ test('a Label is on air only while both its Overlay and the Label are shown; new
   const { app, controlWindow: page } = regie;
   await activeSceneWithOverlay(regie, 'Cantina');
   const broadcastWindow = await openBroadcastWindow(app, page);
-  const label = broadcastWindow.locator('.canvas-label');
+  // A Label changed or hidden fades out (#31): only the one shown counts here.
+  const label = broadcastWindow.locator('.canvas-label:not([data-fade="leaving"])');
 
   // A Label cannot be shown before it has text.
   await expect(labelToggle(page)).toBeDisabled();
@@ -102,7 +103,9 @@ test('a Label is on air only while both its Overlay and the Label are shown; new
   await expect(label).toHaveCount(0);
   await expect(shownOverlays(broadcastWindow)).toHaveCount(1);
   // The editor still draws the Hidden Label, in the GM-only style.
-  await expect(editor(page).locator('.canvas-label.is-hidden')).toHaveText('Capitaine');
+  await expect(
+    editor(page).locator('.canvas-label.is-hidden:not([data-fade="leaving"])'),
+  ).toHaveText('Capitaine');
 });
 
 test('the Scene title is on air only when set; the Scene name never is', async ({ regie }) => {
