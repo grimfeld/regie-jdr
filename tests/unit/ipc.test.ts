@@ -120,6 +120,7 @@ describe('Campaign channels', () => {
       ['campaigns:deletion-summary', [{ id }]],
       ['campaigns:move-to-trash', [{ id }]],
       ['campaigns:delete-permanently', [{ id }]],
+      ['campaigns:export', [{ id }]],
       ['notices:take', []],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -163,6 +164,7 @@ describe('Campaign channels', () => {
     ['a name that is not text', 'campaigns:create', [{ name: 42 }]],
     ['a huge name', 'campaigns:create', [{ name: 'x'.repeat(10_000) }]],
     ['an id that is a path', 'campaigns:update', [{ id: '../..', changes: { name: 'X' } }]],
+    ['an exported id that is a path', 'campaigns:export', [{ id: '../..' }]],
     ['an unknown theme', 'campaigns:update', [{ id, changes: { theme: 'neon' } }]],
     ['no changes object', 'campaigns:update', [{ id }]],
     ['a name of the wrong type', 'campaigns:update', [{ id, changes: { name: null } }]],

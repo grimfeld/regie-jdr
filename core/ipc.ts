@@ -371,6 +371,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'campaigns:deletion-summary': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'campaigns:move-to-trash': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'campaigns:delete-permanently': { from: controlOnly, parse: onePayload(campaignIdOf) },
+  'campaigns:export': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },

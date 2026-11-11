@@ -217,6 +217,12 @@ export interface MediaDeletion {
   affectedNotes: { id: SceneId; name: string }[];
 }
 
+/**
+ * What an Export did: nothing when the Game Master cancelled the save dialog; else the number of
+ * Media left out because their file is missing on disk.
+ */
+export type CampaignExportResult = { saved: false } | { saved: true; missingMedia: number };
+
 /** What can be changed on a Campaign; absent fields are left as they are. */
 export interface CampaignChanges {
   name?: string;
@@ -389,6 +395,11 @@ export interface InvokeChannels {
    * Master confirmed a second time. Fails unless the Recycle Bin refused that Campaign.
    */
   'campaigns:delete-permanently': { payload: { id: CampaignId }; result: void };
+  /**
+   * Export a closed Campaign to a `.zip` (ADR-0005), saved where the Game Master picks in the
+   * native save dialog (the window never names files). Fails for the open Campaign.
+   */
+  'campaigns:export': { payload: { id: CampaignId }; result: CampaignExportResult };
   /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
@@ -571,6 +582,7 @@ export interface ControlBridge extends BroadcastBridge {
   getCampaignDeletionSummary(id: CampaignId): Promise<CampaignDeletionSummary>;
   moveCampaignToTrash(id: CampaignId): Promise<CampaignTrashing>;
   deleteCampaignPermanently(id: CampaignId): Promise<void>;
+  exportCampaign(id: CampaignId): Promise<CampaignExportResult>;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;

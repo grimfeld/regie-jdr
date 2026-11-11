@@ -3,7 +3,12 @@ import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from '
 import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
 import type { CampaignChanges, ControlBridge } from '../shared/contract';
 import BroadcastView from './BroadcastView';
-import { CampaignList, errorMessage, type CampaignDeletionActions } from './CampaignList';
+import {
+  CampaignList,
+  errorMessage,
+  exportNotice,
+  type CampaignDeletionActions,
+} from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
 import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboard';
@@ -142,6 +147,12 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     await enter(created.id);
   }
 
+  async function exportCampaign(id: CampaignId) {
+    if (!control) return;
+    const result = await control.exportCampaign(id);
+    if (result.saved) showNotice(exportNotice(result.missingMedia));
+  }
+
   async function update(id: CampaignId, changes: CampaignChanges) {
     if (!control) return;
     try {
@@ -224,6 +235,7 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
             onCreate={create}
             onRename={(id, name) => update(id, { name })}
             deletion={deletion}
+            onExport={exportCampaign}
           />
         )
       )}

@@ -5,8 +5,9 @@ import { isAppPage } from './navigation.js';
 import { registerHandlers, sendEvent } from './ipc.js';
 import { installErrorLogging, log } from './logging.js';
 import type { WindowRole } from '../core/ipc.js';
-import { createCampaign, updateCampaign } from '../core/campaigns.js';
+import { CampaignError, createCampaign, updateCampaign } from '../core/campaigns.js';
 import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
+import { exportCampaign, exportFileName } from '../core/campaignExport.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
@@ -21,6 +22,7 @@ import { createSceneLibrary } from '../core/scenes.js';
 import { createSettingsStore, type SettingsStore, type SettingsWindow } from '../core/settings.js';
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
+import { writeZipArchive } from './zipArchive.js';
 import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
 import type { PadCommand } from '../shared/domain.js';
 
@@ -289,6 +291,19 @@ const recycleBin: Trash = {
   },
 };
 
+/** Where the Game Master saves an Export, from the native save dialog; undefined if cancelled. */
+async function pickExportFile(defaultName: string): Promise<string | undefined> {
+  const options: Electron.SaveDialogOptions = {
+    title: 'Exporter la campagne',
+    defaultPath: path.join(app.getPath('documents'), defaultName),
+    filters: [{ name: 'Archive zip', extensions: ['zip'] }],
+  };
+  const result = controlWindow
+    ? await dialog.showSaveDialog(controlWindow, options)
+    : await dialog.showSaveDialog(options);
+  return result.canceled || !result.filePath ? undefined : result.filePath;
+}
+
 /** A second launch of the app brings the existing Control window forward. */
 function focusControlWindow() {
   if (!controlWindow || controlWindow.isDestroyed()) return;
@@ -478,6 +493,25 @@ function startApp() {
       'campaigns:deletion-summary': ({ id }) => campaignDeletion.summary(id),
       'campaigns:move-to-trash': ({ id }) => campaignDeletion.moveToTrash(id),
       'campaigns:delete-permanently': ({ id }) => campaignDeletion.deletePermanently(id),
+      // Offered on the Campaign list only (ADR-0005): the Campaign is closed, nothing writes to it.
+      'campaigns:export': async ({ id: campaignId }) => {
+        if (onAir.current().campaignId === campaignId) {
+          throw new CampaignError('Revenez à la liste des campagnes pour exporter celle-ci.');
+        }
+        const campaign = await storage.campaigns.get(campaignId);
+        if (!campaign) throw new CampaignError('Cette campagne n’existe plus.');
+        const file = await pickExportFile(exportFileName(campaign.name, new Date()));
+        if (!file) return { saved: false };
+        const { missingMedia } = await exportCampaign({
+          campaignFolder: storage.campaignFolder(campaignId),
+          campaignName: campaign.name,
+          media: await library.list(campaignId),
+          appVersion: app.getVersion(),
+          writeArchive: writeZipArchive(file),
+        });
+        log.info(`Exported Campaign ${campaignId}, ${missingMedia} missing Media left out`);
+        return { saved: true, missingMedia };
+      },
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),
       'settings:set-theme': ({ theme }) => settingsStore.setTheme(theme),

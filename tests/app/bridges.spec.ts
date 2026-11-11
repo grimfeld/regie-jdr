@@ -29,6 +29,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'duplicateScene',
     'editScene',
     'editSoundboard',
+    'exportCampaign',
     'getCampaignDeletionSummary',
     'getOnAir',
     'getSettings',

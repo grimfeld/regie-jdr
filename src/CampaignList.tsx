@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { CampaignDeletionSummary, CampaignTrashing } from '../shared/contract';
 import type { Campaign, CampaignId } from '../shared/domain';
 import { isIpcFailure, noticeFor } from './notices';
@@ -66,13 +66,22 @@ interface Props {
   onRename: (id: CampaignId, name: string) => Promise<void>;
   /** Absent without a main process: nothing can be deleted. */
   deletion?: CampaignDeletionActions;
+  /** Exports the Campaign to a zip; it is closed, as on this page every Campaign is. */
+  onExport: (id: CampaignId) => Promise<void>;
+}
+
+/** The Game Master's notice after an Export, naming how many missing Media were left out. */
+export function exportNotice(missingMedia: number): string {
+  if (missingMedia === 0) return 'Campagne exportée.';
+  if (missingMedia === 1) return 'Campagne exportée. 1 média introuvable n’a pas été inclus.';
+  return `Campagne exportée. ${missingMedia} médias introuvables n’ont pas été inclus.`;
 }
 
 /**
- * The Campaign list home page: pick, create, rename or delete a Campaign. Delete is offered
- * only here, where every Campaign is closed.
+ * The Campaign list home page: pick, create, rename, export or delete a Campaign. Export and
+ * delete are offered only here, where every Campaign is closed.
  */
-export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion }: Props) {
+export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion, onExport }: Props) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<CampaignId | null>(null);
@@ -80,6 +89,7 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion }
   const [error, setError] = useState('');
   const [pending, setPending] = useState<PendingDeletion | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState<CampaignId | null>(null);
 
   async function attempt(action: () => Promise<void>) {
     setError('');
@@ -139,6 +149,15 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion }
       const outcome = await deletion.moveToTrash(summary.id);
       setPending(outcome.deleted ? null : { step: 'permanent', summary, reason: outcome.reason });
     });
+  }
+
+  async function exportCampaign(id: CampaignId) {
+    setExporting(id);
+    try {
+      await attempt(() => onExport(id));
+    } finally {
+      setExporting(null);
+    }
   }
 
   function startRename(campaign: Campaign) {
@@ -226,6 +245,15 @@ export function CampaignList({ campaigns, onOpen, onCreate, onRename, deletion }
                   onClick={() => startRename(campaign)}
                 >
                   <Pencil size={14} /> Renommer
+                </button>
+                <button
+                  className="secondary-button"
+                  aria-label={`Exporter ${campaign.name}`}
+                  title="Exporter"
+                  disabled={exporting !== null}
+                  onClick={() => void exportCampaign(campaign.id)}
+                >
+                  <Download size={14} /> Exporter
                 </button>
                 {deletion && (
                   <button
