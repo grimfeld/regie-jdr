@@ -32,7 +32,8 @@ function byName(a: Campaign, b: Campaign) {
 
 /**
  * The Control window: the Campaign list home page, or the screen of the open Campaign.
- * On launch, the only Campaign (when there is exactly one) opens directly.
+ * On launch, the only Campaign (when there is exactly one) opens directly. On a reload of the
+ * window, the Campaign the main process has open comes back as it was.
  */
 function ControlApp({ control }: { control: ControlBridge | undefined }) {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
@@ -72,12 +73,17 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
-    control
-      .listCampaigns()
-      .then((list) => {
+    Promise.all([control.listCampaigns(), control.getOnAir()])
+      .then(([list, onAir]) => {
         if (cancelled) return;
         setCampaigns(list);
-        if (list.length === 1) void enter(list[0].id);
+        // After a reload of this window the main process still has its Campaign open, with its
+        // Active Scene, Blackout and undo histories: show it again, never open it anew.
+        if (onAir.campaignId !== null && list.some((item) => item.id === onAir.campaignId)) {
+          setOpenId(onAir.campaignId);
+        } else if (list.length === 1) {
+          void enter(list[0].id);
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));

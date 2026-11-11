@@ -195,6 +195,41 @@ test('Activating another Scene keeps Blackout; switching Campaign clears it', as
   await expect(monitorOf(controlWindow).getByText('Rien à l’antenne')).toBeVisible();
 });
 
+test('reloading the Control window keeps the Active Scene, Blackout and the undo history', async ({
+  regie,
+}) => {
+  const { app, controlWindow } = regie;
+  const { call, cantina, background } = await starWars(regie);
+  const broadcastWindow = await openBroadcastWindow(app, controlWindow);
+  await call('activateScene', cantina.id);
+  await blackoutButton(controlWindow).click();
+  await expectSamePicture(controlWindow, broadcastWindow, {
+    backgrounds: [background],
+    blackout: true,
+  });
+  const title = controlWindow.getByLabel('Titre affiché');
+  await title.fill('La cantina');
+  await title.press('Enter');
+  const undo = controlWindow
+    .getByRole('toolbar', { name: 'Historique de la scène' })
+    .getByRole('button', { name: /annuler/i });
+  await expect(undo).toHaveText('Annuler : modifier le titre affiché');
+
+  await controlWindow.reload();
+  await controlWindow.getByRole('heading', { name: 'Star Wars', exact: true }).waitFor();
+
+  await expect(blackoutButton(controlWindow)).toHaveAttribute('aria-pressed', 'true');
+  await expectSamePicture(controlWindow, broadcastWindow, {
+    backgrounds: [background],
+    blackout: true,
+  });
+  await expect(broadcastWindow.locator('main.broadcast-screen')).toHaveAttribute(
+    'data-active-scene-id',
+    cantina.id,
+  );
+  await expect(undo).toHaveText('Annuler : modifier le titre affiché');
+});
+
 test('a restart clears Blackout', async ({ regie }) => {
   const { call, cantina } = await starWars(regie);
   await call('activateScene', cantina.id);
