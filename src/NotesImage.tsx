@@ -207,7 +207,8 @@ function NotesImageView({ node, selected, updateAttributes }: ReactNodeViewProps
 
 /**
  * A Notes image shown large over the Control window, for the Game Master to read a map or a
- * handout up close. It stays in the Control window: nothing of the Notes ever goes on air.
+ * Reference image (a stat block, a secret map) up close. It stays in the Control window:
+ * nothing of the Notes ever goes on air.
  * Closed with Escape, its button, or a click beside the image.
  * https://developer.mozilla.org/docs/Web/HTML/Element/dialog
  */
