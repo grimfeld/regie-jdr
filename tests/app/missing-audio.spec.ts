@@ -56,10 +56,11 @@ async function storedMedia(regie: RunningApp) {
   return media;
 }
 
-/**
- * A Campaign with Scene "Taverne": Music Auberge, and Ambience Pluie switched on. Switching an
- * Ambience on has no control yet (#37), so the test writes it into the saved Scene.
- */
+function ambienceList(page: Page) {
+  return editor(page).getByRole('list', { name: 'Ambiances' });
+}
+
+/** A Campaign with Scene "Taverne": Music Auberge, and Ambience Pluie switched on. */
 async function tavern(regie: RunningApp) {
   const { controlWindow, dataDir } = regie;
   await createCampaign(controlWindow, 'Star Wars');
@@ -77,14 +78,12 @@ async function tavern(regie: RunningApp) {
     .dragTo(musicList(controlWindow).locator('xpath=..'));
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/]);
 
-  const media = await storedMedia(regie);
-  const rain = media.find((item) => item.name === 'Pluie');
-  const scenesFile = path.join(await campaignFolder(regie), 'scenes.json');
-  const stored = JSON.parse(await fs.readFile(scenesFile, 'utf8')) as {
-    scenes: { ambiences: unknown[] }[];
-  };
-  stored.scenes[0].ambiences = [{ mediaId: rain?.id, on: true, volume: 1 }];
-  await fs.writeFile(scenesFile, JSON.stringify(stored));
+  await soundInLibrary(controlWindow, 'Pluie')
+    .locator('.media-audio-icon')
+    .dragTo(ambienceList(controlWindow).locator('xpath=..'));
+  const playRain = ambienceList(controlWindow).getByRole('checkbox', { name: 'Jouer Pluie' });
+  await playRain.check();
+  await expect(playRain).toBeChecked();
 }
 
 /** Deletes the file of the Media named `name`, as the Game Master could in Explorer. */
@@ -115,6 +114,7 @@ test('a sound whose file was deleted is badged, left out on Activate with a noti
   await expect(
     musicList(controlWindow).getByRole('img', { name: 'Média manquant : Auberge' }),
   ).toBeVisible();
+  await expect(ambienceList(controlWindow)).not.toContainText('Média manquant');
   await expect(soundInLibrary(controlWindow, 'Pluie')).not.toContainText('Média manquant');
 
   await editor(controlWindow).getByRole('button', { name: 'Activer' }).click();
@@ -142,4 +142,19 @@ test('a sound the audio engine cannot read is skipped with a notice; the others 
   await expect(controlWindow.getByRole('alert')).toContainText('« Auberge » n’a pas pu être lu');
   await expect(sounding(controlWindow, 'Auberge')).toHaveAttribute('data-state', 'failed');
   await expect(sounding(controlWindow, 'Pluie')).toHaveAttribute('data-state', 'playing');
+});
+
+test('an Ambience whose file was deleted is badged in the Scene’s Ambience list', async ({
+  regie,
+}) => {
+  const { controlWindow } = regie;
+  await tavern(regie);
+  await deleteFileOf(regie, 'Pluie');
+  // Coming back to the window asks again, as after deleting the file in Explorer.
+  await controlWindow.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+  await expect(
+    ambienceList(controlWindow).getByRole('img', { name: 'Média manquant : Pluie' }),
+  ).toBeVisible();
+  await expect(musicList(controlWindow)).not.toContainText('Média manquant');
 });

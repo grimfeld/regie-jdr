@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Trash2, Waves } from 'lucide-react';
 import type { DragEvent } from 'react';
 import type { SceneEdit } from '../shared/contract';
 import type { AudioMedia, MediaId, Scene } from '../shared/domain';
 import { carriesAudio, droppedAudioId } from './mediaDrag';
+import { MissingMediaBadge, useMissingMedia } from './MissingMedia';
 import { useDropTarget } from './PlacementLists';
 
 /**
@@ -30,6 +31,11 @@ export function SceneAmbienceList(props: {
   );
   const nameOf = (mediaId: MediaId) =>
     sounds.find((sound) => sound.id === mediaId)?.name ?? 'Média inconnu';
+  const listed = useMemo(
+    () => sounds.filter((sound) => scene.ambiences.some((item) => item.mediaId === sound.id)),
+    [sounds, scene.ambiences],
+  );
+  const missing = useMissingMedia(listed);
   return (
     <div
       className={`placement-list scene-ambiences${drop.over ? ' drop-ready' : ''}`}
@@ -60,6 +66,7 @@ export function SceneAmbienceList(props: {
                 />
                 <Waves size={14} aria-hidden />
                 <span className="placement-name">{name}</span>
+                {missing.has(mediaId) && <MissingMediaBadge name={name} />}
                 {!on && <small> · Éteinte</small>}
               </label>
               <button
