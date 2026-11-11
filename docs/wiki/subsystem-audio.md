@@ -37,3 +37,10 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Decision: adding Music to an Active Scene with no current Music is silent (added sounds never start themselves, like a new Ambience). Play with no current Music starts the Scene's first Music.
 - Pause/resume and stop live only on the "En cours" strip. Removing the current Music stops it with the 0.3 s pause fade.
 - Music level slider "Niveau" (`src/LevelSlider.tsx`) is heard while dragging; #37's `VolumeSlider` is not. Merge them once Ambience edits get live updates.
+
+## Missing audio (#42, 2026-11-12, `13a1384`)
+
+- A sound is missing when its address answers 404 (same check as images, M0 #13). On-air commands check on Activate and every Active Scene change; missing sounds are left out of the mix (`AudioMix.missing` always set; `MixInput.missing` optional; sounding state can be `missing`).
+- One notice per missing or engine-`failed` sound, raised from the "En cours" strip (moved there so #39's Soundboard didn't duplicate it).
+- Badges via `MissingMediaBadge` / `useMissingMedia` (`src/MissingMedia.tsx`) in library, Music/Ambience lists, pads; re-checked on change and window focus. New list views reuse them.
+- Gaps: pressing a pad whose file is missing gives no notice. #36's level drag checks for missing files on every live update (watch cost).

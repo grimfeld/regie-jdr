@@ -23,6 +23,7 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - Manual check: no clicks on volume ramps. Source: #35 report.
 - Deleting a Media silently removes its Soundboard pads; M0 #15 warns for Scene uses. Decide per spec #33 whether pads count as uses. Source: #39 report.
 - Manual check: 8 pads at once over Music and Ambiences. Source: #39 report.
+- Pressing a pad whose file is missing gives no notice. Source: #42 report.
 - Live audio while dragging Ambience and pad volume sliders; unify `VolumeSlider` (#37) with `LevelSlider` (#36). Source: #37 report.
 - Make `overlay-transforms.spec` and `placing.spec` position-independent; both the Music and Ambience level sliders were squeezed onto heading lines to dodge them. Source: #37 report.
 - 2026-11-11: M1 (PR #74, CI green) merged forward into `m2-audio-mvp` at `6a66ecd` (real merge; 603 unit, 109 app tests). Undo refusal now covers Music and Ambiences; notice reads "Un média de cette étape a été supprimé".
@@ -30,3 +31,4 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - 2026-11-12: #37 Ambiences merged at `4e88616` (630 unit, 112 app tests).
 - 2026-11-12: #39 Soundboard merged at `6b99c61` (674 unit, 114 app tests). Smoke test now expects 2 sliders.
 - 2026-11-12: #36 Music controls merged at `5a330db` (708 unit, 118 app tests).
+- 2026-11-12: #42 missing audio merged at `13a1384` (717 unit, 122 app tests). No deviations.
