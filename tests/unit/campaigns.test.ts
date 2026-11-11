@@ -2,7 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openStorage } from '../../core/storage';
-import { CampaignError, createCampaign, updateCampaign } from '../../core/campaigns';
+import {
+  CampaignError,
+  createCampaign,
+  createCampaignInHomeTheme,
+  updateCampaign,
+} from '../../core/campaigns';
+import { createSettingsStore } from '../../core/settings';
 import { useTempDir } from './tempDir';
 
 const clock = (iso: string) => () => new Date(iso);
@@ -40,6 +46,23 @@ describe('campaigns', () => {
       await fs.readFile(path.join(storage.campaignFolder(second.id), 'campaign.json'), 'utf8'),
     );
     expect(onDisk).toMatchObject({ schemaVersion: 1, name: 'Warhammer', theme: 'imperium' });
+  });
+
+  it('take the home page theme when created, and keep their own once it changes', async () => {
+    const storage = openStorage(dir.path);
+    const settings = createSettingsStore(storage);
+    const before = await createCampaignInHomeTheme(storage.campaigns, settings, 'Star Wars');
+    await settings.setTheme('fantasy');
+    const after = await createCampaignInHomeTheme(storage.campaigns, settings, 'Warhammer');
+    await settings.setTheme('retro');
+
+    expect(before.theme).toBe('imperium');
+    expect(after.theme).toBe('fantasy');
+    const reopened = openStorage(dir.path).campaigns;
+    expect((await reopened.list()).map(({ name, theme }) => ({ name, theme }))).toEqual([
+      { name: 'Star Wars', theme: 'imperium' },
+      { name: 'Warhammer', theme: 'fantasy' },
+    ]);
   });
 
   it('are listed by name', async () => {
