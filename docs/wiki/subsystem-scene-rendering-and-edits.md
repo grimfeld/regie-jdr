@@ -89,3 +89,10 @@ Source: #22 agent report, 2026-11-11. True as of `grimfeld/regie-jdr@90ddedc`. D
 - The running order is the order of Scenes in `scenes.json`; new Scenes go last. No schema change (stays v3).
 - `core/runningOrder.ts` (renderer-safe): `moveInRunningOrder`, pure `sceneNextTo(order, from, 'next'|'previous')` (nothing on air → first Scene; no wrap). #56 calls it; #70 Chapters group over the same list.
 - UI: Scene list moved to `src/SceneList.tsx`; drag a row onto another to take its place. Gap: no keyboard reorder.
+
+## Duplicate a Scene (#47, 2026-11-12, `3814149`)
+
+- Campaign-level command `scenes:duplicate` (`SceneLibrary.duplicate`), run through `OnAirCommands.duplicateScene` only to join the queue (Notes typed just before are included; no on-air or audio change).
+- `copyOfScene` (`core/scenes.ts`) deep-clones, new Scene/Background/Overlay ids, same Media references (incl. Notes images: no file copied). Name "<name> (copie)", original shortened at the 100-char limit. Placed per the issue; "Dupliquer" sits next to Renommer.
+- Copy starts with an empty undo history (histories are per Scene id).
+- Guard: `sceneFieldInCopy` in `tests/unit/scenes.test.ts` (`satisfies Record<keyof Scene, …>`) plus a no-shared-object walk. A new Scene field fails typecheck there until its copy rule is decided.
