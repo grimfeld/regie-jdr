@@ -3,13 +3,15 @@
  * Private to the Game Master: no part of the Notes is ever projected on air (core/onAir.ts).
  *
  * What the Notes may hold is the same list the editor is built with (src/SceneNotes.tsx): two
- * heading levels, paragraphs, bold, italic, bullet and numbered lists, checklists and quotes.
+ * heading levels, paragraphs, bold, italic, bullet and numbered lists, checklists, quotes and
+ * images. An image is a block holding a Media id, never a file path or embedded data: the image
+ * is an ordinary Media of the Campaign library (ADR-0004).
  * `parseNotes` checks a document from untrusted data (a stored file or a window message) against
  * it, keeping only the fields it knows. No Node dependency: the windows run this module.
  *
- * Adding a kind of content (#52, an image node holding a Media id): a row of BLOCK_NODES with its
- * attributes, the same extension in the editor, and, for Media, a scan of the Notes beside
- * `mediaOfScene` (core/scenes.ts).
+ * Adding a kind of content: a row of BLOCK_NODES with its attributes and the same extension in
+ * the editor. An image's width in the panel (#53) is another attribute of its row; the Media
+ * reference scan (#54) reads `mediaId` off the image nodes.
  */
 import type { NotesDocument, NotesMark, NotesNode } from '../shared/domain.js';
 import { isRecord } from './guards.js';
@@ -23,11 +25,11 @@ type Attrs = NonNullable<NotesNode['attrs']>;
 
 interface NodeRule {
   /**
-   * What the node holds: text (`inline`, may be empty), block nodes (`blocks`, at least one,
-   * the first a paragraph when `paragraphFirst`), or list items (`items`: their one type and
-   * rule, at least one).
+   * What the node holds: nothing (`none`), text (`inline`, may be empty), block nodes
+   * (`blocks`, at least one, the first a paragraph when `paragraphFirst`), or list items
+   * (`items`: their one type and rule, at least one).
    */
-  content: 'inline' | 'blocks' | { items: Readonly<Record<string, NodeRule>> };
+  content: 'none' | 'inline' | 'blocks' | { items: Readonly<Record<string, NodeRule>> };
   paragraphFirst?: boolean;
   /** Its attributes, checked and kept; absent: it has none. */
   attrs?: (attrs: Record<string, unknown>) => Attrs | undefined;
@@ -40,6 +42,14 @@ const TASK_ITEM: NodeRule = {
   paragraphFirst: true,
   attrs: ({ checked }) => (typeof checked === 'boolean' ? { checked } : undefined),
 };
+
+/** A Media id as the library makes them (a lower-case UUID): never a path or an address. */
+const MEDIA_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Whether `value` is a Media id an image in the Notes may hold. */
+export function isNotesMediaId(value: unknown): value is string {
+  return typeof value === 'string' && MEDIA_ID.test(value);
+}
 
 const ORDERED_LIST_TYPES: readonly (string | null)[] = [null, '1', 'a', 'A', 'i', 'I'];
 
@@ -63,6 +73,10 @@ const BLOCK_NODES: Readonly<Record<string, NodeRule>> = {
         : undefined,
   },
   taskList: { content: { items: { taskItem: TASK_ITEM } } },
+  image: {
+    content: 'none',
+    attrs: ({ mediaId }) => (isNotesMediaId(mediaId) ? { mediaId } : undefined),
+  },
 };
 
 const MARKS: readonly NotesMark['type'][] = ['bold', 'italic'];
@@ -140,6 +154,7 @@ function parseNode(
   }
   const withAttrs = attrs ? { type, attrs } : { type };
 
+  if (rule.content === 'none') return value.content === undefined ? withAttrs : undefined;
   if (rule.content === 'inline') {
     if (value.content === undefined) return withAttrs;
     const content = parseInline(value.content);

@@ -15,6 +15,8 @@ const text = (value: string, ...marks: ('bold' | 'italic')[]): NotesNode =>
 const paragraph = (...content: NotesNode[]): NotesNode =>
   content.length > 0 ? { type: 'paragraph', content } : { type: 'paragraph' };
 const doc = (...content: NotesNode[]): NotesDocument => ({ type: 'doc', content });
+const MAP_ID = '9b2d1c3e-1111-4d8e-9a43-0f0f2b0c1d2e';
+const image = (mediaId: string = MAP_ID): NotesNode => ({ type: 'image', attrs: { mediaId } });
 
 /** Every allowed kind of content, as the editor saves it. */
 const everything = doc(
@@ -49,7 +51,12 @@ const everything = doc(
       { type: 'taskItem', attrs: { checked: false }, content: [paragraph()] },
     ],
   },
-  { type: 'blockquote', content: [paragraph(text('« Qui va là ? »', 'italic'))] },
+  { type: 'blockquote', content: [paragraph(text('« Qui va là ? »', 'italic')), image()] },
+  image(),
+  {
+    type: 'bulletList',
+    content: [{ type: 'listItem', content: [paragraph(text('Plan')), image()] }],
+  },
 );
 
 describe('parseNotes', () => {
@@ -60,6 +67,14 @@ describe('parseNotes', () => {
 
   it('accepts empty notes', () => {
     expect(parseNotes(emptyNotes())).toEqual(doc(paragraph()));
+  });
+
+  it('keeps only the Media id of an image, never a file address', () => {
+    expect(
+      parseNotes(
+        doc({ type: 'image', attrs: { mediaId: MAP_ID, src: 'regie-media://x', alt: 'carte' } }),
+      ),
+    ).toEqual(doc(image()));
   });
 
   it('drops fields that are not part of the notes', () => {
@@ -111,7 +126,17 @@ describe('parseNotes', () => {
       },
     ],
     ['a table', doc({ type: 'table', content: [] })],
-    ['an image (not yet)', doc({ type: 'image', attrs: { mediaId: 'm1' } })],
+    ['an image with no Media id', doc({ type: 'image', attrs: {} })],
+    ['an image with a file path', doc({ type: 'image', attrs: { src: 'C:/carte.png' } })],
+    ['an image naming a file path as its Media', doc(image('C:\Users\mj\carte.png'))],
+    ['an image naming embedded data as its Media', doc(image('data:image/png;base64,iVBORw0KGgo='))],
+    ['an image with a Media id in capitals', doc(image(MAP_ID.toUpperCase()))],
+    ['an image with content', doc({ ...image(), content: [paragraph()] })],
+    ['an image inside a paragraph', doc(paragraph(image()))],
+    [
+      'an image first in a list item',
+      doc({ type: 'bulletList', content: [{ type: 'listItem', content: [image()] }] }),
+    ],
     ['a heading level 3', doc({ type: 'heading', attrs: { level: 3 }, content: [text('a')] })],
     ['empty text', doc(paragraph({ type: 'text', text: '' }))],
     ['text at block level', doc(text('a'))],
