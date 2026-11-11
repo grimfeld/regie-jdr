@@ -83,6 +83,12 @@ test('opening the Broadcast window shows the current on-air state', async ({ reg
     scene: { backgrounds: [], overlays: [] },
     blackout: false,
     fadeDurationMs: 600,
+    transition: expect.objectContaining({
+      kind: 'crossfade',
+      from: null,
+      to: starWars.scenes.Cantina,
+      durationMs: 1500,
+    }),
     version: 2,
   });
 
@@ -167,6 +173,7 @@ test('the Broadcast window ignores a snapshot older than the one it shows', asyn
         scene: null,
         blackout: false,
         fadeDurationMs: 600,
+        transition: null,
         version: 1,
       });
   }, id);

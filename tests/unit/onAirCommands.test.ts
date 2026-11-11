@@ -20,6 +20,18 @@ import { useTempDir } from './tempDir';
 // SHA-256 of the three bytes "abc" (FIPS 180-2 test vector).
 const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 
+/** Every Transition in these tests starts at NOW. */
+const NOW = 1_700_000_000_000;
+/** The Transition of the first Activate in an open Campaign: a fade in from black. */
+const fadeInTo = (to: string) => ({
+  id: 1,
+  kind: 'crossfade',
+  from: null,
+  to,
+  startedAt: NOW,
+  durationMs: 1500,
+});
+
 describe('on-air commands', () => {
   const dir = useTempDir();
 
@@ -27,7 +39,7 @@ describe('on-air commands', () => {
     const storage = openStorage(path.join(dir.path, 'data'));
     const library = createMediaLibrary(storage, fakeResizer().resizer);
     const scenes = createSceneLibrary(storage);
-    const onAir = createOnAir();
+    const onAir = createOnAir({ now: () => NOW });
     const broadcast: OnAirState[] = [];
     onAir.subscribe((snapshot) => broadcast.push(snapshot));
     const audio = createAudioOnAir();
@@ -115,6 +127,7 @@ describe('on-air commands', () => {
       scene: cantinaPicture,
       blackout: false,
       fadeDurationMs: 600,
+      transition: fadeInTo(scene.id),
       version: 2,
     });
     expect(ctx.broadcast.at(-1)).toEqual(state);
@@ -143,6 +156,7 @@ describe('on-air commands', () => {
       },
       blackout: false,
       fadeDurationMs: 600,
+      transition: fadeInTo(scene.id),
       version: 4,
     });
     expect(await ctx.scenes.get(ctx.campaign.id, scene.id)).toEqual(shown);
@@ -891,6 +905,7 @@ describe('on-air commands', () => {
         scene: null,
         blackout: false,
         fadeDurationMs: 600,
+        transition: fadeInTo(active.id),
         version: 3,
       });
     });
@@ -1047,6 +1062,7 @@ describe('on-air commands', () => {
         scene: { backgrounds: [], overlays: [] },
         blackout: false,
         fadeDurationMs: 600,
+        transition: fadeInTo(cantina.id),
         version: 3,
       });
     });
@@ -1125,6 +1141,7 @@ describe('on-air commands', () => {
         scene: cantinaPicture,
         blackout: true,
         fadeDurationMs: 600,
+        transition: fadeInTo(scene.id),
         version: 3,
       });
       expect(ctx.broadcast.at(-1)).toEqual(state);

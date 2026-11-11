@@ -95,6 +95,7 @@ test('a mutating message sent from the Broadcast window is rejected and logged',
     scene: null,
     blackout: false,
     fadeDurationMs: 600,
+    transition: null,
     version: 0,
   });
   await expect
@@ -163,6 +164,7 @@ test('subscriptions pass only the payload and stop after unsubscribing', async (
         scene: null,
         blackout: false,
         fadeDurationMs: 600,
+        transition: null,
         version: 1,
       },
     ],

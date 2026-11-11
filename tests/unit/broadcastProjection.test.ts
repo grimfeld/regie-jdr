@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createOnAir, onAirSceneOf } from '../../core/onAir';
 import type {
   Background,
+  Transition,
   Label,
   Media,
   OnAirBackground,
@@ -64,8 +65,19 @@ const onAirStateFields = {
   scene: true,
   blackout: true,
   fadeDurationMs: true, // A setting, not Scene data: every renderer fades alike.
+  transition: true, // How the picture changes: kind, timing and Scene ids, never Scene data.
   version: true,
 } as const satisfies Record<keyof OnAirState, true>;
+
+/** A Transition carries Scene ids (already on air as activeSceneId) and timing, nothing more. */
+const transitionFields = {
+  id: true,
+  kind: true,
+  from: true,
+  to: true,
+  startedAt: true,
+  durationMs: true,
+} as const satisfies Record<keyof Transition, true>;
 
 /** The OnAirScene fields the classification above feeds, sorted. */
 function fed(classification: Record<string, string | null>): string[] {
@@ -129,6 +141,8 @@ describe('the broadcast projection allow-list', () => {
   it('sends the windows exactly the allow-listed on-air state fields', () => {
     const onAir = createOnAir();
     onAir.openCampaign('c1');
-    expect(keys(onAir.activateScene('s1', projected))).toEqual(keys(onAirStateFields));
+    const snapshot = onAir.activateScene('s1', projected);
+    expect(keys(snapshot)).toEqual(keys(onAirStateFields));
+    expect(keys(snapshot.transition ?? {})).toEqual(keys(transitionFields));
   });
 });

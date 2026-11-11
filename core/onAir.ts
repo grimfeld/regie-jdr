@@ -16,8 +16,9 @@ import type {
   OnAirState,
   Scene,
   SceneId,
+  Transition,
 } from '../shared/domain.js';
-import { FADE_DURATION_MS } from './fades.js';
+import { ACTIVATE_DURATION_MS, FADE_DURATION_MS } from './fades.js';
 import { mediaAddress } from './mediaAddress.js';
 
 export interface OnAir {
@@ -27,7 +28,12 @@ export interface OnAir {
   openCampaign(campaignId: CampaignId): OnAirState;
   /** Closes the open Campaign: nothing is on air. */
   closeCampaign(): OnAirState;
-  /** Puts a Scene of the open Campaign on air. Throws when no Campaign is open. */
+  /**
+   * Puts a Scene of the open Campaign on air, starting a new Transition to it (a Crossfade over
+   * the Activate duration) from whatever is on air: black when nothing is, the picture of a
+   * Transition still in progress (there is no queue). Blackout stays as it is: the Transition
+   * runs underneath. Throws when no Campaign is open.
+   */
   activateScene(sceneId: SceneId, scene: OnAirScene): OnAirState;
   /**
    * Shows the new picture of the Active Scene after an edit. Returns undefined, changing
@@ -59,13 +65,21 @@ function copy(state: OnAirState): OnAirState {
   return structuredClone(state);
 }
 
-export function createOnAir(): OnAir {
+/** What the on-air state depends on: the clock Transitions are timed by (Date.now). */
+export interface OnAirOptions {
+  now?: () => number;
+}
+
+export function createOnAir({ now = Date.now }: OnAirOptions = {}): OnAir {
+  // Never reset, so a renderer never mistakes a new Transition for one it already ran.
+  let transitions = 0;
   let state: OnAirState = {
     campaignId: null,
     activeSceneId: null,
     scene: null,
     blackout: false,
     fadeDurationMs: FADE_DURATION_MS.default,
+    transition: null,
     version: 0,
   };
   const listeners = new Set<(snapshot: OnAirState) => void>();
@@ -79,13 +93,36 @@ export function createOnAir(): OnAir {
   return {
     current: () => copy(state),
     openCampaign: (campaignId) =>
-      change({ ...state, campaignId, activeSceneId: null, scene: null, blackout: false }),
+      change({
+        ...state,
+        campaignId,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        transition: null,
+      }),
     closeCampaign: () =>
-      change({ ...state, campaignId: null, activeSceneId: null, scene: null, blackout: false }),
+      change({
+        ...state,
+        campaignId: null,
+        activeSceneId: null,
+        scene: null,
+        blackout: false,
+        transition: null,
+      }),
     activateScene: (sceneId, scene) => {
       const { campaignId } = state;
       if (campaignId === null) throw new Error('Cannot Activate a Scene: no Campaign is open');
-      return change({ ...state, campaignId, activeSceneId: sceneId, scene });
+      transitions += 1;
+      const transition: Transition = {
+        id: transitions,
+        kind: 'crossfade',
+        from: state.activeSceneId,
+        to: sceneId,
+        startedAt: now(),
+        durationMs: ACTIVATE_DURATION_MS,
+      };
+      return change({ ...state, campaignId, activeSceneId: sceneId, scene, transition });
     },
     showActiveScene: (sceneId, scene) => {
       if (state.activeSceneId === null || state.activeSceneId !== sceneId) return undefined;

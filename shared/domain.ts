@@ -265,7 +265,32 @@ export interface OnAirState {
    * Broadcast window reads no Settings.
    */
   fadeDurationMs: number;
+  /**
+   * The latest Transition, started by the latest Activate: in progress until `startedAt` +
+   * `durationMs`. null until a Scene is Activated in the open Campaign.
+   */
+  transition: Transition | null;
   version: number;
+}
+
+/** How the picture changes when a Scene is Activated: Crossfade (dissolve) or Cut (instant). */
+export type TransitionKind = 'crossfade' | 'cut';
+
+/**
+ * A change of picture from the outgoing Scene to the incoming one, started by Activate. Its
+ * renderers dissolve over `durationMs` from whatever they show at that moment (black when
+ * nothing was on air, or a Transition still in progress), so it carries no Scene data.
+ */
+export interface Transition {
+  /** Increases with every Transition: a renderer starts a new one when it sees a new id. */
+  id: number;
+  kind: TransitionKind;
+  /** The Active Scene before Activate; null when nothing was on air. */
+  from: SceneId | null;
+  to: SceneId;
+  /** When it started, in milliseconds since the epoch (main-process clock). */
+  startedAt: number;
+  durationMs: number;
 }
 
 /**
