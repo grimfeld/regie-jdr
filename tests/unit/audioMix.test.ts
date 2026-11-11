@@ -22,6 +22,7 @@ function audio(id: string, role: AudioMedia['role']): AudioMedia {
     extension: '.ogg',
     kind: 'audio',
     role,
+    durationSeconds: 60,
   };
 }
 

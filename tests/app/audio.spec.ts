@@ -40,6 +40,10 @@ async function importMusic({ app, controlWindow, dataDir }: RunningApp, ...names
   );
   await stubFilePicker(app, files);
   await controlWindow.getByRole('button', { name: 'Importer des sons' }).click();
+  await controlWindow
+    .getByRole('dialog', { name: 'Rôle des sons' })
+    .getByRole('button', { name: 'Musique' })
+    .click();
   for (const name of names) {
     await expect(soundInLibrary(controlWindow, name)).toBeVisible();
   }
@@ -70,6 +74,7 @@ async function sceneWithMusic(regie: RunningApp) {
   await importMusic(regie, 'Auberge', 'Bagarre');
   await createScene(controlWindow, 'Taverne');
   await dropOnMusicList(controlWindow, 'Auberge');
+  await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/]);
   await dropOnMusicList(controlWindow, 'Bagarre');
   await expect(musicList(controlWindow).getByRole('listitem')).toHaveText([/Auberge/, /Bagarre/]);
 }
