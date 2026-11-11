@@ -6,6 +6,7 @@ import {
   expect,
   fixture,
   launchApp,
+  picturePng,
   stubFilePicker,
   test,
   type RunningApp,
@@ -25,37 +26,6 @@ function shownNames(page: Page) {
 
 async function importImages(page: Page) {
   await page.getByRole('button', { name: 'Importer des images' }).click();
-}
-
-/**
- * Writes a plain-colour PNG of `width` × `height` to pick, made by the app's own image
- * facilities. Different colours give different content, so different Media.
- */
-async function picturePng(
-  { app, dataDir }: RunningApp,
-  name: string,
-  size: { width: number; height: number },
-  blue = 0,
-): Promise<string> {
-  const base64 = await app.evaluate(
-    ({ nativeImage }, { width, height, blue }) => {
-      const bitmap = Buffer.alloc(width * height * 4);
-      for (let i = 0; i < bitmap.length; i += 4) {
-        // BGRA
-        bitmap[i] = blue;
-        bitmap[i + 1] = 40;
-        bitmap[i + 2] = 200;
-        bitmap[i + 3] = 255;
-      }
-      return nativeImage.createFromBitmap(bitmap, { width, height }).toPNG().toString('base64');
-    },
-    { ...size, blue },
-  );
-  const folder = path.join(dataDir, 'picked');
-  await fs.mkdir(folder, { recursive: true });
-  const file = path.join(folder, name);
-  await fs.writeFile(file, Buffer.from(base64, 'base64'));
-  return file;
 }
 
 async function naturalWidth(page: Page, name: string): Promise<number> {
@@ -130,9 +100,9 @@ test('the library filters by All, Scenery or Character and searches names ignori
   await createCampaign(controlWindow);
   const size = { width: 32, height: 18 };
   await stubFilePicker(app, [
-    await picturePng(regie, 'Château hanté.png', size, 10),
-    await picturePng(regie, 'Orc.png', size, 20),
-    await picturePng(regie, 'Forêt.png', size, 30),
+    await picturePng(regie, 'Château hanté.png', size, { red: 200, green: 40, blue: 10 }),
+    await picturePng(regie, 'Orc.png', size, { red: 200, green: 40, blue: 20 }),
+    await picturePng(regie, 'Forêt.png', size, { red: 200, green: 40, blue: 30 }),
   ]);
   await importImages(controlWindow);
   await expect(library(controlWindow).getByRole('listitem')).toHaveCount(3);
