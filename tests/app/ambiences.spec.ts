@@ -57,11 +57,12 @@ async function importSounds(
   role: 'Musique' | 'Ambiance',
   names: string[],
   firstHz: number,
+  seconds?: number,
 ) {
   const folder = path.join(dataDir, `sons-${role}`);
   await fs.mkdir(folder, { recursive: true });
   const files = await Promise.all(
-    names.map((name, index) => writeToneWav(folder, name, firstHz + 110 * index)),
+    names.map((name, index) => writeToneWav(folder, name, firstHz + 110 * index, seconds)),
   );
   await stubFilePicker(app, files);
   await controlWindow.getByRole('button', { name: 'Importer des sons' }).click();
@@ -88,11 +89,14 @@ async function dropAmbience(page: Page, name: string) {
   await expect(ambience(page, name)).toBeVisible();
 }
 
-/** A Campaign with Music "Auberge" and Ambiences "Pluie" and "Feu" in its library. */
-async function campaignWithSounds(regie: RunningApp) {
+/**
+ * A Campaign with Music "Auberge" and Ambiences "Pluie" and "Feu" in its library, each
+ * `seconds` long (2 by default).
+ */
+async function campaignWithSounds(regie: RunningApp, seconds?: number) {
   await createCampaign(regie.controlWindow, 'Star Wars');
-  await importSounds(regie, 'Musique', ['Auberge'], 330);
-  await importSounds(regie, 'Ambiance', ['Pluie', 'Feu'], 660);
+  await importSounds(regie, 'Musique', ['Auberge'], 330, seconds);
+  await importSounds(regie, 'Ambiance', ['Pluie', 'Feu'], 660, seconds);
 }
 
 async function activate(page: Page) {
@@ -216,5 +220,80 @@ test('Ambience volumes compose with Master; a slider drag is one undo step; remo
   await expect(undoButton(page)).toHaveText('Annuler : retirer l’ambiance Pluie');
   await undoButton(page).click();
   await expect(ambienceSwitch(page, 'Pluie')).toBeChecked();
+  await expect(sounding(page, 'Pluie')).toHaveAttribute('data-state', 'playing');
+});
+
+interface WatchWindow {
+  pluieStates?: string[];
+}
+
+/**
+ * Starts recording what the "En cours" strip shows for `name` after every change to the strip:
+ * its state, or "absent" while it is not listed. Read back with `watchedStates`.
+ */
+async function watchSound(page: Page, name: string) {
+  await page.evaluate((watched) => {
+    const states: string[] = [];
+    (window as unknown as WatchWindow).pluieStates = states;
+    const strip = document.querySelector('section[aria-label="En cours"]');
+    if (!strip) throw new Error('The "En cours" strip is not shown.');
+    const record = () => {
+      const item = [...strip.querySelectorAll('li')].find((li) => li.textContent.includes(watched));
+      states.push(item?.getAttribute('data-state') ?? 'absent');
+    };
+    record();
+    new MutationObserver(record).observe(strip, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+  }, name);
+}
+
+async function watchedStates(page: Page) {
+  return page.evaluate(() => (window as unknown as WatchWindow).pluieStates ?? []);
+}
+
+test('Activating a Scene that shares an Ambience keeps it sounding throughout, at the new level', async ({
+  regie,
+}) => {
+  const page = regie.controlWindow;
+  // Long enough not to loop while watched: each loop of a media element briefly shows
+  // "chargement…" (it fires `waiting`), which would hide a real restart.
+  await campaignWithSounds(regie, 30);
+  await createScene(page, 'Taverne, jour');
+  await soundInLibrary(page, 'Auberge')
+    .locator('.media-audio-icon')
+    .dragTo(musicList(page).locator('xpath=..'));
+  await expect(musicList(page).getByRole('listitem')).toHaveText([/Auberge/]);
+  await dropAmbience(page, 'Pluie');
+  await ambienceSwitch(page, 'Pluie').check();
+  await activate(page);
+  await expect(sounding(page, 'Pluie')).toHaveAttribute('data-state', 'playing');
+  await expect(sounding(page, 'Auberge')).toHaveAttribute('data-state', 'playing');
+
+  // The next Scene shares the rain, quieter, and adds the fire; it has no Music.
+  await createScene(page, 'Taverne, bagarre');
+  await dropAmbience(page, 'Pluie');
+  await dropAmbience(page, 'Feu');
+  await ambienceSwitch(page, 'Pluie').check();
+  await ambienceSwitch(page, 'Feu').check();
+  const level = editor(page).getByRole('slider', { name: 'Niveau des ambiances' });
+  await level.fill('50');
+  await level.blur();
+  await expect(undoButton(page)).toHaveText('Annuler : régler le niveau des ambiances');
+  expect(await gainOf(page, 'Pluie')).toBe(1);
+
+  await watchSound(page, 'Pluie');
+  await activate(page);
+  await expect(sounding(page, 'Feu')).toHaveAttribute('data-state', 'playing');
+  await expect(sounding(page, 'Auberge')).toHaveCount(0);
+  await expect.poll(() => gainOf(page, 'Pluie')).toBe(0.5);
+  // Past the 1.5 s Activate fade.
+  await page.waitForTimeout(2000);
+
+  // The rain never left the strip nor reloaded: the same sound played on, only quieter.
+  expect(new Set(await watchedStates(page))).toEqual(new Set(['playing']));
   await expect(sounding(page, 'Pluie')).toHaveAttribute('data-state', 'playing');
 });
