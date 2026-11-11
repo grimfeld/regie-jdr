@@ -27,8 +27,14 @@ let controlWindow: BrowserWindow | null = null;
 let broadcastWindow: BrowserWindow | null = null;
 // Global Settings (home theme, window bounds, last Active Scenes); set when the app starts.
 let settings: SettingsStore | null = null;
-// Settings writes still running: the app waits for them before it quits.
+// Settings writes and window calls still running: the app waits for them before it quits.
 const pendingWrites = new Set<Promise<unknown>>();
+
+/** Keeps `write` among the pending writes until it settles; it must not fail. */
+function trackWrite(write: Promise<unknown>) {
+  pendingWrites.add(write);
+  void write.finally(() => pendingWrites.delete(write));
+}
 // What is on air: in memory only, so nothing is on air after a restart.
 const onAir = createOnAir();
 // What plays (the audio part of the on-air state): in memory only, so nothing plays after a restart.
@@ -134,8 +140,7 @@ function saveSetting(write: (store: SettingsStore) => Promise<unknown>) {
   const pending = write(settings).catch((error: unknown) => {
     log.error('Saving the settings failed', error);
   });
-  pendingWrites.add(pending);
-  void pending.finally(() => pendingWrites.delete(pending));
+  trackWrite(pending);
 }
 
 /**
@@ -518,6 +523,7 @@ function startApp() {
     },
     roleOf,
     log,
+    trackWrite,
   );
   void createControlWindow();
   app.on('activate', () => {
@@ -525,7 +531,8 @@ function startApp() {
   });
 }
 
-// Window bounds are saved as the windows close: finish those writes before quitting.
+// Window bounds are saved as the windows close, and a window's last call (Notes typed just
+// before quitting) may still be running: finish them before quitting.
 app.on('will-quit', (event) => {
   if (pendingWrites.size === 0) return;
   event.preventDefault();

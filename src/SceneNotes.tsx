@@ -79,7 +79,8 @@ function pastedImages(data: DataTransfer | null): File[] {
 /**
  * The Selected Scene's Notes, shown in the control column beside the editor: rich text private to
  * the Game Master, never on air. Saved as the Game Master types (NOTES_SAVE_DELAY_MS after the
- * last change), when the editor loses focus and when it closes (another Scene opened).
+ * last change), when the editor loses focus, when it closes (another Scene opened) and when the
+ * window closes or reloads.
  *
  * Undo: the editor keeps its own history (Ctrl+Z and Ctrl+Y while typing in it, or its buttons),
  * separate from the Scene undo history, which Notes never enter (core/undoHistory.ts). Typing
@@ -180,8 +181,16 @@ export function SceneNotes(props: {
     },
     onBlur: () => latestFlush.current(),
   });
-  // Closing the editor (another Scene opened) saves what is still waiting.
-  useEffect(() => () => latestFlush.current(), []);
+  // Closing the editor (another Scene opened) saves what is still waiting, and so does the
+  // window closing or reloading (the app quitting): the main process finishes the save first.
+  useEffect(() => {
+    const flushNow = () => latestFlush.current();
+    window.addEventListener('beforeunload', flushNow);
+    return () => {
+      window.removeEventListener('beforeunload', flushNow);
+      flushNow();
+    };
+  }, []);
 
   /**
    * Inserts the images of `source` at the cursor, each a block on its own line, once they are
