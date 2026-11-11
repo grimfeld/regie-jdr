@@ -38,3 +38,4 @@ Read first: [carry-forward](carry-forward.md) M3 section, ADR-0004 (rich Notes a
 - 2026-11-12: #49 Cut and forced Cut merged at `7924e22` (964 unit, 160 app tests). scenes.json now v4 (Crossfade migration). #56 must call `src/activate.ts`. Manual check: no click on a Cut's 0.1 s audio switch.
 - 2026-11-12: #49 Cut merged at `d30b310` (964 unit, 159 app tests). Manual check: 0.1 s audio switch on a Cut does not click.
 - 2026-11-12: #50 duration settings merged at `4d2d082` (983 unit tests; full app suite not re-run after its last test change).
+- 2026-11-12: #56 Scene shortcuts merged at `80ffc52` (990 unit, 165 app tests). Ctrl+Entrée, Ctrl+↓/↑, B in `KEY_MAP`; `SHIFT_FREE` lets Shift force a Cut; `isTypingIn` now counts any editable content (side effect: Ctrl+Z on a Notes image handle no longer undoes a Scene edit). Deviation: next/previous keys shown only in the Activer title. All agent slices of M3 done; closeout and review next.

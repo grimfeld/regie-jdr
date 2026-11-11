@@ -22,3 +22,4 @@ Facts learned in one milestone that a later milestone's agents must know. Each l
 - 2026-11-12 (#46, `1a54d3e`): #70 Chapters group over the running order in `scenes.json` (`core/runningOrder.ts`); reordering is a Campaign-level command outside Scene undo.
 
 - 2026-11-12 (#41, `2879653`): #71 remapping passes a remapped `KeyMap` to `shortcutOf`/`keyLabelOf`; both accept one already. See [shortcuts](subsystem-keyboard-shortcuts.md).
+- 2026-11-12 (#56, `80ffc52`): `aria-keyshortcuts` holds the French display label, not ARIA key syntax; #71 remapping should fix both together. Handlers receive the key press (`ShortcutHandlers` take `(press) => void`); `SHIFT_FREE` in `src/keyboard.ts`.
