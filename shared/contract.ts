@@ -218,13 +218,26 @@ export interface MediaDeletion {
 }
 
 /**
- * What an Export did: nothing when the Game Master cancelled the save dialog; else the number of
- * Media left out because their file is missing on disk.
+ * What an Export did: nothing when the Game Master cancelled the save dialog, or `cancelled`
+ * when they cancelled the Export itself (no file left); else the number of Media left out
+ * because their file is missing on disk.
  */
-export type CampaignExportResult = { saved: false } | { saved: true; missingMedia: number };
+export type CampaignExportResult =
+  { saved: false; cancelled: boolean } | { saved: true; missingMedia: number };
 
-/** What an Import did: nothing when the Game Master cancelled the file dialog; else the new Campaign. */
-export type CampaignImportResult = { imported: false } | { imported: true; campaign: Campaign };
+/**
+ * What an Import did: nothing when the Game Master cancelled the file dialog, or `cancelled` when
+ * they cancelled the Import itself (no Campaign added); else the new Campaign.
+ */
+export type CampaignImportResult =
+  { imported: false; cancelled: boolean } | { imported: true; campaign: Campaign };
+
+/** An Export or Import under way, in bytes; `totalBytes` is 0 when there is nothing to count. */
+export interface CampaignTransferProgress {
+  kind: 'export' | 'import';
+  doneBytes: number;
+  totalBytes: number;
+}
 
 /** What can be changed on a Campaign; absent fields are left as they are. */
 export interface CampaignChanges {
@@ -421,6 +434,11 @@ export interface InvokeChannels {
    */
   'campaigns:import-dropped': { payload: { file: string }; result: CampaignImportResult };
   /**
+   * Cancel the Export or Import under way, if any: it stops and leaves nothing behind, and its
+   * own call resolves as cancelled.
+   */
+  'campaigns:cancel-transfer': { payload: void; result: void };
+  /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
    */
@@ -503,6 +521,8 @@ export interface EventChannels {
   'audio:pad-command': PadCommand;
   /** What is sounding changed (a new mix, or an engine report), for the "En cours" strip. */
   'audio:sounding-changed': AudioSounding;
+  /** Progress of the Export or Import under way, a few times a second at most. */
+  'campaigns:transfer-progress': CampaignTransferProgress;
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -607,6 +627,9 @@ export interface ControlBridge extends BroadcastBridge {
   importCampaign(): Promise<CampaignImportResult>;
   /** Imports the Export `file` dropped from Windows Explorer; its path is read in the bridge. */
   importDroppedCampaign(file: File): Promise<CampaignImportResult>;
+  /** Cancels the Export or Import under way; its call then resolves as cancelled. */
+  cancelCampaignTransfer(): Promise<void>;
+  onCampaignTransferProgress(listener: (progress: CampaignTransferProgress) => void): Unsubscribe;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;

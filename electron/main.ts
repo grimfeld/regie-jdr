@@ -9,6 +9,7 @@ import { CampaignError, createCampaign, updateCampaign } from '../core/campaigns
 import { createCampaignDeletion, type Trash } from '../core/campaignDeletion.js';
 import { exportCampaign, exportFileName } from '../core/campaignExport.js';
 import { clearImportLeftovers, importCampaign } from '../core/campaignImport.js';
+import { createCampaignTransfers, type ByteProgress } from '../core/campaignTransfer.js';
 import { electronImageResizer } from './imageResizer.js';
 import { createMediaLibrary, MEDIA_KINDS, type MediaLibrary } from '../core/media.js';
 import { MEDIA_SCHEME } from '../core/mediaAddress.js';
@@ -343,19 +344,43 @@ function startApp() {
       log.warn('Could not remove the folders left by an interrupted Import', error);
     },
   );
+  // One Export or Import at a time; its progress goes to the Control window, throttled.
+  const transfers = createCampaignTransfers({
+    send: (progress) =>
+      sendEvent(controlWindow?.webContents, 'campaigns:transfer-progress', progress),
+  });
   // Always a new Campaign (ADR-0005); the zip is untrusted, core/campaignImport.ts checks it.
-  async function importCampaignFrom(file: string): Promise<CampaignImportResult> {
+  // A cancel or a failure leaves no staging folder and no Campaign (core/campaignImport.ts).
+  async function importCampaignFrom(
+    file: string,
+    signal: AbortSignal,
+    onProgress: (progress: ByteProgress) => void,
+  ): Promise<CampaignImportResult> {
     await importLeftoversCleared;
     const { id } = await importCampaign({
       openArchive: openZipArchive(file),
       campaignsFolder: storage.campaignsFolder,
       importsFolder: storage.importsFolder,
       existingNames: (await storage.campaigns.list()).map((campaign) => campaign.name),
+      signal,
+      onProgress,
     });
     const campaign = await storage.campaigns.get(id);
     if (!campaign) throw new CampaignError('La campagne importée est illisible.');
     log.info(`Imported Campaign ${id}`);
     return { imported: true, campaign };
+  }
+  /** Runs an Import as the transfer under way; `pick` names the zip, or nothing when cancelled. */
+  async function runImport(pick: () => Promise<string | undefined>): Promise<CampaignImportResult> {
+    const outcome = await transfers.run('import', async (signal, onProgress) => {
+      const file = await pick();
+      return file
+        ? importCampaignFrom(file, signal, onProgress)
+        : { imported: false as const, cancelled: false };
+    });
+    if (outcome.status === 'done') return outcome.value;
+    log.info('Import cancelled by the Game Master');
+    return { imported: false, cancelled: true };
   }
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
@@ -538,23 +563,31 @@ function startApp() {
         }
         const campaign = await storage.campaigns.get(campaignId);
         if (!campaign) throw new CampaignError('Cette campagne n’existe plus.');
-        const file = await pickExportFile(exportFileName(campaign.name, new Date()));
-        if (!file) return { saved: false };
-        const { missingMedia } = await exportCampaign({
-          campaignFolder: storage.campaignFolder(campaignId),
-          campaignName: campaign.name,
-          media: await library.list(campaignId),
-          appVersion: app.getVersion(),
-          writeArchive: writeZipArchive(file),
+        // A cancel or a failure leaves no file: the zip is renamed into place once complete.
+        const outcome = await transfers.run('export', async (signal, onProgress) => {
+          const file = await pickExportFile(exportFileName(campaign.name, new Date()));
+          if (!file) return undefined;
+          return exportCampaign({
+            campaignFolder: storage.campaignFolder(campaignId),
+            campaignName: campaign.name,
+            media: await library.list(campaignId),
+            appVersion: app.getVersion(),
+            writeArchive: writeZipArchive(file),
+            signal,
+            onProgress,
+          });
         });
+        if (outcome.status === 'cancelled') {
+          log.info(`Export of Campaign ${campaignId} cancelled by the Game Master`);
+          return { saved: false, cancelled: true };
+        }
+        if (!outcome.value) return { saved: false, cancelled: false };
+        const { missingMedia } = outcome.value;
         log.info(`Exported Campaign ${campaignId}, ${missingMedia} missing Media left out`);
         return { saved: true, missingMedia };
       },
       // Picked in the native open dialog: the window never names a file.
-      'campaigns:import': async () => {
-        const file = await pickImportFile();
-        return file ? importCampaignFrom(file) : { imported: false };
-      },
+      'campaigns:import': () => runImport(pickImportFile),
       // The path was checked like a dropped Media's (core/ipc.ts); then the same Import as above.
       'campaigns:import-dropped': async ({ file }) => {
         if (path.extname(file).toLowerCase() !== '.zip') {
@@ -562,7 +595,10 @@ function startApp() {
             `« ${path.basename(file)} » n’a pas été importé : ce n’est pas une campagne exportée (.zip).`,
           );
         }
-        return importCampaignFrom(file);
+        return runImport(() => Promise.resolve(file));
+      },
+      'campaigns:cancel-transfer': () => {
+        transfers.cancel();
       },
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),

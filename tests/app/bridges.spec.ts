@@ -20,6 +20,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
   const keysOf = () => Object.keys((window as unknown as { regie: object }).regie).sort();
   expect(await controlWindow.evaluate(keysOf)).toEqual([
     'activateScene',
+    'cancelCampaignTransfer',
     'closeCampaign',
     'createCampaign',
     'createScene',
@@ -46,6 +47,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'listScenes',
     'moveCampaignToTrash',
     'moveScene',
+    'onCampaignTransferProgress',
     'onOnAirChanged',
     'onSoundingChanged',
     'openBroadcast',

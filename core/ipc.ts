@@ -393,6 +393,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'campaigns:export': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'campaigns:import': { from: controlOnly, parse: noPayload },
   'campaigns:import-dropped': { from: controlOnly, parse: onePayload(droppedExport) },
+  'campaigns:cancel-transfer': { from: controlOnly, parse: noPayload },
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },
