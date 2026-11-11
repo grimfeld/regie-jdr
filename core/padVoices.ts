@@ -14,7 +14,7 @@ import type {
   VoiceState,
 } from '../shared/domain.js';
 import { isVoiceState } from './audioMix.js';
-import { AUDIO_FADE_MS } from './fades.js';
+import { AUDIO_FADE_MS, type AudioChange } from './fades.js';
 import { isRecord } from './guards.js';
 
 /** Most pad sounds playing at once. */
@@ -37,8 +37,11 @@ export interface PadVoices {
   report(report: PadReport): boolean;
   /** The pads with a pad sound the engine reports playing, each once, oldest press first. */
   sounding(): SoundingPad[];
-  /** Everything stops (a Campaign opened, switched or closed): cuts every pad sound. */
-  clear(): PadCommand[];
+  /**
+   * Cuts every pad sound, fading over `change`: everything stops (a Campaign opened, switched
+   * or closed), or Silence starts. Pads pressed afterwards play as usual.
+   */
+  clear(change?: AudioChange): PadCommand[];
   /** The engine (re)started, holding nothing: forgets every pad sound without a command. */
   forget(): void;
 }
@@ -103,10 +106,12 @@ export function createPadVoices(): PadVoices {
 
     sounding: () => soundingOf(voices),
 
-    clear() {
+    clear(change = 'stop') {
       const cut = voices.map((voice) => voice.voiceId);
       voices = [];
-      return cut.length === 0 ? [] : [{ kind: 'cut', voiceIds: cut, fadeMs: AUDIO_FADE_MS.stop }];
+      return cut.length === 0
+        ? []
+        : [{ kind: 'cut', voiceIds: cut, fadeMs: AUDIO_FADE_MS[change] }];
     },
 
     forget() {

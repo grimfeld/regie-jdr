@@ -317,11 +317,16 @@ export interface SoundingVoice {
 
 /**
  * What is sounding, as the "En cours" strip shows it: the mix as the engine last reported it,
- * and the Soundboard pads the engine reports playing.
+ * the Soundboard pads the engine reports playing, and whether Silence is on.
  */
 export interface AudioSounding {
   voices: SoundingVoice[];
   pads: SoundingPad[];
+  /**
+   * Silence: all audio faded out, the mix kept to come back when it is lifted. On air only,
+   * never saved; audio only, apart from Blackout (picture only).
+   */
+  silence: boolean;
 }
 
 /**

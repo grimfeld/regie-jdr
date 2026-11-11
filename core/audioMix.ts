@@ -11,7 +11,7 @@
  *   AudioChange in `audioChangeOf`.
  * - #38 Activate continuity: voices are known by Media, so a Media in both mixes keeps playing.
  * - #39 Soundboard: pad sounds are one-off commands beside the mix (core/padVoices.ts).
- * - #40 Silence: a flag in AudioOnAirState that zeroes every target here.
+ * - #40 Silence: `MixInput.silence` zeroes and pauses every voice here (done).
  * - #42 missing files: Media whose file is known to be missing (`MixInput.missing`) are left
  *   out of the voices and listed as `missing`; load failures come back from the engine.
  */
@@ -50,11 +50,17 @@ export interface MixInput {
   audio: AudioOnAirState;
   /** Audio Media whose file is missing (their address answers 404): never played. None if absent. */
   missing?: ReadonlySet<MediaId>;
+  /**
+   * Silence: every voice fades to nothing and pauses (the Music keeps its position), keeping
+   * its place in the mix so lifting Silence brings the same mix back. Pads are not voices: the
+   * main process cuts those sounding when Silence starts (core/padVoices.ts). Absent: off.
+   */
+  silence?: boolean;
 }
 
 /** The mix for `input`, fading over the duration of `change`. Its version is the holder's. */
 export function mixOf(input: MixInput, change: AudioChange): Omit<AudioMix, 'version'> {
-  const { scene, library, masterVolume, audio, missing = new Set<MediaId>() } = input;
+  const { scene, library, masterVolume, audio, silence, missing = new Set<MediaId>() } = input;
   const voices: AudioVoice[] = [];
   const left: MissingVoice[] = [];
   /** Plays `voice`, unless its file is missing: then it is only listed as missing. */
@@ -75,7 +81,8 @@ export function mixOf(input: MixInput, change: AudioChange): Omit<AudioMix, 'ver
       add(voiceOf(media, 'ambience', gain, 'playing'));
     }
   }
-  return { voices, missing: left, fadeMs: AUDIO_FADE_MS[change] };
+  const heard = silence ? voices.map((voice) => ({ ...voice, gain: 0, playing: false })) : voices;
+  return { voices: heard, missing: left, fadeMs: AUDIO_FADE_MS[change] };
 }
 
 /** The audio Media `mediaId` of the library, or null when it is not one (deleted, an image). */
@@ -187,16 +194,19 @@ export function audioChangeOf(edit: SceneEdit): AudioChange {
 
 /**
  * What is sounding: each voice of `mix` with the state the engine last reported for it, loading
- * until it does, then the voices left out because their file is missing, and the Soundboard
- * `pads` sounding. Voices the engine still holds but the mix dropped (fading out) are not shown.
+ * until it does, then the voices left out because their file is missing, the Soundboard `pads`
+ * sounding, and whether Silence is on. Voices the engine still holds but the mix dropped
+ * (fading out) are not shown.
  */
 export function soundingOf(
   mix: AudioMix,
   report: AudioEngineReport,
   pads: AudioSounding['pads'] = [],
+  silence = false,
 ): AudioSounding {
   return {
     pads,
+    silence,
     voices: [
       ...mix.voices.map(({ mediaId, role, name }) => ({
         mediaId,

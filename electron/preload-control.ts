@@ -86,6 +86,7 @@ const bridge: ControlBridge = {
   setFadeDuration: (fadeDurationMs) => invoke('settings:set-fade-duration', { fadeDurationMs }),
   setMasterVolume: (masterVolume) => invoke('settings:set-master-volume', { masterVolume }),
   getSounding: () => invoke('audio:get-sounding'),
+  setSilence: (on) => invoke('audio:set-silence', { on }),
   onSoundingChanged: (listener) => subscribe('audio:sounding-changed', listener),
   getSoundboard: (campaignId) => invoke('soundboard:get', { campaignId }),
   editSoundboard: (campaignId, edit) => invoke('soundboard:edit', { campaignId, edit }),

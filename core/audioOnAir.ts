@@ -23,8 +23,8 @@ export interface AudioOnAir {
   /** The current mix. */
   mix(): AudioMix;
   /**
-   * A Scene is Activated: its first Music plays, with its switched-on Ambiences. `missing`:
-   * the audio Media whose file is missing, left out (here and below).
+   * A Scene is Activated: its first Music plays, with its switched-on Ambiences. Lifts Silence.
+   * `missing`: the audio Media whose file is missing, left out (here and below).
    */
   activateScene(scene: Scene, library: readonly Media[], missing: ReadonlySet<MediaId>): AudioMix;
   /**
@@ -45,8 +45,18 @@ export interface AudioOnAir {
   pickMusic(mediaId: MediaId): AudioMix;
   /** Plays, pauses (keeping its position) or stops the current Music (see musicWithPlayback). */
   setMusicPlayback(playback: MusicPlayback): AudioMix;
-  /** Nothing plays: a Campaign opened, switched or closed, or the Active Scene deleted. */
+  /**
+   * Nothing plays: a Campaign opened, switched or closed, or the Active Scene deleted. Lifts
+   * Silence.
+   */
   clear(): AudioMix;
+  /** Whether Silence is on. */
+  silence(): boolean;
+  /**
+   * Starts (`on`) or lifts Silence: every voice fades out and pauses, then comes back as the
+   * mix now is. Activating a Scene lifts it too. Pads are the caller's (core/padVoices.ts).
+   */
+  setSilence(on: boolean): AudioMix;
   /** The Master volume (Settings, already checked). */
   setMasterVolume(masterVolume: number): AudioMix;
   /** Calls `listener` with each new mix. Returns the unsubscribe function. */
@@ -65,14 +75,17 @@ export function createAudioOnAir(): AudioOnAir {
     masterVolume: MASTER_VOLUME.default,
     audio: { music: null },
     missing: new Set(),
+    silence: false,
   };
   let mix: AudioMix = { voices: [], missing: [], fadeMs: 0, version: 0 };
   const listeners = new Set<(mix: AudioMix) => void>();
 
   function change(next: MixInput, kind: AudioChange): AudioMix {
+    const silenceChanged = Boolean(next.silence) !== Boolean(input.silence);
     input = next;
     const computed = mixOf(next, kind);
-    if (heard(computed) === heard(mix)) {
+    // A Silence change always gives a new mix, so listeners learn of it even when nothing sounds.
+    if (!silenceChanged && heard(computed) === heard(mix)) {
       return structuredClone(mix);
     }
     mix = { ...computed, version: mix.version + 1 };
@@ -84,7 +97,14 @@ export function createAudioOnAir(): AudioOnAir {
     mix: () => structuredClone(mix),
     activateScene: (scene, library, missing) =>
       change(
-        { ...input, scene, library, missing, audio: { music: activatedMusic(scene) } },
+        {
+          ...input,
+          scene,
+          library,
+          missing,
+          audio: { music: activatedMusic(scene) },
+          silence: false,
+        },
         'activate',
       ),
     showActiveScene: (scene, library, kind, missing) =>
@@ -110,9 +130,18 @@ export function createAudioOnAir(): AudioOnAir {
       ),
     clear: () =>
       change(
-        { ...input, scene: null, library: [], missing: new Set(), audio: { music: null } },
+        {
+          ...input,
+          scene: null,
+          library: [],
+          missing: new Set(),
+          audio: { music: null },
+          silence: false,
+        },
         'stop',
       ),
+    silence: () => input.silence === true,
+    setSilence: (on) => change({ ...input, silence: on }, 'silence'),
     setMasterVolume: (masterVolume) => change({ ...input, masterVolume }, 'volume'),
     subscribe: (listener) => {
       const own = (snapshot: AudioMix) => listener(snapshot);

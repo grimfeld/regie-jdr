@@ -329,14 +329,12 @@ function startApp() {
     .catch((error: unknown) => {
       log.error('Reading the fade duration and the Master volume failed', error);
     });
+  const currentSounding = () =>
+    soundingOf(audio.mix(), engineReport, padVoices.sounding(), audio.silence());
   // Audio goes to the Control window only, where the audio engine plays it (ADR-0002): the
   // Broadcast window gets no audio data.
   const sendSounding = () =>
-    sendEvent(
-      controlWindow?.webContents,
-      'audio:sounding-changed',
-      soundingOf(audio.mix(), engineReport, padVoices.sounding()),
-    );
+    sendEvent(controlWindow?.webContents, 'audio:sounding-changed', currentSounding());
   const sendPadCommands = (commands: readonly PadCommand[]) => {
     for (const command of commands) {
       sendEvent(controlWindow?.webContents, 'audio:pad-command', command);
@@ -440,7 +438,13 @@ function startApp() {
         engineReport = report;
         sendSounding();
       },
-      'audio:get-sounding': () => soundingOf(audio.mix(), engineReport, padVoices.sounding()),
+      'audio:get-sounding': () => currentSounding(),
+      // Silence fades out the pads sounding too; pads pressed during it play as usual.
+      'audio:set-silence': ({ on }) => {
+        if (on && !audio.silence()) sendPadCommands(padVoices.clear('silence'));
+        audio.setSilence(on);
+        return currentSounding();
+      },
       'audio:report-pads': (report) => {
         if (padVoices.report(report)) sendSounding();
       },

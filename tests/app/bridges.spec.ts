@@ -51,6 +51,7 @@ test('the Control window gets the full bridge, the Broadcast window only reads a
     'setImageCategory',
     'setMasterVolume',
     'setMusicPlayback',
+    'setSilence',
     'showTransientEdit',
     'takeNotices',
     'toggleBroadcastFullscreen',

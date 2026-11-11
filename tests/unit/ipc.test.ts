@@ -43,6 +43,7 @@ describe('sender policy', () => {
       ['audio:get-mix', []],
       ['audio:report', [{ voices: [] }]],
       ['audio:get-sounding', []],
+      ['audio:set-silence', [{ on: true }]],
       ['settings:set-master-volume', [{ masterVolume: 0.5 }]],
       ['audio:pick-music', [{ mediaId: 'm1' }]],
       ['audio:set-music-playback', [{ playback: 'paused' }]],
@@ -439,6 +440,18 @@ describe('Blackout channel', () => {
     ['a flag of the wrong type', [{ on: 'true' }]],
   ])('rejects a Blackout given as %s', (_label, args) => {
     expect(checkInvoke('onAir:set-blackout', 'control', args)).toMatchObject({ ok: false });
+  });
+});
+
+describe('Silence channel', () => {
+  it('keeps only the flag, and rejects anything else', () => {
+    expect(checkInvoke('audio:set-silence', 'control', [{ on: true, scene: 'x' }])).toEqual({
+      ok: true,
+      payload: { on: true },
+    });
+    for (const args of [[], [true], [{}], [{ on: 'true' }]]) {
+      expect(checkInvoke('audio:set-silence', 'control', args)).toMatchObject({ ok: false });
+    }
   });
 });
 

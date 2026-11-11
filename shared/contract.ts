@@ -349,6 +349,11 @@ export interface InvokeChannels {
    * with no current Music starts its first. Live playback, like `audio:pick-music`.
    */
   'audio:set-music-playback': { payload: { playback: MusicPlayback }; result: void };
+  /**
+   * Start (`on`) or lift Silence: all audio fades out (sounding pads are cut), then the same mix
+   * comes back. On air only, never saved; the picture is unchanged (Blackout is picture only).
+   */
+  'audio:set-silence': { payload: { on: boolean }; result: AudioSounding };
 }
 
 /** Main-to-window notifications (`webContents.send`), by payload type. */
@@ -454,6 +459,7 @@ export interface ControlBridge extends BroadcastBridge {
   setFadeDuration(fadeDurationMs: number): Promise<Settings>;
   setMasterVolume(masterVolume: number): Promise<Settings>;
   getSounding(): Promise<AudioSounding>;
+  setSilence(on: boolean): Promise<AudioSounding>;
   getSoundboard(campaignId: CampaignId): Promise<Soundboard>;
   editSoundboard(campaignId: CampaignId, edit: SoundboardEdit): Promise<Soundboard>;
   pressPad(campaignId: CampaignId, padId: string): Promise<void>;

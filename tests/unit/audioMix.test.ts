@@ -303,12 +303,17 @@ describe('what is sounding', () => {
         { mediaId: 'a1', role: 'ambience', name: 'Nom a1', state: 'loading' },
       ],
       pads: [],
+      silence: false,
     });
   });
 
   it('shows the Soundboard pads sounding beside the voices', () => {
     const pads = [{ padId: 'p1', name: 'Épée' }];
-    expect(soundingOf({ ...mix, voices: [] }, { voices: [] }, pads)).toEqual({ voices: [], pads });
+    expect(soundingOf({ ...mix, voices: [] }, { voices: [] }, pads)).toEqual({
+      voices: [],
+      pads,
+      silence: false,
+    });
   });
 
   it('shows the voices left out for a missing file after the others, as missing', () => {
@@ -328,13 +333,14 @@ describe('what is sounding', () => {
   it('ignores voices the engine still holds that left the mix (fading out)', () => {
     expect(
       soundingOf({ ...mix, voices: [] }, { voices: [{ mediaId: 'm1', state: 'playing' }] }),
-    ).toEqual({ voices: [], pads: [] });
+    ).toEqual({ voices: [], pads: [], silence: false });
   });
 });
 
 describe('sounds that cannot be played', () => {
   const sounding = (...states: [string, SoundingState][]) => ({
     pads: [],
+    silence: false,
     voices: states.map(([mediaId, state]) => ({
       mediaId,
       role: 'ambience' as const,
