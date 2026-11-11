@@ -26,6 +26,10 @@ Memory for the agents delivering milestone work. It is a historical record: ever
 
 - [Slice agent brief](slice-agent-brief.md): how an agent implements one slice issue and merges it into its milestone branch. Every slice agent reads this.
 
+## Reviews
+
+- [M1 review 2026-11-11](review-m1-2026-11-11.md): 3 should-fix, 7 notes.
+
 ## Milestone logs
 
 - [M1 log](milestone-m1.md): slice order and outcomes for #21.
