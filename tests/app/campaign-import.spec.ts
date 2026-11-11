@@ -4,9 +4,11 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { rawZip } from '../rawZip';
 import {
   createCampaign,
+  dropFiles,
   expect,
   fixture,
   launchApp,
+  openBroadcastWindow,
   stubFilePicker,
   test,
   type RunningApp,
@@ -263,5 +265,90 @@ test('an Export from a newer version of the app is refused with a clear message'
 
   await expect(page.getByRole('alert').filter({ hasText: 'version plus récente' })).toBeVisible();
   expect(await filesIn(path.join(dataDir, 'campaigns'))).toEqual([]);
+  expect(await filesIn(path.join(dataDir, 'imports'))).toEqual([]);
+});
+
+/** The Campaign list page, where Exports dropped from Explorer are taken. */
+function campaignHome(page: Page) {
+  return page.getByRole('heading', { name: 'Vos campagnes' });
+}
+
+/** Drops `files` from Explorer on the Campaign list; the page takes the drop. */
+async function dropOnCampaignList(page: Page, files: string[]) {
+  expect(await dropFiles(campaignHome(page), files)).toBe(true);
+}
+
+test('an Export dropped on the Campaign list is imported as through the dialog', async ({
+  regie,
+}) => {
+  const { controlWindow: page, dataDir } = regie;
+  await campaignWithScenesAndAnImage(regie, 'Les Ombres');
+  const zip = path.join(dataDir, 'Les Ombres.zip');
+  await exportTo(regie, 'Les Ombres', zip);
+
+  await dropOnCampaignList(page, [zip]);
+
+  await expect(page.getByText('Campagne « Les Ombres (importée) » importée.')).toBeVisible();
+  await expect(campaignItem(page, 'Les Ombres \\(importée\\)')).toContainText('Importée');
+  await expect(campaignHome(page)).toBeVisible();
+  expect(await filesIn(path.join(dataDir, 'imports'))).toEqual([]);
+  await campaignItem(page, 'Les Ombres \\(importée\\)')
+    .getByRole('button', { name: /^Les Ombres \(importée\)/ })
+    .click();
+  await expectScenesAndImage(page);
+});
+
+test('a dropped file that is not a zip is refused with a message, importing nothing', async ({
+  regie,
+}) => {
+  const { controlWindow: page, dataDir } = regie;
+  const notes = path.join(dataDir, 'notes.txt');
+  await fs.writeFile(notes, 'pas une campagne');
+
+  await dropOnCampaignList(page, [notes]);
+
+  await expect(page.getByRole('alert')).toContainText(
+    '« notes.txt » n’a pas été importé : ce n’est pas une campagne exportée (.zip).',
+  );
+  expect(await filesIn(path.join(dataDir, 'campaigns'))).toEqual([]);
+  expect(await filesIn(path.join(dataDir, 'imports'))).toEqual([]);
+});
+
+test('a non-zip renamed .zip and several dropped files are refused, importing nothing', async ({
+  regie,
+}) => {
+  const { controlWindow: page, dataDir } = regie;
+  const fake = path.join(dataDir, 'Faux.zip');
+  await fs.writeFile(fake, 'pas une archive');
+
+  await dropOnCampaignList(page, [fake]);
+  await expect(page.getByRole('alert')).toContainText('n’a pas pu être lu');
+
+  await dropOnCampaignList(page, [fake, fixture(`${IMAGE}.png`)]);
+  await expect(page.getByRole('alert')).toContainText(
+    'Déposez une seule campagne exportée à la fois : rien n’a été importé.',
+  );
+  expect(await filesIn(path.join(dataDir, 'campaigns'))).toEqual([]);
+  expect(await filesIn(path.join(dataDir, 'imports'))).toEqual([]);
+});
+
+test('an Export dropped on the Broadcast window is not imported', async ({ regie }) => {
+  const { app, controlWindow: page, dataDir } = regie;
+  await campaignWithScenesAndAnImage(regie, 'Les Ombres');
+  const zip = path.join(dataDir, 'Les Ombres.zip');
+  await exportTo(regie, 'Les Ombres', zip);
+  await campaignItem(page, 'Les Ombres')
+    .getByRole('button', { name: /^Les Ombres/ })
+    .click();
+  const broadcastWindow = await openBroadcastWindow(app, page);
+  const shown = broadcastWindow.url();
+
+  // The page-wide guard takes the drop so the zip cannot open in the window; nothing imports it.
+  expect(await dropFiles(broadcastWindow.locator('main.broadcast-screen'), [zip])).toBe(true);
+
+  expect(broadcastWindow.url()).toBe(shown);
+  await backToCampaignList(page);
+  await expect(campaignList(page).getByRole('listitem')).toHaveCount(1);
+  expect(await filesIn(path.join(dataDir, 'campaigns'))).toHaveLength(1);
   expect(await filesIn(path.join(dataDir, 'imports'))).toEqual([]);
 });

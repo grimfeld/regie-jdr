@@ -2,7 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Download, FolderOpen, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import type { CampaignDeletionSummary, CampaignTrashing } from '../shared/contract';
 import type { Campaign, CampaignId } from '../shared/domain';
+import { carriesFiles, droppedFiles } from './mediaDrag';
 import { isIpcFailure, noticeFor } from './notices';
+import { useDropTarget } from './PlacementLists';
 
 /**
  * The Game Master's wording for a failed bridge call: the French message thrown by the app core
@@ -69,10 +71,11 @@ interface Props {
   /** Exports the Campaign to a zip; it is closed, as on this page every Campaign is. */
   onExport: (id: CampaignId) => Promise<void>;
   /**
-   * Imports a Campaign from an Export zip the Game Master picks; resolves to the new Campaign's
-   * id, or undefined when nothing was picked. Absent without a main process.
+   * Imports a Campaign from an Export zip the Game Master picks, or the one `dropped` from
+   * Explorer; resolves to the new Campaign's id, or undefined when nothing was picked. Absent
+   * without a main process.
    */
-  onImport?: () => Promise<CampaignId | undefined>;
+  onImport?: (dropped?: File) => Promise<CampaignId | undefined>;
 }
 
 /** The Game Master's notice after an Export, naming how many missing Media were left out. */
@@ -181,7 +184,7 @@ export function CampaignList({
     }
   }
 
-  async function importCampaign() {
+  async function importCampaign(dropped?: File) {
     if (!onImport) return;
     setCreating(false);
     setRenaming(null);
@@ -189,13 +192,27 @@ export function CampaignList({
     setImporting(true);
     try {
       await attempt(async () => {
-        const id = await onImport();
+        const id = await onImport(dropped);
         if (id) setImported(id);
       });
     } finally {
       setImporting(false);
     }
   }
+
+  /** Files dropped from Explorer: one Export is imported as if picked; the main process checks it. */
+  function importDropped(files: readonly File[]) {
+    if (files.length === 0) return;
+    if (files.length > 1) {
+      setError('Déposez une seule campagne exportée à la fois : rien n’a été importé.');
+      return;
+    }
+    if (!importing) void importCampaign(files[0]);
+  }
+  const drop = useDropTarget(
+    (event) => importDropped(droppedFiles(event)),
+    (event) => onImport !== undefined && carriesFiles(event),
+  );
 
   function startRename(campaign: Campaign) {
     setError('');
@@ -206,7 +223,7 @@ export function CampaignList({
   }
 
   return (
-    <section className="campaign-home">
+    <section className={`campaign-home${drop.over ? ' drop-ready' : ''}`} {...drop.props}>
       <div className="section-heading">
         <div>
           <span className="eyebrow">VOS PARTIES</span>

@@ -122,6 +122,7 @@ describe('Campaign channels', () => {
       ['campaigns:delete-permanently', [{ id }]],
       ['campaigns:export', [{ id }]],
       ['campaigns:import', []],
+      ['campaigns:import-dropped', [{ file: path.resolve('Les Ombres.zip') }]],
       ['notices:take', []],
     ] as const) {
       expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: true });
@@ -160,6 +161,14 @@ describe('Campaign channels', () => {
     }
   });
 
+  it('accept a dropped Export as an absolute path, keeping only that field', () => {
+    const file = path.resolve('Les Ombres.zip');
+    expect(checkInvoke('campaigns:import-dropped', 'control', [{ file, id }])).toEqual({
+      ok: true,
+      payload: { file },
+    });
+  });
+
   it.each([
     ['no name', 'campaigns:create', [{}]],
     ['a name that is not text', 'campaigns:create', [{ name: 42 }]],
@@ -174,6 +183,26 @@ describe('Campaign channels', () => {
     ['a nested path to summarise', 'campaigns:deletion-summary', [{ id: 'a/../b' }]],
     ['no id to delete', 'campaigns:move-to-trash', [{}]],
     ['two payloads to delete', 'campaigns:move-to-trash', [{ id }, { id }]],
+    ['no dropped Export', 'campaigns:import-dropped', [{}]],
+    ['a dropped Export that is not text', 'campaigns:import-dropped', [{ file: 7 }]],
+    ['a dropped Export with an empty path', 'campaigns:import-dropped', [{ file: '' }]],
+    ['a dropped Export with a relative path', 'campaigns:import-dropped', [{ file: 'x.zip' }]],
+    [
+      'a dropped Export on a network share',
+      'campaigns:import-dropped',
+      [{ file: '\\\\serveur\\partage\\x.zip' }],
+    ],
+    ['a dropped Export on a device path', 'campaigns:import-dropped', [{ file: '\\\\.\\COM1' }]],
+    [
+      'a dropped Export with a NUL character',
+      'campaigns:import-dropped',
+      [{ file: `${path.resolve('x.zip')}\0.txt` }],
+    ],
+    [
+      'several dropped Exports',
+      'campaigns:import-dropped',
+      [{ file: [path.resolve('a.zip'), path.resolve('b.zip')] }],
+    ],
   ] as const)('reject %s', (_label, channel, args) => {
     expect(checkInvoke(channel, 'control', [...args])).toMatchObject({ ok: false });
   });

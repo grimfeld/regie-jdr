@@ -241,6 +241,12 @@ function droppedImport(
   return { ...campaign, files: [...files], ...kind };
 }
 
+/** A dropped Export to Import: one file, with the same path checks as dropped Media. */
+function droppedExport(value: unknown): Parsed<{ file: string }> {
+  if (!isRecord(value) || !isDroppedPath(value.file)) return INVALID;
+  return { file: value.file };
+}
+
 /**
  * Pasted image content: bytes (not a list or text), at most MAX_PASTED_IMAGE_BYTES, with a name.
  * Whether the bytes are an image is the import's check (core/media.ts).
@@ -373,6 +379,7 @@ const rules: { [C in InvokeChannel]: Rule<C> } = {
   'campaigns:delete-permanently': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'campaigns:export': { from: controlOnly, parse: onePayload(campaignIdOf) },
   'campaigns:import': { from: controlOnly, parse: noPayload },
+  'campaigns:import-dropped': { from: controlOnly, parse: onePayload(droppedExport) },
   'notices:take': { from: controlOnly, parse: noPayload },
   'settings:get': { from: controlOnly, parse: noPayload },
   'settings:set-theme': { from: controlOnly, parse: onePayload(themeOf) },

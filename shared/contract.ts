@@ -410,6 +410,12 @@ export interface InvokeChannels {
    */
   'campaigns:import': { payload: void; result: CampaignImportResult };
   /**
+   * Import a Campaign from an Export the Game Master dropped from Windows Explorer, like
+   * `campaigns:import`. The path comes from the dropped file (the page never names one); the main
+   * process treats it as untrusted, refusing network shares, device paths and non-zip files.
+   */
+  'campaigns:import-dropped': { payload: { file: string }; result: CampaignImportResult };
+  /**
    * Messages for the Game Master gathered since the last call (e.g. a corrupt file recovered
    * from its backup), in French. Returns them once.
    */
@@ -593,6 +599,8 @@ export interface ControlBridge extends BroadcastBridge {
   deleteCampaignPermanently(id: CampaignId): Promise<void>;
   exportCampaign(id: CampaignId): Promise<CampaignExportResult>;
   importCampaign(): Promise<CampaignImportResult>;
+  /** Imports the Export `file` dropped from Windows Explorer; its path is read in the bridge. */
+  importDroppedCampaign(file: File): Promise<CampaignImportResult>;
   takeNotices(): Promise<string[]>;
   getSettings(): Promise<Settings>;
   setHomeTheme(theme: ThemeId): Promise<Settings>;

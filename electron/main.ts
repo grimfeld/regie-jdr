@@ -24,7 +24,7 @@ import { createSettingsStore, type SettingsStore, type SettingsWindow } from '..
 import { openStorage } from '../core/storage/index.js';
 import { placeWindow } from '../core/windowPlacement.js';
 import { openZipArchive, writeZipArchive } from './zipArchive.js';
-import type { MediaImportKind, SoundboardEdit } from '../shared/contract.js';
+import type { CampaignImportResult, MediaImportKind, SoundboardEdit } from '../shared/contract.js';
 import type { PadCommand } from '../shared/domain.js';
 
 let controlWindow: BrowserWindow | null = null;
@@ -343,6 +343,20 @@ function startApp() {
       log.warn('Could not remove the folders left by an interrupted Import', error);
     },
   );
+  // Always a new Campaign (ADR-0005); the zip is untrusted, core/campaignImport.ts checks it.
+  async function importCampaignFrom(file: string): Promise<CampaignImportResult> {
+    await importLeftoversCleared;
+    const { id } = await importCampaign({
+      openArchive: openZipArchive(file),
+      campaignsFolder: storage.campaignsFolder,
+      importsFolder: storage.importsFolder,
+      existingNames: (await storage.campaigns.list()).map((campaign) => campaign.name),
+    });
+    const campaign = await storage.campaigns.get(id);
+    if (!campaign) throw new CampaignError('La campagne importée est illisible.');
+    log.info(`Imported Campaign ${id}`);
+    return { imported: true, campaign };
+  }
   const settingsStore = createSettingsStore(storage);
   settings = settingsStore;
   const library = createMediaLibrary(storage, electronImageResizer, { log });
@@ -534,21 +548,19 @@ function startApp() {
         log.info(`Exported Campaign ${campaignId}, ${missingMedia} missing Media left out`);
         return { saved: true, missingMedia };
       },
-      // Always a new Campaign (ADR-0005); the zip is untrusted, core/campaignImport.ts checks it.
+      // Picked in the native open dialog: the window never names a file.
       'campaigns:import': async () => {
         const file = await pickImportFile();
-        if (!file) return { imported: false };
-        await importLeftoversCleared;
-        const { id } = await importCampaign({
-          openArchive: openZipArchive(file),
-          campaignsFolder: storage.campaignsFolder,
-          importsFolder: storage.importsFolder,
-          existingNames: (await storage.campaigns.list()).map((campaign) => campaign.name),
-        });
-        const campaign = await storage.campaigns.get(id);
-        if (!campaign) throw new CampaignError('La campagne importée est illisible.');
-        log.info(`Imported Campaign ${id}`);
-        return { imported: true, campaign };
+        return file ? importCampaignFrom(file) : { imported: false };
+      },
+      // The path was checked like a dropped Media's (core/ipc.ts); then the same Import as above.
+      'campaigns:import-dropped': async ({ file }) => {
+        if (path.extname(file).toLowerCase() !== '.zip') {
+          throw new CampaignError(
+            `« ${path.basename(file)} » n’a pas été importé : ce n’est pas une campagne exportée (.zip).`,
+          );
+        }
+        return importCampaignFrom(file);
       },
       'notices:take': () => notices.splice(0),
       'settings:get': () => settingsStore.get(),

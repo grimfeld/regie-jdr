@@ -153,10 +153,15 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     if (result.saved) showNotice(exportNotice(result.missingMedia));
   }
 
-  /** Imports a Campaign; it joins the list, highlighted there, and is not opened (ADR-0005). */
-  async function importCampaign(): Promise<CampaignId | undefined> {
+  /**
+   * Imports a Campaign, picked in the open dialog or `dropped` from Explorer; it joins the list,
+   * highlighted there, and is not opened (ADR-0005).
+   */
+  async function importCampaign(dropped?: File): Promise<CampaignId | undefined> {
     if (!control) return undefined;
-    const result = await control.importCampaign();
+    const result = dropped
+      ? await control.importDroppedCampaign(dropped)
+      : await control.importCampaign();
     if (!result.imported) return undefined;
     const { campaign } = result;
     setCampaigns((current) => [...(current ?? []), campaign].sort(byName));

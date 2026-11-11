@@ -1173,7 +1173,8 @@ button {
 }
 .placement-list.drop-ready,
 .editor-canvas.drop-ready,
-.library-drop.drop-ready {
+.library-drop.drop-ready,
+.campaign-home.drop-ready {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

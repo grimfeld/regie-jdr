@@ -96,6 +96,9 @@ const bridge: ControlBridge = {
   deleteCampaignPermanently: (id) => invoke('campaigns:delete-permanently', { id }),
   exportCampaign: (id) => invoke('campaigns:export', { id }),
   importCampaign: () => invoke('campaigns:import'),
+  // As for dropped Media: only a file really dropped has a path (empty otherwise, then refused).
+  importDroppedCampaign: (file) =>
+    invoke('campaigns:import-dropped', { file: webUtils.getPathForFile(file) }),
   takeNotices: () => invoke('notices:take'),
   getSettings: () => invoke('settings:get'),
   setHomeTheme: (theme) => invoke('settings:set-theme', { theme }),
