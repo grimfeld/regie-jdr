@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Aperture, ArrowLeft, Maximize, MonitorPlay, Palette, Settings2 } from 'lucide-react';
-import type { Campaign, CampaignId, ThemeId } from '../shared/domain';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Aperture,
+  ArrowLeft,
+  Keyboard,
+  Maximize,
+  MonitorPlay,
+  Palette,
+  Settings2,
+} from 'lucide-react';
+import type { Campaign, CampaignId, ShortcutSettings, ThemeId } from '../shared/domain';
+import { DEFAULT_SHORTCUTS, keyMapOf } from '../core/keyMap';
 import type {
   CampaignChanges,
   CampaignImportResult,
@@ -17,11 +26,17 @@ import {
 } from './CampaignList';
 import { FadeSetting } from './FadeSetting';
 import { MediaLibrary } from './MediaLibrary';
-import { PAD_KEY_POSITIONS, useShortcuts, type ShortcutHandlers } from './keyboard';
+import {
+  PAD_KEY_POSITIONS,
+  ShortcutsContext,
+  useShortcuts,
+  type ShortcutHandlers,
+} from './keyboard';
 import { useListening } from './Listening';
 import { NowPlaying, toggleSilence } from './NowPlaying';
 import { OnAirMonitor } from './OnAirMonitor';
 import { ScenesPanel, type NotesChange } from './ScenesPanel';
+import { ShortcutsPage } from './ShortcutsPage';
 import { SoundboardPanel, useSoundboard, type SoundboardControls } from './Soundboard';
 import { showNotice } from './notices';
 import { ThemePicker, themeLabel } from './ThemePicker';
@@ -113,13 +128,22 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
 
   // The global theme (Settings) dresses the home page; inside a Campaign, its own theme.
   const [homeTheme, setHomeTheme] = useState<ThemeId>(DEFAULT_HOME_THEME);
+  // The shortcut keys (Settings); shortcuts pause while the shortcuts page is open.
+  const [shortcuts, setShortcuts] = useState<ShortcutSettings>(DEFAULT_SHORTCUTS);
+  const [remapping, setRemapping] = useState(false);
+  const shortcutsInForce = useMemo(
+    () => ({ keyMap: keyMapOf(shortcuts), paused: remapping }),
+    [shortcuts, remapping],
+  );
   useEffect(() => {
     if (!control) return;
     let cancelled = false;
     control
       .getSettings()
       .then((settings) => {
-        if (!cancelled) setHomeTheme(settings.theme);
+        if (cancelled) return;
+        setHomeTheme(settings.theme);
+        setShortcuts(settings.shortcuts);
       })
       .catch((error: unknown) => {
         if (!cancelled) showNotice(errorMessage(error));
@@ -135,6 +159,19 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
     try {
       setHomeTheme((await control.setHomeTheme(next)).theme);
     } catch (error) {
+      showNotice(errorMessage(error));
+    }
+  }
+
+  /** Saves the shortcut keys; they are in force at once, and back as saved if refused. */
+  async function changeShortcuts(next: ShortcutSettings) {
+    const before = shortcuts;
+    setShortcuts(next);
+    if (!control) return;
+    try {
+      setShortcuts((await control.setShortcuts(next)).shortcuts);
+    } catch (error) {
+      setShortcuts(before);
       showNotice(errorMessage(error));
     }
   }
@@ -219,85 +256,97 @@ function ControlApp({ control }: { control: ControlBridge | undefined }) {
   };
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">
-            <Aperture size={19} />
+    <ShortcutsContext.Provider value={shortcutsInForce}>
+      <main className="app-shell">
+        <header className="topbar">
+          <div className="brand">
+            <div className="brand-mark">
+              <Aperture size={19} />
+            </div>
+            <div>
+              <strong>RÉGIE JDR</strong>
+              <small>POSTE DU MAÎTRE DU JEU</small>
+            </div>
           </div>
-          <div>
-            <strong>RÉGIE JDR</strong>
-            <small>POSTE DU MAÎTRE DU JEU</small>
-          </div>
-        </div>
-        <div className="topbar-right">
-          {openCampaign && (
-            <button className="secondary-button" onClick={() => void enter(null)}>
-              <ArrowLeft size={14} /> Campagnes
+          <div className="topbar-right">
+            {openCampaign && (
+              <button className="secondary-button" onClick={() => void enter(null)}>
+                <ArrowLeft size={14} /> Campagnes
+              </button>
+            )}
+            <button className="primary-button" onClick={() => void control?.openBroadcast()}>
+              <MonitorPlay size={16} /> Ouvrir la diffusion
             </button>
-          )}
-          <button className="primary-button" onClick={() => void control?.openBroadcast()}>
-            <MonitorPlay size={16} /> Ouvrir la diffusion
-          </button>
-          {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
-          <button
-            className="secondary-button"
-            onClick={() => void control?.toggleBroadcastFullscreen()}
-            title="Mettre la diffusion en plein écran, ou l’en sortir"
-          >
-            <Maximize size={14} /> Plein écran
-          </button>
-          <BroadcastOnTopToggle control={control} />
-        </div>
-      </header>
-      {openCampaign ? (
-        <CampaignScreen
-          key={openCampaign.id}
-          campaign={openCampaign}
-          control={control}
-          onThemeChange={(next) =>
-            void update(openCampaign.id, { theme: next }).catch((error: unknown) => {
-              showNotice(errorMessage(error));
-            })
-          }
-        />
-      ) : (
-        campaigns && (
-          <CampaignList
-            campaigns={campaigns}
-            onOpen={(id) => void enter(id)}
-            onCreate={create}
-            onRename={(id, name) => update(id, { name })}
-            deletion={deletion}
-            onExport={exportCampaign}
-            onImport={control && importCampaign}
-            transfer={transfer}
-            onCancelTransfer={() => void control?.cancelCampaignTransfer()}
-          >
-            <section className="panel home-theme">
-              <div className="panel-heading">
-                <div>
-                  <span className="eyebrow">APPARENCE</span>
-                  <h2>
-                    <Palette size={18} /> Thème de l’accueil
-                  </h2>
+            {/* The Broadcast window has no controls of its own; Esc there also leaves fullscreen. */}
+            <button
+              className="secondary-button"
+              onClick={() => void control?.toggleBroadcastFullscreen()}
+              title="Mettre la diffusion en plein écran, ou l’en sortir"
+            >
+              <Maximize size={14} /> Plein écran
+            </button>
+            <BroadcastOnTopToggle control={control} />
+            <button className="secondary-button" onClick={() => setRemapping(true)}>
+              <Keyboard size={14} /> Raccourcis
+            </button>
+          </div>
+        </header>
+        {remapping && (
+          <ShortcutsPage
+            shortcuts={shortcuts}
+            onChange={(next) => void changeShortcuts(next)}
+            onClose={() => setRemapping(false)}
+          />
+        )}
+        {openCampaign ? (
+          <CampaignScreen
+            key={openCampaign.id}
+            campaign={openCampaign}
+            control={control}
+            onThemeChange={(next) =>
+              void update(openCampaign.id, { theme: next }).catch((error: unknown) => {
+                showNotice(errorMessage(error));
+              })
+            }
+          />
+        ) : (
+          campaigns && (
+            <CampaignList
+              campaigns={campaigns}
+              onOpen={(id) => void enter(id)}
+              onCreate={create}
+              onRename={(id, name) => update(id, { name })}
+              deletion={deletion}
+              onExport={exportCampaign}
+              onImport={control && importCampaign}
+              transfer={transfer}
+              onCancelTransfer={() => void control?.cancelCampaignTransfer()}
+            >
+              <section className="panel home-theme">
+                <div className="panel-heading">
+                  <div>
+                    <span className="eyebrow">APPARENCE</span>
+                    <h2>
+                      <Palette size={18} /> Thème de l’accueil
+                    </h2>
+                  </div>
                 </div>
-              </div>
-              <ThemePicker
-                label="Thème de l’accueil"
-                theme={homeTheme}
-                onChange={(next) => void changeHomeTheme(next)}
-              />
-              <p className="theme-footnote">Les nouvelles campagnes prennent ce thème.</p>
-            </section>
-          </CampaignList>
-        )
-      )}
-      <footer className="footer">
-        <span>RÉGIE JDR · Prototype 0.1</span>
-        <span>Fonctionnement local · Aucun compte requis</span>
-      </footer>
-    </main>
+                <ThemePicker
+                  label="Thème de l’accueil"
+                  theme={homeTheme}
+                  onChange={(next) => void changeHomeTheme(next)}
+                />
+                <p className="theme-footnote">Les nouvelles campagnes prennent ce thème.</p>
+              </section>
+            </CampaignList>
+          )
+        )}
+        <footer className="footer">
+          <span>RÉGIE JDR · Prototype 0.1</span>
+          <span>Fonctionnement local · Aucun compte requis</span>
+        </footer>
+      </main>
+    </ShortcutsContext.Provider>
   );
 }
 

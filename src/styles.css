@@ -1693,3 +1693,60 @@ img.ProseMirror-separator {
 .ProseMirror-focused .ProseMirror-gapcursor {
   display: block;
 }
+
+/* The shortcuts page (#71): a modal over the Control window. */
+.shortcuts-page {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+.shortcuts-page::backdrop {
+  background: color-mix(in srgb, var(--page) 75%, transparent);
+}
+.shortcuts-footnote,
+.shortcuts-fixed {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.shortcuts-table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.shortcuts-table th {
+  font-weight: normal;
+  text-align: left;
+}
+.shortcuts-table th,
+.shortcuts-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.shortcuts-table kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  font-family: inherit;
+}
+.shortcuts-message {
+  min-height: 24px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.shortcuts-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.shortcuts-conflict p,
+.shortcuts-message p {
+  margin: 0;
+}
