@@ -23,3 +23,11 @@ Source: #35 agent report, 2026-11-11. True as of `m2-audio-mvp@956ba64`. Design:
 - Five `SceneEdit`s: add, remove, on/off, own volume, Scene Ambience level (one undo step each). `audioChangeOf`: on/off and removal fade 1 s, volume short ramp, add silent. Mix unchanged.
 - UI `src/SceneAmbienceList.tsx` beside the Music list. Unit tests in `tests/unit/ambiences.test.ts`.
 - Gap: volume sliders commit on release and are silent while dragging (no audio transient path yet).
+
+## Soundboard (#39, 2026-11-12, `6b99c61`)
+
+- Per Campaign: `soundboard.json` (document v1) via `core/soundboard.ts`. Outside undo. Only Sound effects become pads (checked in main and UI).
+- `core/padVoices.ts`: max 8 pad voices, oldest cut first (`AUDIO_FADE_MS.pad` = 80 ms). Gain = Master × Soundboard level × pad volume, fixed at press. Engine side `src/padPlayer.ts`.
+- Control-only channels: `audio:pad-command`, `audio:report-pads`, `soundboard:get`, `soundboard:edit`, `soundboard:press`. `AudioSounding.pads` feeds "En cours". `audio:get-mix` also resets main's pad bookkeeping (engine start/reload).
+- #41 hook: `useSoundboard` in `CampaignScreen` (`src/App.tsx`) exposes `pressPosition(n)` (1-based).
+- Known gaps: Sound effects decode on first press (no preload); level changes don't ramp a sounding pad; deleting a Media removes its pads silently (pads aren't counted as Media users).

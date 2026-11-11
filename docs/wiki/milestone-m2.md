@@ -21,8 +21,11 @@ Read first: ADR-0002 (audio plays in the Control window; Discord carries all app
 - Two sounds dropped back to back: the second was lost; (2026-11-11: maybe the layout shift found in [flaky tests](problem-flaky-app-tests.md)); #35's app test waits between drops instead. Likely a real bug (role dialog or drop handler). Fix the cause, then remove the wait. Source: #35 report.
 - `GLOSSARY.md` lacks "mix" and "voice". Source: #35 report.
 - Manual check: no clicks on volume ramps. Source: #35 report.
+- Deleting a Media silently removes its Soundboard pads; M0 #15 warns for Scene uses. Decide per spec #33 whether pads count as uses. Source: #39 report.
+- Manual check: 8 pads at once over Music and Ambiences. Source: #39 report.
 - Live audio while dragging volume sliders (Ambience, Music, pads). Source: #37 report.
 - Make `overlay-transforms.spec` and `placing.spec` position-independent; then let the Ambience level leave the heading line if better. Source: #37 report.
 - 2026-11-11: M1 (PR #74, CI green) merged forward into `m2-audio-mvp` at `6a66ecd` (real merge; 603 unit, 109 app tests). Undo refusal now covers Music and Ambiences; notice reads "Un média de cette étape a été supprimé".
 - Follow-up: unit test for undo refused when a restored Music was deleted. Source: merge-forward report.
 - 2026-11-12: #37 Ambiences merged at `4e88616` (630 unit, 112 app tests).
+- 2026-11-12: #39 Soundboard merged at `6b99c61` (674 unit, 114 app tests). Smoke test now expects 2 sliders.
