@@ -15,3 +15,7 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at repo root. See `docs/agents/d
 ### Coding standards
 
 Write and review every code change against `CODING_STANDARDS.md`.
+
+### Shipping
+
+How work ships: `docs/agents/shipping.md`.

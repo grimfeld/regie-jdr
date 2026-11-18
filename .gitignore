@@ -10,4 +10,5 @@ release/
 Thumbs.db
 test-results/
 playwright-report/
-.claude/
+.claude/*
+!.claude/settings.json
